@@ -4,7 +4,7 @@
 #include "core/threadsafe_queue.h"
 #include "core/work_request.h"
 #include "transport/channel.h"
-namespace rabit {
+namespace rdc {
 /**
  * @struct TcpChannel
  * @brief a channel which send and recv data on tcp protocal and ethernet

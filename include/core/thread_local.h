@@ -9,7 +9,7 @@
 #include <memory>
 #include <vector>
 
-namespace rabit {
+namespace rdc {
 
 /*!
  * @brief A threadlocal store to store threadlocal variables.
@@ -59,4 +59,4 @@ class ThreadLocalStore {
   /*!\brief internal data */
   std::vector<T*> data_;
 };
-}  // namespace rabit
+}  // namespace rdc

@@ -14,7 +14,7 @@
 #include "core/serializable.h"
 #include "core/logging.h"
 using namespace logging;
-namespace rabit {
+namespace rdc {
 namespace utils {
 /*! \brief re-use definition of dmlc::SeekStream */
 typedef dmlc::SeekStream SeekStream;
@@ -102,4 +102,4 @@ struct MemoryBufferStream : public SeekStream {
   size_t curr_ptr_;
 };  // class MemoryBufferStream
 }  // namespace utils
-}  // namespace rabit
+}  // namespace rdc

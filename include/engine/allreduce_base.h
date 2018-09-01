@@ -1,10 +1,10 @@
 /*!
- *  Copyright (c) 2014 by Contributors
+ *  Copyright (c) 2018 by Contributors
  * \file allreduce_base.h
  * \brief Basic implementation of AllReduce
- *   using TCP non-block socket and tree-shape reduction.
+ *   using TCP non-block socket or RDMA for communication.
  *
- *   This implementation provides basic utility of AllReduce and Broadcast
+ *   This implementation provides basic utility of Communication Primitives
  *   without considering node failure
  *
  * \author Ankun Zheng
@@ -29,16 +29,16 @@ public:
     explicit Datatype(size_t type_size) : type_size(type_size) {}
 };
 }
-namespace rabit {
+namespace rdc {
 namespace engine {
 /*! \brief implementation of basic Allreduce engine */
-class AllreduceBase : public IEngine {
+class Communicator : public IEngine {
 public:
     // magic number to verify server
     static const int kMagic = 0xff99;
     // constant one byte out of band message to indicate error happening
-    AllreduceBase(void);
-    virtual ~AllreduceBase(void) {}
+    Communicator(void);
+    virtual ~Communicator(void) {}
     // initialize the manager
     virtual void Init(int argc, char* argv[]);
     // shutdown the engine
@@ -125,11 +125,11 @@ public:
      *     the p_model is not touched, user should do necessary initialization by themselves
      *
      *   Common usage example:
-     *      int iter = rabit::LoadCheckPoint(&model);
+     *      int iter = rdc::LoadCheckPoint(&model);
      *      if (iter == 0) model.InitParameters();
      *      for (i = iter; i < max_iter; ++i) {
      *        do many things, include allreduce
-     *        rabit::CheckPoint(model);
+     *        rdc::CheckPoint(model);
      *      }
      *
      * \sa CheckPoint, VersionNumber
@@ -278,7 +278,7 @@ public:
             size_t nmax = max_size_read - size_read;
             nmax = std::min(nmax, buffer_size - ngap);
             nmax = std::min(nmax, buffer_size - offset);
-            LOG_F(INFO, "%d %d", rabit::GetRank(), nmax);
+            LOG_F(INFO, "%d %d", rdc::GetRank(), nmax);
             if (nmax == 0) {
                 return;
             //    LOG_F(INFO, "no space for data receiving");
@@ -287,7 +287,7 @@ public:
             wc.Wait();
             //int* a = reinterpret_cast<int*>(buffer_head + offset);
             const size_t len = wc.completed_bytes();
-            //LOG_S(INFO) << "@node:" << rabit::GetRank() <<  " recv:" << 
+            //LOG_S(INFO) << "@node:" << rdc::GetRank() <<  " recv:" << 
             //    a[0] << " size:" << nmax;
             size_read += static_cast<size_t>(len);
             return;
@@ -483,4 +483,4 @@ public:
     int connect_retry;
 };
 }  // namespace engine
-}  // namespace rabit
+}  // namespace rdc

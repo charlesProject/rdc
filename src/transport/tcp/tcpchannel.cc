@@ -13,7 +13,7 @@
 #include "transport/tcp/tcpchannel.h"
 #include "core/status.h"
 
-namespace rabit {
+namespace rdc {
 static inline uint32_t channel_type_to_epoll_event(
         const ChannelType& channel_type) {
     switch(channel_type) {

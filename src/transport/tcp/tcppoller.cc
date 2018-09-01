@@ -19,7 +19,7 @@
 
 static const uint32_t kNumMaxEvents=128;
 
-namespace rabit {
+namespace rdc {
 TcpPoller::TcpPoller() {
     epoll_fd_ = epoll_create(kNumMaxEvents);
     PollForever();
@@ -55,7 +55,7 @@ int TcpPoller::Poll() {
     epoll_event events[kNumMaxEvents];
     size_t fds = epoll_wait(this->epoll_fd_, events, 
                             kNumMaxEvents, this->timeout_);
-    for(size_t i = 0; i < fds; i++) {
+    for (size_t i = 0; i < fds; i++) {
         TcpChannel * channel = nullptr;
         lock_.lock();
         channel = this->channels_[events[i].data.fd];
@@ -63,13 +63,13 @@ int TcpPoller::Poll() {
         if (channel) {
             // when data avaliable for read or urgent flag is set
             if (events[i].events & EPOLLIN || events[i].events & EPOLLPRI) {
-//                if (events[i].events & EPOLLIN) {
-//                    if (this->shutdown_fd_) {
-//                        if (events[i].data.fd == this->shutdown_fd_) {
-//                            return 1;
-//                        }
-//                    }
-//                }
+                if (events[i].events & EPOLLIN) {
+                    if (this->shutdown_fd_) {
+                        if (events[i].data.fd == this->shutdown_fd_) {
+                            return 1;
+                        }
+                    }
+                }
                 //if (GetRank() == 1) LOG(INFO);
                 channel->ReadCallback();
             }

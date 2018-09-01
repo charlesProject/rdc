@@ -1,6 +1,6 @@
 #include "utils/lock_utils.h"
 #include "utils/timer.h"
-namespace rabit {
+namespace rdc {
 namespace utils {
 static const uint64_t kTimeout = 1000; 
 void SpinLock::lock() noexcept(true) {
@@ -38,4 +38,4 @@ void MixedLock::unlock() noexcept(true) {
     }
 }
 } // namespace utils
-} // namespace rabit
+} // namespace rdc

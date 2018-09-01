@@ -19,7 +19,7 @@
 #endif
 #include <string>
 
-namespace rabit {
+namespace rdc {
 namespace network_utils {
 /**
  * \brief return the IP address for given interface eth0, eth1, ...

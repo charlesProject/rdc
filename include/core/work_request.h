@@ -9,7 +9,7 @@
 #include "utils/lock_utils.h"
 #include "core/status.h"
 #include "core/logging.h"
-namespace rabit {
+namespace rdc {
 enum WorkType : uint32_t {
     kSend,
     kRecv,

@@ -1,9 +1,9 @@
 #pragma once
 #include <string>
-#include "rabit.h"
+#include "rdc.h"
 #include "core/status.h"
 
-namespace rabit {
+namespace rdc {
 enum ChannelType : uint32_t {
     kRead,
     kWrite,

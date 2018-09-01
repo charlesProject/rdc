@@ -8,7 +8,7 @@
 #include <chrono>
 #include "utils/utils.h"
 
-namespace rabit {
+namespace rdc {
 namespace utils {
 /*!
  * \brief return time in microseconds
@@ -22,4 +22,4 @@ inline double GetTime() {
 	return static_cast<double>(GetTimeInUs()) / 1e6;
 }
 }  // namespace utils
-}  // namespace rabit
+}  // namespace rdc

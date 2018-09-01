@@ -1,7 +1,7 @@
 /*!
  * Copyright by Contributors
- * \file rabit-inl.h
- * \brief implementation of inline template function for rabit interface
+ * \file rdc-inl.h
+ * \brief implementation of inline template function for rdc interface
  *
  * \author Tianqi Chen
  */
@@ -11,9 +11,9 @@
 #include <string>
 #include "core/io.h"
 #include "utils/utils.h"
-#include "rabit.h"
+#include "rdc.h"
 
-namespace rabit {
+namespace rdc {
 namespace engine {
 namespace mpi {
 // template function to translate type to enum indicator
@@ -101,12 +101,12 @@ inline void Reducer(const void *src_, void *dst_, int len, const MPI::Datatype &
 }
 }  // namespace op
 
-// intialize the rabit engine
+// intialize the rdc engine
 inline void Init(int argc, char *argv[]) {
   engine::Init(argc, argv);
 }
-// finalize the rabit engine
-inline void Finalize(void) {
+// finalize the rdc engine
+inline void Finalize() {
   engine::Finalize();
 }
 // get the rank of current process
@@ -117,7 +117,7 @@ inline int GetRank(void) {
 inline int GetWorldSize(void) {
   return engine::GetEngine()->GetWorldSize();
 }
-// whether rabit is distributed
+// whether rdc is distributed
 inline bool IsDistributed(void) {
   return engine::GetEngine()->IsDistributed();
 }
@@ -178,53 +178,41 @@ template<typename OP, typename DType>
 inline void Allreduce(DType *sendrecvbuf, size_t count,
                       void (*prepare_fun)(void *arg),
                       void *prepare_arg) {
-  engine::Allreduce_(sendrecvbuf, sizeof(DType), count, op::Reducer<OP, DType>,
-                     engine::mpi::GetType<DType>(), OP::kType, prepare_fun, prepare_arg);
+    engine::Allreduce_(sendrecvbuf, sizeof(DType), count, op::Reducer<OP, DType>,
+                       engine::mpi::GetType<DType>(), OP::kType, prepare_fun, prepare_arg);
 }
 
 // C++11 support for lambda prepare function
 inline void InvokeLambda_(void *fun) {
-  (*static_cast<std::function<void()>*>(fun))();
+    (*static_cast<std::function<void()>*>(fun))();
 }
 template<typename OP, typename DType>
 inline void Allreduce(DType *sendrecvbuf, size_t count, std::function<void()> prepare_fun) {
-  engine::Allreduce_(sendrecvbuf, sizeof(DType), count, op::Reducer<OP, DType>,
-                     engine::mpi::GetType<DType>(), OP::kType, InvokeLambda_, &prepare_fun);
+    engine::Allreduce_(sendrecvbuf, sizeof(DType), count, op::Reducer<OP, DType>,
+                       engine::mpi::GetType<DType>(), OP::kType, InvokeLambda_, &prepare_fun);
 }
 
 // print message to the tracker
 inline void TrackerPrint(const std::string &msg) {
-  engine::GetEngine()->TrackerPrint(msg);
+    engine::GetEngine()->TrackerPrint(msg);
 }
-#ifndef RABIT_STRICT_CXX98_
-inline void TrackerPrintf(const char *fmt, ...) {
-  const int kPrintBuffer = 1 << 10;
-  std::string msg(kPrintBuffer, '\0');
-  va_list args;
-  va_start(args, fmt);
-  vsnprintf(&msg[0], kPrintBuffer, fmt, args);
-  va_end(args);
-  msg.resize(strlen(msg.c_str()));
-  TrackerPrint(msg);
-}
-#endif
 // load latest check point
 inline int LoadCheckPoint(Serializable *global_model,
                           Serializable *local_model) {
-  return engine::GetEngine()->LoadCheckPoint(global_model, local_model);
+    return engine::GetEngine()->LoadCheckPoint(global_model, local_model);
 }
 // checkpoint the model, meaning we finished a stage of execution
 inline void CheckPoint(const Serializable *global_model,
                        const Serializable *local_model) {
-  engine::GetEngine()->CheckPoint(global_model, local_model);
+    engine::GetEngine()->CheckPoint(global_model, local_model);
 }
 // lazy checkpoint the model, only remember the pointer to global_model
 inline void LazyCheckPoint(const Serializable *global_model) {
-  engine::GetEngine()->LazyCheckPoint(global_model);
+    engine::GetEngine()->LazyCheckPoint(global_model);
 }
 // return the version number of currently stored model
 inline int VersionNumber(void) {
-  return engine::GetEngine()->VersionNumber();
+    return engine::GetEngine()->VersionNumber();
 }
 // ---------------------------------
 // Code to handle customized Reduce
@@ -285,4 +273,4 @@ inline void SerializeReducer<DType>::Allreduce(DType *sendrecvobj,
                                                std::function<void()> prepare_fun) {
     this->Allreduce(sendrecvobj, max_nbytes, count, InvokeLambda_, &prepare_fun);
 }
-}  // namespace rabit
+}  // namespace rdc

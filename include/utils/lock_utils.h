@@ -1,7 +1,7 @@
 #pragma once
 #include <atomic>
 #include <mutex>
-namespace rabit {
+namespace rdc {
 namespace utils {
 class SpinLock {
 public:
@@ -45,5 +45,5 @@ public:
     Lock& lock_;
 };
 } // namespace utils
-} // namespace rabit
+} // namespace rdc
 

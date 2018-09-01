@@ -11,13 +11,13 @@
 #include "engine/allreduce_base.h"
 //#include "engine/allreduce_robust.h"
 #include "core/thread_local.h"
-namespace rabit {
+namespace rdc {
 namespace engine {
 // singleton sync manager
 #ifndef RABIT_USE_BASE
 typedef AllreduceRobust Manager;
 #else
-typedef AllreduceBase Manager;
+typedef Communicator Manager;
 #endif
 
 /*! \brief entry to to easily hold returning information */
@@ -37,7 +37,7 @@ typedef ThreadLocalStore<ThreadLocalEntry> EngineThreadLocal;
 void Init(int argc, char *argv[]) {
   ThreadLocalEntry* e = EngineThreadLocal::Get();
   utils::Check(e->engine.get() == nullptr,
-               "rabit::Init is already called in this thread");
+               "rdc::Init is already called in this thread");
   e->initialized = true;
   e->engine.reset(new Manager());
   e->engine->Init(argc, argv);
@@ -47,7 +47,7 @@ void Init(int argc, char *argv[]) {
 void Finalize() {
   ThreadLocalEntry* e = EngineThreadLocal::Get();
   utils::Check(e->engine.get() != nullptr,
-               "rabit::Finalize engine is not initialized or already been finalized.");
+               "rdc::Finalize engine is not initialized or already been finalized.");
   e->engine->Shutdown();
   e->engine.reset(nullptr);
 }
@@ -55,12 +55,12 @@ void Finalize() {
 /*! \brief singleton method to get engine */
 IEngine *GetEngine() {
   // un-initialized default manager.
-  static AllreduceBase default_manager;
+  static Communicator default_manager;
   ThreadLocalEntry* e = EngineThreadLocal::Get();
   IEngine* ptr = e->engine.get();
   if (ptr == nullptr) {
     utils::Check(!e->initialized,
-                 "Doing rabit call after Finalize");
+                 "Doing rdc call after Finalize");
     return &default_manager;
   } else {
     return ptr;
@@ -80,4 +80,4 @@ void Allreduce_(void *sendrecvbuf,
 }
 
 }  // namespace engine
-}  // namespace rabit
+}  // namespace rdc

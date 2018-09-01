@@ -1,5 +1,5 @@
 #include "core/work_request.h"
-namespace rabit {
+namespace rdc {
 bool WorkRequest::AddBytes(const size_t nbytes) {
     //completed_bytes_.fetch_add(nbytes, std::memory_order_release);
     completed_bytes_ += nbytes;

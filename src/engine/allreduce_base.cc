@@ -1,5 +1,5 @@
 /*!
- *  Copyright (c) 2014 by Contributors
+ *  Copyright (c) 2018 by Contributors
  * \file allreduce_base.cc
  * \brief Basic implementation of AllReduce
  *
@@ -13,10 +13,10 @@
 #include "engine/allreduce_base.h"
 
 static const std::string kTerminalStr = "_";
-namespace rabit {
+namespace rdc {
 namespace engine {
 // constructor
-AllreduceBase::AllreduceBase(void) {
+Communicator::Communicator(void) {
     tracker_uri = "NULL";
     tracker_port = 9000;
     host_uri = "";
@@ -31,11 +31,11 @@ AllreduceBase::AllreduceBase(void) {
     reduce_ring_mincount = 1;
     // tracker URL
     err_link = NULL;
-    this->SetParam("rabit_reduce_buffer", "256MB");
+    this->SetParam("rdc_reduce_buffer", "256MB");
     // setup possible enviroment variable of intrest
-    env_vars.push_back("rabit_num_trial");
-    env_vars.push_back("rabit_reduce_buffer");
-    env_vars.push_back("rabit_reduce_ring_mincount");
+    env_vars.push_back("rdc_num_trial");
+    env_vars.push_back("rdc_reduce_buffer");
+    env_vars.push_back("rdc_reduce_ring_mincount");
     // also include dmlc support direct variables
     env_vars.push_back("DMLC_NUM_ATTEMPT");
     env_vars.push_back("TRACKER_URI");
@@ -44,7 +44,7 @@ AllreduceBase::AllreduceBase(void) {
 }
 
 // initialization function
-void AllreduceBase::Init(int argc, char* argv[]) {
+void Communicator::Init(int argc, char* argv[]) {
     // init logging
     //logging::init(argc, argv);
     logging::set_thread_name("main");
@@ -78,19 +78,20 @@ void AllreduceBase::Init(int argc, char* argv[]) {
     this->ReConnectLinks();
 }
 
-void AllreduceBase::Shutdown(void) {
-    for (size_t i = 0; i < all_links.size(); ++i) {
-        all_links[i].channel->Close();
-    }
-    all_links.clear();
-    tree_links.clear();
+void Communicator::Shutdown(void) {
+//    for (auto& link : all_links) {
+//        link.channel->Close();
+//    }
+//    all_links.clear();
+//    tree_links.clear();
 
     if (tracker_uri == "NULL") return;
     // notify tracker rank i have shutdown
     tracker->SendStr(std::string("shutdown"));
+    tracker->SendStr(kTerminalStr);
     tracker->Close();
 }
-void AllreduceBase::TrackerPrint(const std::string &msg) {
+void Communicator::TrackerPrint(const std::string &msg) {
     if (tracker_uri == "NULL") {
         LOG_F(INFO, "@node[%d] %s", rank, msg.c_str()); 
         return;
@@ -122,14 +123,14 @@ inline size_t ParseUnit(const char *name, const char *val) {
         return 0;
     }
 }
-void AllreduceBase::SetParam(const char *name, const char *val) {
+void Communicator::SetParam(const char *name, const char *val) {
     if (!strcmp(name, "TRACKER_URI")) tracker_uri = val;
     if (!strcmp(name, "TRACKER_PORT")) tracker_port = atoi(val);
-    if (!strcmp(name, "rabit_world_size")) world_size = atoi(val);
-    if (!strcmp(name, "rabit_reduce_ring_mincount")) {
+    if (!strcmp(name, "rdc_world_size")) world_size = atoi(val);
+    if (!strcmp(name, "rdc_reduce_ring_mincount")) {
         reduce_ring_mincount = ParseUnit(name, val);
     }
-    if (!strcmp(name, "rabit_reduce_buffer")) {
+    if (!strcmp(name, "rdc_reduce_buffer")) {
         reduce_buffer_size = (ParseUnit(name, val) + 7) >> 3;
     }
     if (!strcmp(name, "DMLC_WORKER_CONNECT_RETRY")) {
@@ -140,7 +141,7 @@ void AllreduceBase::SetParam(const char *name, const char *val) {
  * \brief initialize connection to the tracker
  * \return a socket that initializes the connection
  */
-void AllreduceBase::ConnectTracker()  {
+void Communicator::ConnectTracker()  {
     // get information from tracker
     tracker = utils::make_unique<TcpChannel>();
     int retry = 0;
@@ -171,10 +172,12 @@ void AllreduceBase::ConnectTracker()  {
  * \brief connect to the tracker to fix the the missing links
  *   this function is also used when the engine start up
  */
-void AllreduceBase::ReConnectLinks(const char *cmd) {
+void Communicator::ReConnectLinks(const char *cmd) {
     // single node mode
     if (tracker_uri == "NULL") {
-      rank = 0; world_size = 1; return;
+        rank = 0;
+        world_size = 1;
+        return;
     }
     tracker->SendStr(std::string(cmd));
     tracker->SendStr(kTerminalStr);
@@ -275,7 +278,7 @@ void AllreduceBase::ReConnectLinks(const char *cmd) {
            "cannot find next ring in the link");
     TrackerPrint("Connected done");
 }
-void AllreduceBase::TryAllreduce(void *sendrecvbuf_,
+void Communicator::TryAllreduce(void *sendrecvbuf_,
                             size_t type_nbytes,
                             size_t count,
                             ReduceFunction reducer) {
@@ -286,7 +289,7 @@ void AllreduceBase::TryAllreduce(void *sendrecvbuf_,
 //    return this->TryAllreduceTree(sendrecvbuf_, type_nbytes, count, reducer);
 //  }
 }
-void AllreduceBase::TryAllreduceTree(void *sendrecvbuf_,
+void Communicator::TryAllreduceTree(void *sendrecvbuf_,
                                 size_t type_nbytes,
                                 size_t count,
                                 ReduceFunction reducer) {
@@ -426,7 +429,7 @@ void AllreduceBase::TryAllreduceTree(void *sendrecvbuf_,
 //  }
 //  return Status::kSuccess;
 }
-void AllreduceBase::TryBroadcast(void *sendrecvbuf_, size_t total_size, int root) {
+void Communicator::TryBroadcast(void *sendrecvbuf_, size_t total_size, int root) {
 //    auto& links = tree_links;
 //    if (links.size() == 0 || total_size == 0) return;
 //    CHECK_F(root < world_size,
@@ -499,7 +502,7 @@ void AllreduceBase::TryBroadcast(void *sendrecvbuf_, size_t total_size, int root
 //  }
 //  return Status::kSuccess;
 }
-void AllreduceBase::TryAllgatherRing(void** sendrecvbufs_, size_t type_nbytes,
+void Communicator::TryAllgatherRing(void** sendrecvbufs_, size_t type_nbytes,
                                      size_t* counts) {
     // read from next link and send to prev one
     auto &prev = *ring_prev, &next = *ring_next;
@@ -537,7 +540,7 @@ void AllreduceBase::TryAllgatherRing(void** sendrecvbufs_, size_t type_nbytes,
         }
     }
 }
-void AllreduceBase::TryReduceScatterRing(void *sendrecvbuf_,
+void Communicator::TryReduceScatterRing(void *sendrecvbuf_,
                                     void* reducebuf_,
                                     size_t type_nbytes,
                                     size_t count,
@@ -568,10 +571,6 @@ void AllreduceBase::TryReduceScatterRing(void *sendrecvbuf_,
         stop_write_idx -= n;
         CHECK_F(write_idx <= stop_write_idx, "write ptr boundary check");
     }
-    // use ring buffer in next position
-    //next.InitBuffer(type_nbytes, step);
-    // set size_read to read pointer for ring buffer to work properly
-    //next.size_read = read_ptr;
     while (true) {
         bool finished = true;
         if (read_idx != stop_read_idx) {
@@ -585,33 +584,32 @@ void AllreduceBase::TryReduceScatterRing(void *sendrecvbuf_,
             size_t write_pos = write_idx % n;
             //size_t size = std::min(reduce_ptr, stop_write) - write_ptr;
             size_t write_size = (ranges[write_pos].second -
-                                ranges[write_pos].first) * type_nbytes;
-            size_t write_start = write_idx % n * type_nbytes;
-            //if (start + size > total_size) {
-            //    size = total_size - start;
-            //}
-            auto wc = prev.channel->ISend(sendrecvbuf + write_start, write_size);
+                                 ranges[write_pos].first) * type_nbytes;
+            size_t write_start = ranges[write_pos].first * type_nbytes;
+            auto wc = prev.channel->ISend(sendrecvbuf + write_start,
+                                          write_size);
             wc.Wait();
             write_idx ++;
             //int* a = reinterpret_cast<int*>(sendrecvbuf + start);
-            //LOG_S(INFO) << "@node:" << rabit::GetRank() <<  " send:" << a[0];
+            //LOG_S(INFO) << "@node:" << rdc::GetRank() <<  " send:" << a[0];
         }
         if (read_idx != stop_read_idx) {
-            //LOG_F(INFO,"%d",rabit::GetRank());
+            //LOG_F(INFO,"%d",rdc::GetRank());
             //next.ReadToRingBuffer(reduce_ptr, stop_read);
             // sync the rate
             //read_ptr = next.size_read;
             size_t read_pos = read_idx % n;
-            size_t read_start = read_pos * type_nbytes;
+            size_t read_start = ranges[read_pos].first * type_nbytes;
             size_t read_size = (ranges[read_pos].second -
-                               ranges[read_pos].first) * type_nbytes;
+                                ranges[read_pos].first) * type_nbytes;
             auto wc = next.channel->IRecv(reducebuf + read_start, read_size);
             wc.Wait();
+            LOG_F(INFO, "%d %d %d", rank, read_idx, reduce_idx);
             read_idx++;
             CHECK_F(read_idx <= stop_read_idx,"[%d] read_ptr boundary check",
                      rank);
             size_t reduce_pos = reduce_idx % n;
-            size_t reduce_start = reduce_pos * type_nbytes;
+            size_t reduce_start = ranges[reduce_pos].first * type_nbytes;
             size_t reduce_size = (ranges[reduce_pos].second -
                                   ranges[reduce_pos].first) * type_nbytes;
             reducer(reducebuf + reduce_start,
@@ -623,7 +621,7 @@ void AllreduceBase::TryReduceScatterRing(void *sendrecvbuf_,
     }
     return;
 }
-void AllreduceBase::TryAllreduceRing(void *sendrecvbuf_,
+void Communicator::TryAllreduceRing(void *sendrecvbuf_,
                                 size_t type_nbytes,
                                 size_t count,
                                 ReduceFunction reducer) {
@@ -634,32 +632,33 @@ void AllreduceBase::TryAllreduceRing(void *sendrecvbuf_,
     int* a = reinterpret_cast<int*>(sendrecvbuf_);
     LOG_F(INFO, "@node: %d after reduce scatter %d %d %d %d",rank, a[0], a[1], a[2], a[3]);
     size_t n = static_cast<size_t>(world_size);
-    size_t step = (count + n - 1) / n;
-    size_t begin = std::min(rank * step, count) * type_nbytes;
-    size_t end = std::min((rank + 1) * step, count) * type_nbytes;
+    const auto& ranges = utils::Split(0, count, n);
     // previous rank
     int prank = ring_prev->rank;
     // get rank of previous
     std::vector<void*> sendrecv_bufs(n);
     std::vector<size_t> sizes(n);
     for (int i = 0; i < n; i++) {
-        size_t begin = std::min(i * step, n);
-        size_t end = std::min((i + 1) * step, n);
+        size_t begin = ranges[i].first;
+        size_t end = ranges[i].second;
         size_t size = end - begin;
         LOG_F(INFO, "%d %d", begin, size);
         sizes[i] = size;
-        if (i == 2) sizes[i] = 1;
         sendrecv_bufs[i] = utils::IncrVoidPtr(sendrecvbuf_, begin * type_nbytes);
     }
     return TryAllgatherRing(utils::BeginPtr(sendrecv_bufs), type_nbytes, 
                             utils::BeginPtr(sizes));
 }
 
-void AllreduceBase::Send(void* sendbuf_, size_t type_nbytes, int dest) {
-//  all_links_by_rank[dest].sock.SendAll(sendbuf_, type_nbytes);
+void Communicator::Send(void* sendbuf_, size_t nbytes, int dest) {
+    auto wc = all_links[dest].channel->ISend(sendbuf_, nbytes);
+    wc.Wait();
+    //return wc.status();
 }
-void AllreduceBase::Recv(void* recvbuf_, size_t type_nbytes, int src)  {
-//  all_links_by_rank[src].sock.RecvAll(recvbuf_, type_nbytes);
+void Communicator::Recv(void* recvbuf_, size_t nbytes, int src)  {
+    auto wc= all_links[src].channel->IRecv(recvbuf_, nbytes);
+    wc.Wait();
+    //return wc.status();
 }
 }  // namespace engine
-}  // namespace rabit
+}  // namespace rdc

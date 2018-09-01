@@ -1,7 +1,7 @@
 /*!
  *  Copyright (c) 2014 by Contributors
  * \file engine.h
- * \brief This file defines the core interface of rabit library
+ * \brief This file defines the core interface of rdc library
  * \author Ankun Zheng
  */
 #pragma once
@@ -13,8 +13,8 @@ namespace MPI {
 class Datatype;
 }
 
-/*! \brief namespace of rabit */
-namespace rabit {
+/*! \brief namespace of rdc */
+namespace rdc {
 /*! \brief core interface of the engine */
 namespace engine {
 /*! \brief interface of core Allreduce engine */
@@ -90,11 +90,11 @@ public:
      *     the p_model is not touched, users should do necessary initialization by themselves
      *
      *   Common usage example:
-     *      int iter = rabit::LoadCheckPoint(&model);
+     *      int iter = rdc::LoadCheckPoint(&model);
      *      if (iter == 0) model.InitParameters();
      *      for (i = iter; i < max_iter; ++i) {
      *        do many things, include allreduce
-     *        rabit::CheckPoint(model);
+     *        rdc::CheckPoint(model);
      *      }
      *
      * \sa CheckPoint, VersionNumber
@@ -166,9 +166,9 @@ public:
 /*! \brief initializes the engine module */
 void Init(int argc, char *argv[]);
 /*! \brief finalizes the engine module */
-void Finalize(void);
+void Finalize();
 /*! \brief singleton method to get engine */
-IEngine *GetEngine(void);
+IEngine *GetEngine();
 
 /*! \brief namespace that contains stubs to be compatible with MPI */
 namespace mpi {
@@ -195,7 +195,7 @@ enum DataType {
 }  // namespace mpi
 /*!
  * \brief perform in-place Allreduce, on sendrecvbuf
- *   this is an internal function used by rabit to be able to compile with MPI
+ *   this is an internal function used by rdc to be able to compile with MPI
  *   do not use this function directly
  * \param sendrecvbuf buffer for both sending and receiving data
  * \param type_nbytes the number of bytes the type has
@@ -217,4 +217,4 @@ void Allreduce_(void *sendrecvbuf,
                 IEngine::PreprocFunction prepare_fun = NULL,
                 void *prepare_arg = NULL);
 }  // namespace engine
-}  // namespace rabit
+}  // namespace rdc

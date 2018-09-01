@@ -11,7 +11,7 @@
 #include <vector>
 #include <cstdarg>
 #include <memory>
-namespace rabit {
+namespace rdc {
 /*! \brief namespace for helper utils of the project */
 namespace utils {
 
@@ -147,5 +147,5 @@ inline std::unique_ptr<T> make_unique(Args&&... args) {
     return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
 }
 }
-}  // namespace rabit
+}  // namespace rdc
 

@@ -8,10 +8,10 @@
 #include "transport/tcp/tcpchannel.h"
 
 
-namespace rabit {
+namespace rdc {
 /**
  * @struct TcpPoller "tcppoller.h"
- * @brief reactor object 
+ * @brief tcppoller object
  */
 class TcpPoller {
 public:
@@ -28,7 +28,8 @@ public:
     ~TcpPoller() {
         this->Shutdown();
         loop_thrd->join();
-        listen_thrd->join();
+        close(this->epoll_fd_);
+        //listen_thrd->join();
     }
     void AddChannel(int32_t fd, TcpChannel* channel) {
         lock_.lock();
