@@ -57,9 +57,9 @@ PWD = $(shell pwd)
 INCFLAGS = -I$(PWD)/include
 # build path
 BUILD_DIR = ./build
-# objectives that makes up rabit library
-SLIB = lib/librabit.so
-ALIB = lib/librabit.a
+# objectives that makes up rdc library
+SLIB = lib/librdc.so
+ALIB = lib/librdc.a
 DEFS += -DLOGGING_WITH_STREAMS=1 -DRABIT_USE_BASE
 CFLAGS += $(DEFS)
 DMLC=./
@@ -88,14 +88,15 @@ $(SLIB) : $(OBJS)
 	$(CXX) $(CFLAGS) -shared -o $@ $(filter %.cpp %.o %.c %.cc %.a, $^)
 #
 #lint:
-#	$(DMLC)/scripts/lint.py rabit $(LINT_LANG) src include
+#	$(DMLC)/scripts/lint.py rdc $(LINT_LANG) src include
 #
 #doc doxygen:
 #	cd include; doxygen ../doc/Doxyfile; cd -
 #
 -include build/*.d
 
-
+install:
+	cp $(SLIB) /usr/local/lib
 include tests/test.mk
 test: $(TESTS)
 clean:
