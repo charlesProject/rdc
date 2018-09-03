@@ -86,11 +86,11 @@ TcpChannel::TcpChannel(TcpPoller* poller, int32_t fd, ChannelType type) {
 }
 
 TcpChannel::~TcpChannel() {
-    close(fd_);
-    if (poller_) {
-        epoll_ctl(poller_->epoll_fd(), EPOLL_CTL_DEL, 
-                  fd_, nullptr);
+    if (this->poller_) {
+        epoll_ctl(this->poller_->epoll_fd(), EPOLL_CTL_DEL,
+                  this->fd_, nullptr);
     }
+    this->Close();
 }
 
 Status TcpChannel::Connect(const std::string& hostname, const int32_t& port) {
@@ -120,7 +120,7 @@ Status TcpChannel::Connect(const std::string& hostname, const int32_t& port) {
 
 WorkCompletion TcpChannel::ISend(const void* data, size_t size) {
     uint64_t send_req_id = WorkRequestManager::Get()->
-        NewWorkRequest(kSend, data, size); 
+        NewWorkRequest(kSend, data, size);
     WorkCompletion wc(send_req_id);
     send_reqs_.Push(send_req_id);
     return wc;
@@ -133,10 +133,11 @@ WorkCompletion TcpChannel::IRecv(void* data, size_t size) {
     return wc;
 }
 void TcpChannel::ReadCallback() {
-    uint64_t recv_req_id;
+    uint64_t recv_req_id = -1;
     if (!recv_reqs_.TryPeek(recv_req_id)) {
         return;
     }
+    //LOG_F(INFO, "%d %d", GetRank(), send_req_id);
     WorkRequest& recv_req = WorkRequestManager::Get()->
                             GetWorkRequest(recv_req_id);
     auto read_nbytes = read(fd_, recv_req.ptr_at<uint8_t>(
@@ -147,12 +148,12 @@ void TcpChannel::ReadCallback() {
         WorkRequestManager::Get()->set_status(
             recv_req.id(), static_cast<Status>(errno));
         WorkRequestManager::Get()->set_done(recv_req.id(), true);
+        //WorkRequestManager::Get()->Notify();
     }
     if (recv_req.AddBytes(read_nbytes)) {
-        //LOG(INFO) << recv_req.completed_bytes();
         recv_reqs_.Pop();
-//        WorkRequestManager::Get()->set_status(
-//             recv_req.id(), static_cast<Status>(Status::kSuccess));
+        WorkRequestManager::Get()->set_done(recv_req.id(), true);
+    //    WorkRequestManager::Get()->Notify();
     }
     return;
 }
@@ -161,6 +162,7 @@ void TcpChannel::WriteCallback() {
     if (!send_reqs_.TryPeek(send_req_id)) {
         return;
     }
+    //LOG_F(INFO, "%d %d", GetRank(), send_req_id);
     WorkRequest& send_req = WorkRequestManager::Get()->
                             GetWorkRequest(send_req_id);
     auto write_nbytes = write(fd_, send_req.ptr_at<uint8_t>(
@@ -171,12 +173,12 @@ void TcpChannel::WriteCallback() {
         WorkRequestManager::Get()->set_status(
             send_req.id(), static_cast<Status>(errno));
         WorkRequestManager::Get()->set_done(send_req.id(), true);
+        //WorkRequestManager::Get()->Notify();
     }
     if (send_req.AddBytes(write_nbytes)) {
-        //LOG(INFO) << WorkRequestManager::Get()->completed_bytes(send_req.id());
         send_reqs_.Pop();
-//        WorkRequestManager::Get()->set_status(
-//             send_req.id(), static_cast<Status>(Status::kSuccess));
+        WorkRequestManager::Get()->set_done(send_req.id(), true);
+        //WorkRequestManager::Get()->Notify();
     }
     return;
 }

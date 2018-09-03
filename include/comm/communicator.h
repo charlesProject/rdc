@@ -1,6 +1,6 @@
 /*!
- *  Copyright (c) 2014 by Contributors
- * \file engine.h
+ *  Copyright (c) 2018 by Contributors
+ * \file comm.h
  * \brief This file defines the core interface of rdc library
  * \author Ankun Zheng
  */
@@ -15,17 +15,11 @@ class Datatype;
 
 /*! \brief namespace of rdc */
 namespace rdc {
-/*! \brief core interface of the engine */
-namespace engine {
-/*! \brief interface of core Allreduce engine */
-class IEngine {
+/*! \brief core interface of the comm */
+namespace comm {
+/*! \brief interface of core Allreduce comm */
+class ICommunicator {
 public:
-    /*!
-     * \brief Preprocessing function, that is called before AllReduce,
-     *        used to prepare the data used by AllReduce
-     * \param arg additional possible argument used to invoke the preprocessor
-     */
-    typedef void (PreprocFunction) (void *arg);
     /*!
      * \brief reduce function, the same form of MPI reduce function is used,
      *        to be compatible with MPI interface
@@ -37,11 +31,11 @@ public:
      *              the definition of the reduce function should be type aware
      * \param dtype the data type object, to be compatible with MPI reduce
      */
-    typedef void (ReduceFunction) (const void *src,
+    using ReduceFunction = std::function<void(const void *src,
                                    void *dst, int count,
-                                   const MPI::Datatype &dtype);
+                                   const MPI::Datatype &dtype)>;
     /*! \brief virtual destructor */
-    virtual ~IEngine() {}
+    virtual ~ICommunicator() {}
     virtual void Send(void *sendbuf, size_t type_nbytes, int dest) = 0;
     virtual void Recv(void *recvbuf, size_t type_nbytes, int src) = 0;
     /*!
@@ -51,17 +45,11 @@ public:
      * \param type_nbytes the number of bytes the type has
      * \param count number of elements to be reduced
      * \param reducer reduce function
-     * \param prepare_func Lazy preprocessing function, if it is not NULL, prepare_fun(prepare_arg)
-     *                     will be called by the function before performing Allreduce in order to initialize the data in sendrecvbuf.
-     *                     If the result of Allreduce can be recovered directly, then prepare_func will NOT be called
-     * \param prepare_arg argument used to pass into the lazy preprocessing function
      */
     virtual void Allreduce(void* sendrecvbuf_,
                            size_t type_nbytes,
                            size_t count,
-                           ReduceFunction reducer,
-                           PreprocFunction prepare_fun = nullptr,
-                           void* prepare_arg = nullptr) = 0;
+                           ReduceFunction reducer) = 0;
     /*!
      * \brief broadcasts data from root to every other node
      * \param sendrecvbuf_ buffer for both sending and receiving data
@@ -73,7 +61,7 @@ public:
                            size_t* counts) = 0;
     /*!
      * \brief explicitly re-initialize everything before calling LoadCheckPoint
-     *    call this function when IEngine throws an exception,
+     *    call this function when ICommunicator throws an exception,
      *    this function should only be used for test purposes
      */
     virtual void InitAfterException(void) = 0;
@@ -157,40 +145,49 @@ public:
     /*!
      * \brief prints the msg in the tracker,
      *    this function can be used to communicate progress information to
-     *    the user who monitors the tracker
+     *    the tracker
      * \param msg message to be printed in the tracker
      */
     virtual void TrackerPrint(const std::string &msg) = 0;
+
+    /*!
+     * \brief create a group communicator under this communicator
+     * \param ranks ranks of node in this group
+     * \param a unique name for this group
+     */
+    virtual std::unique_ptr<ICommunicator> CreateGroup(
+        const std::vector<int>& ranks,
+        const std::string& group_name) = 0;
 };
 
-/*! \brief initializes the engine module */
+/*! \brief initializes the comm module */
 void Init(int argc, char *argv[]);
-/*! \brief finalizes the engine module */
+/*! \brief finalizes the comm module */
 void Finalize();
-/*! \brief singleton method to get engine */
-IEngine *GetEngine();
+/*! \brief singleton method to get comm */
+ICommunicator *GetEngine();
 
 /*! \brief namespace that contains stubs to be compatible with MPI */
 namespace mpi {
 /*!\brief enum of all operators */
 enum OpType {
-  kMax = 0,
-  kMin = 1,
-  kSum = 2,
-  kBitwiseOR = 3
+    kMax = 0,
+    kMin = 1,
+    kSum = 2,
+    kBitwiseOR = 3
 };
 /*!\brief enum of supported data types */
 enum DataType {
-  kChar = 0,
-  kUChar = 1,
-  kInt = 2,
-  kUInt = 3,
-  kLong = 4,
-  kULong = 5,
-  kFloat = 6,
-  kDouble = 7,
-  kLongLong = 8,
-  kULongLong = 9
+    kChar = 0,
+    kUChar = 1,
+    kInt = 2,
+    kUInt = 3,
+    kLong = 4,
+    kULong = 5,
+    kFloat = 6,
+    kDouble = 7,
+    kLongLong = 8,
+    kULongLong = 9
 };
 }  // namespace mpi
 /*!
@@ -203,18 +200,12 @@ enum DataType {
  * \param reducer reduce function
  * \param dtype the data type
  * \param op the reduce operator type
- * \param prepare_func Lazy preprocessing function, lazy prepare_fun(prepare_arg)
- *                     will be called by the function before performing Allreduce, to initialize the data in sendrecvbuf_.
- *                     If the result of Allreduce can be recovered directly, then prepare_func will NOT be called
- * \param prepare_arg argument used to pass into the lazy preprocessing function.
  */
 void Allreduce_(void *sendrecvbuf,
                 size_t type_nbytes,
                 size_t count,
-                IEngine::ReduceFunction red,
+                ICommunicator::ReduceFunction red,
                 mpi::DataType dtype,
-                mpi::OpType op,
-                IEngine::PreprocFunction prepare_fun = NULL,
-                void *prepare_arg = NULL);
-}  // namespace engine
+                mpi::OpType op);
+}  // namespace comm
 }  // namespace rdc

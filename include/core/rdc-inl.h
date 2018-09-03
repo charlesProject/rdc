@@ -6,7 +6,7 @@
  * \author Tianqi Chen
  */
 #pragma once
-// use engine for implementation
+// use comm for implementation
 #include <vector>
 #include <string>
 #include "core/io.h"
@@ -14,7 +14,7 @@
 #include "rdc.h"
 
 namespace rdc {
-namespace engine {
+namespace comm {
 namespace mpi {
 // template function to translate type to enum indicator
 template<typename DType>
@@ -60,32 +60,32 @@ inline DataType GetType<unsigned long long>(void) { // NOLINT(*)
   return kULongLong;
 }
 }  // namespace mpi
-}  // namespace engine
+}  // namespace comm
 
 namespace op {
 struct Max {
-  static const engine::mpi::OpType kType = engine::mpi::kMax;
+  static const comm::mpi::OpType kType = comm::mpi::kMax;
   template<typename DType>
   inline static void Reduce(DType &dst, const DType &src) { // NOLINT(*)
     if (dst < src) dst = src;
   }
 };
 struct Min {
-  static const engine::mpi::OpType kType = engine::mpi::kMin;
+  static const comm::mpi::OpType kType = comm::mpi::kMin;
   template<typename DType>
   inline static void Reduce(DType &dst, const DType &src) { // NOLINT(*)
     if (dst > src) dst = src;
   }
 };
 struct Sum {
-  static const engine::mpi::OpType kType = engine::mpi::kSum;
+  static const comm::mpi::OpType kType = comm::mpi::kSum;
   template<typename DType>
   inline static void Reduce(DType &dst, const DType &src) { // NOLINT(*)
     dst += src;
   }
 };
 struct BitOR {
-  static const engine::mpi::OpType kType = engine::mpi::kBitwiseOR;
+  static const comm::mpi::OpType kType = comm::mpi::kBitwiseOR;
   template<typename DType>
   inline static void Reduce(DType &dst, const DType &src) { // NOLINT(*)
     dst |= src;
@@ -101,50 +101,50 @@ inline void Reducer(const void *src_, void *dst_, int len, const MPI::Datatype &
 }
 }  // namespace op
 
-// intialize the rdc engine
+// intialize the rdc comm
 inline void Init(int argc, char *argv[]) {
-  engine::Init(argc, argv);
+  comm::Init(argc, argv);
 }
-// finalize the rdc engine
+// finalize the rdc comm
 inline void Finalize() {
-  engine::Finalize();
+  comm::Finalize();
 }
 // get the rank of current process
 inline int GetRank(void) {
-  return engine::GetEngine()->GetRank();
+  return comm::GetEngine()->GetRank();
 }
 // the the size of the world
 inline int GetWorldSize(void) {
-  return engine::GetEngine()->GetWorldSize();
+  return comm::GetEngine()->GetWorldSize();
 }
 // whether rdc is distributed
 inline bool IsDistributed(void) {
-  return engine::GetEngine()->IsDistributed();
+  return comm::GetEngine()->IsDistributed();
 }
 // get the name of current processor
 inline std::string GetProcessorName(void) {
-  return engine::GetEngine()->GetHost();
+  return comm::GetEngine()->GetHost();
 }
 inline void Send(void *send_data, size_t size, int dest) {
-  engine::GetEngine()->Send(send_data, size, dest);
+  comm::GetEngine()->Send(send_data, size, dest);
 }
 inline void Recv(void *recv_data, size_t size, int src) {
-  engine::GetEngine()->Recv(recv_data, size, src);
+  comm::GetEngine()->Recv(recv_data, size, src);
 }
 // broadcast data to all other nodes from root
 inline void Broadcast(void *sendrecv_data, size_t size, int root) {
-  engine::GetEngine()->Broadcast(sendrecv_data, size, root);
+  comm::GetEngine()->Broadcast(sendrecv_data, size, root);
 }
 template<typename DType>
 inline void Broadcast(std::vector<DType> *sendrecv_data, int root) {
-  size_t size = sendrecv_data->size();
-  Broadcast(&size, sizeof(size), root);
-  if (sendrecv_data->size() != size) {
-    sendrecv_data->resize(size);
-  }
-  if (size != 0) {
-    Broadcast(&(*sendrecv_data)[0], size * sizeof(DType), root);
-  }
+    size_t size = sendrecv_data->size();
+    Broadcast(&size, sizeof(size), root);
+    if (sendrecv_data->size() != size) {
+        sendrecv_data->resize(size);
+    }
+    if (size != 0) {
+        Broadcast(&(*sendrecv_data)[0], size * sizeof(DType), root);
+    }
 }
 inline void Broadcast(std::string *sendrecv_data, int root) {
   size_t size = sendrecv_data->length();
@@ -170,50 +170,45 @@ inline void Allgather(std::vector<std::vector<DType>>& sendrecv_data) {
 }
 inline void Allgather(void** sendrecv_data, size_t size_nbytes,
                       size_t* counts) {
-    engine::GetEngine()->Allgather(sendrecv_data, size_nbytes, counts);
+    comm::GetEngine()->Allgather(sendrecv_data, size_nbytes, counts);
 }
 
 // perform inplace Allreduce
 template<typename OP, typename DType>
-inline void Allreduce(DType *sendrecvbuf, size_t count,
-                      void (*prepare_fun)(void *arg),
-                      void *prepare_arg) {
-    engine::Allreduce_(sendrecvbuf, sizeof(DType), count, op::Reducer<OP, DType>,
-                       engine::mpi::GetType<DType>(), OP::kType, prepare_fun, prepare_arg);
-}
-
-// C++11 support for lambda prepare function
-inline void InvokeLambda_(void *fun) {
-    (*static_cast<std::function<void()>*>(fun))();
-}
-template<typename OP, typename DType>
-inline void Allreduce(DType *sendrecvbuf, size_t count, std::function<void()> prepare_fun) {
-    engine::Allreduce_(sendrecvbuf, sizeof(DType), count, op::Reducer<OP, DType>,
-                       engine::mpi::GetType<DType>(), OP::kType, InvokeLambda_, &prepare_fun);
+inline void Allreduce(DType *sendrecvbuf, size_t count) {
+    comm::Allreduce_(sendrecvbuf, sizeof(DType), count, op::Reducer<OP, DType>,
+                       comm::mpi::GetType<DType>(), OP::kType);
 }
 
 // print message to the tracker
 inline void TrackerPrint(const std::string &msg) {
-    engine::GetEngine()->TrackerPrint(msg);
+    comm::GetEngine()->TrackerPrint(msg);
 }
 // load latest check point
 inline int LoadCheckPoint(Serializable *global_model,
                           Serializable *local_model) {
-    return engine::GetEngine()->LoadCheckPoint(global_model, local_model);
+    return comm::GetEngine()->LoadCheckPoint(global_model, local_model);
 }
 // checkpoint the model, meaning we finished a stage of execution
 inline void CheckPoint(const Serializable *global_model,
                        const Serializable *local_model) {
-    engine::GetEngine()->CheckPoint(global_model, local_model);
+    comm::GetEngine()->CheckPoint(global_model, local_model);
 }
 // lazy checkpoint the model, only remember the pointer to global_model
 inline void LazyCheckPoint(const Serializable *global_model) {
-    engine::GetEngine()->LazyCheckPoint(global_model);
+    comm::GetEngine()->LazyCheckPoint(global_model);
 }
 // return the version number of currently stored model
 inline int VersionNumber(void) {
-    return engine::GetEngine()->VersionNumber();
+    return comm::GetEngine()->VersionNumber();
 }
+
+inline std::unique_ptr<comm::ICommunicator> CreateGroup(
+        const std::vector<int>& ranks,
+        const std::string& group_name) {
+    return comm::GetEngine()->CreateGroup(ranks, group_name);
+}
+
 // ---------------------------------
 // Code to handle customized Reduce
 // ---------------------------------
@@ -262,15 +257,13 @@ struct SerializeReduceClosure {
         static_cast<SerializeReduceClosure<DType>*>(c)->Run();
     }
 };
-template<typename DType, void (*freduce)(DType &dst, const DType &src)>  // NOLINT(*)g
-inline void Reducer<DType, freduce>::Allreduce(DType *sendrecvbuf, size_t count,
-                                               std::function<void()> prepare_fun) {
-    this->Allreduce(sendrecvbuf, count, InvokeLambda_, &prepare_fun);
+template<typename DType, void (*freduce)(DType &dst, const DType &src)>  // NOLINT(*)
+inline void Reducer<DType, freduce>::Allreduce(DType *sendrecvbuf, size_t count) {
+    this->Allreduce(sendrecvbuf, count);
 }
 template<typename DType>
 inline void SerializeReducer<DType>::Allreduce(DType *sendrecvobj,
-                                               size_t max_nbytes, size_t count,
-                                               std::function<void()> prepare_fun) {
-    this->Allreduce(sendrecvobj, max_nbytes, count, InvokeLambda_, &prepare_fun);
+                                               size_t max_nbytes, size_t count) {
+    this->Allreduce(sendrecvobj, max_nbytes, count);
 }
 }  // namespace rdc

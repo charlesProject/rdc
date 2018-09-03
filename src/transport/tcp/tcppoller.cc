@@ -17,24 +17,57 @@
 #include "core/logging.h"
 #include "core/status.h"
 
-static const uint32_t kNumMaxEvents=128;
+static const uint32_t kNumMaxEvents = 128;
 
 namespace rdc {
 TcpPoller::TcpPoller() {
-    epoll_fd_ = epoll_create(kNumMaxEvents);
+    this->listen_fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    this->shutdown_ = false;
+    this->timeout_ = 10;
+    this->epoll_fd_ = epoll_create(kNumMaxEvents);
     PollForever();
 }
 
 void TcpPoller::PollForever() {
-    loop_thrd = std::unique_ptr<std::thread>(new std::thread([=](){
-        logging::set_thread_name("tcppoller");
-        LOG_S(INFO) << "Tcp poller started";
-        for(;;) {
-            int ret = Poll();
-            if (ret) break;
-        }
+    loop_thrd = std::unique_ptr<std::thread>(
+        new std::thread([this]() {
+          logging::set_thread_name("tcppoller");
+          LOG_F(INFO, "Tcp poller Started");
+          while (true) {
+              int ret = Poll();
+              if (ret) break;
+          }
     }));
 }
+TcpPoller::~TcpPoller() {
+    this->Shutdown();
+    this->loop_thrd->join();
+    if (this->epoll_fd_ >= 0) {
+        close(this->epoll_fd_);
+    }
+    if (this->listen_fd_ >= 0) {
+        close(this->listen_fd_);
+    }
+}
+void TcpPoller::AddChannel(int32_t fd, TcpChannel* channel) {
+    lock_.lock();
+    channels_[fd] = channel;
+    LOG_S(INFO) << "Added new channel with fd :" << fd;
+    lock_.unlock();
+}
+void TcpPoller::AddChannel(TcpChannel* channel) {
+    lock_.lock();
+    channels_[channel->fd()] = channel;
+    LOG_S(INFO) << "Added new channel with fd :" << channel->fd();
+    lock_.unlock();
+}
+
+void TcpPoller::RemoveChannel(TcpChannel* channel) {
+    lock_.lock();
+    channels_.erase(channel->fd());
+    lock_.unlock();
+}
+
 void TcpPoller::Shutdown() {
     int pipe_fd[2];
     pipe(pipe_fd);
@@ -53,10 +86,13 @@ void TcpPoller::Shutdown() {
 */
 int TcpPoller::Poll() {
     epoll_event events[kNumMaxEvents];
-    size_t fds = epoll_wait(this->epoll_fd_, events, 
+    int fds = epoll_wait(this->epoll_fd_, events,
                             kNumMaxEvents, this->timeout_);
+    if (fds < 0) {
+        LOG_F(ERROR, "%s", strerror(errno));
+    }
     for (size_t i = 0; i < fds; i++) {
-        TcpChannel * channel = nullptr;
+        TcpChannel* channel = nullptr;
         lock_.lock();
         channel = this->channels_[events[i].data.fd];
         lock_.unlock();
@@ -66,11 +102,11 @@ int TcpPoller::Poll() {
                 if (events[i].events & EPOLLIN) {
                     if (this->shutdown_fd_) {
                         if (events[i].data.fd == this->shutdown_fd_) {
+                            this->shutdown_ = true;
                             return 1;
                         }
                     }
                 }
-                //if (GetRank() == 1) LOG(INFO);
                 channel->ReadCallback();
             }
             // when write possible
@@ -80,6 +116,7 @@ int TcpPoller::Poll() {
             // shutdown or error
             if (events[i].events & EPOLLRDHUP || events[i].events & EPOLLERR || 
                     events[i].events & EPOLLHUP) {
+                LOG_F(ERROR, "%s", strerror(errno));
                 return 0;
             }
         } // if
@@ -87,10 +124,12 @@ int TcpPoller::Poll() {
             return 0;
         }
     } // for
+    if (shutdown_) {
+        return 1;
+    }
     return 0;
 }
 int TcpPoller::Listen(const int32_t& port, const size_t& backlog) {
-    this->listen_fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     struct sockaddr_in own_addr;
     std::memset(&own_addr, 0 , sizeof(own_addr));
     own_addr.sin_family = AF_INET;
@@ -111,8 +150,8 @@ int TcpPoller::Listen(const int32_t& port, const size_t& backlog) {
     return 0;
 }
 
-std::unique_ptr<TcpChannel> TcpPoller::Accept() {
-    // accept the connection 
+TcpChannel* TcpPoller::Accept() {
+    // accept the connection
     sockaddr_in incoming_addr;
     socklen_t incoming_addr_len = sizeof(incoming_addr);
     int32_t accepted_fd = accept(this->listen_fd_,
@@ -121,6 +160,6 @@ std::unique_ptr<TcpChannel> TcpPoller::Accept() {
     CHECK_F(accepted_fd > 0);
     fcntl(accepted_fd, F_SETFL, O_NONBLOCK);
     // set flags to check
-    return utils::make_unique<TcpChannel>(this, accepted_fd, kReadWrite);
+    return new TcpChannel(this, accepted_fd, kReadWrite);
 }
 }

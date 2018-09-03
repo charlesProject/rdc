@@ -1,12 +1,12 @@
 /*!
- *  Copyright (c) 2014 by Contributors
+ *  Copyright (c) 2018 by Contributors
  * \file rdc.h
  * \brief This file defines rdc's Allreduce/Broadcast interface
  *   The rdc engine contains the actual implementation
  *   Code that only uses this header can also be compiled with MPI Allreduce (non fault-tolerant),
  *
  *   rdc.h and serializable.h is all what the user needs to use the rdc interface
- * \author Tianqi Chen, Ignacio Cano, Tianyi Zhou
+ * \author Ankun Zheng
  */
 #pragma once  // NOLINT(*)
 #include <string>
@@ -15,10 +15,10 @@
 
 // optionally support of lambda functions in C++11, if available
 #include <functional>
-// engine definition of rdc, defines internal implementation
+// comminicator definition of rdc, defines internal implementation
 // to use rdc interface, there is no need to read engine.h
 // rdc.h and serializable.h are enough to use the interface
-#include "engine/engine.h"
+#include "comm/communicator.h"
 #include "core/work_request.h"
 /*! \brief rdc namespace */
 namespace rdc {
@@ -86,6 +86,7 @@ inline std::string GetProcessorName();
 inline void TrackerPrint(const std::string &msg);
 inline void Send(void *send_data, size_t size, int dest);
 inline void Recv(void *recv_data, size_t size, int src);
+inline void Barrier();
 /*!
  * \brief broadcasts a memory region to every node from the root
  *
@@ -118,58 +119,15 @@ inline void Allgather(std::vector<std::vector<DType>>& sendrecv_data);
 
 inline void Allgather(void** sendrecv_data, size_t type_nbyes, size_t* counts);
 /*!
- * \brief performs in-place Allreduce on sendrecvbuf
- *        this function is NOT thread-safe
- *
- * Example Usage: the following code does an Allreduce and outputs the sum as the result
- * \code{.cpp}
- * vector<int> data(10);
- * ...
- * Allreduce<op::Sum>(&data[0], data.size());
- * ...
- * \endcode
- *
- * \param sendrecvbuf buffer for both sending and receiving data
- * \param count number of elements to be reduced
- * \param prepare_fun Lazy preprocessing function, if it is not NULL, prepare_fun(prepare_arg)
- *                    will be called by the function before performing Allreduce in order to initialize the data in sendrecvbuf.
- *                     If the result of Allreduce can be recovered directly, then prepare_func will NOT be called
- * \param prepare_arg argument used to pass into the lazy preprocessing function
- * \tparam OP see namespace op, reduce operator
- * \tparam DType data type
- */
-template<typename OP, typename DType>
-inline void Allreduce(DType *sendrecvbuf, size_t count,
-                      void (*prepare_fun)(void *) = NULL,
-                      void *prepare_arg = NULL);
-// C++11 support for lambda prepare function
-/*!
  * \brief performs in-place Allreduce, on sendrecvbuf
  *        with a prepare function specified by a lambda function
- *
- * Example Usage:
- * \code{.cpp}
- * // the following code does an Allreduce and outputs the sum as the result
- * vector<int> data(10);
- * ...
- * Allreduce<op::Sum>(&data[0], data.size(), [&]() {
- *                     for (int i = 0; i < 10; ++i) {
- *                       data[i] = i;
- *                     }
- *                    });
- *     ...
- * \endcode
  * \param sendrecvbuf buffer for both sending and receiving data
  * \param count number of elements to be reduced
- * \param prepare_fun  Lazy lambda preprocessing function, prepare_fun() will be invoked
- *                     by the function before performing Allreduce in order to initialize the data in sendrecvbuf.
- *                     If the result of Allreduce can be recovered directly, then prepare_func will NOT be called
  * \tparam OP see namespace op, reduce operator
  * \tparam DType data type
  */
 template<typename OP, typename DType>
-inline void Allreduce(DType *sendrecvbuf, size_t count,
-                      std::function<void()> prepare_fun);
+inline void Allreduce(DType *sendrecvbuf, size_t count);
 
 /*!
  * \brief loads the latest check point
@@ -240,6 +198,11 @@ inline void LazyCheckPoint(const Serializable *global_model);
  * \sa LoadCheckPoint, CheckPoint
  */
 inline int VersionNumber();
+
+
+inline std::unique_ptr<comm::ICommunicator> CreateGroup(
+    const std::vector<int>& ranks,
+    const std::string& group_name = "");
 // ----- extensions that allow customized reducer ------
 /*!
  * \brief template class to make customized reduce and all reduce easy
@@ -251,28 +214,14 @@ inline int VersionNumber();
  */
 template<typename DType, void (*freduce)(DType &dst, const DType &src)>  // NOLINT(*)
 class Reducer {
- public:
-  Reducer();
-  /*!
-   * \brief customized in-place all reduce operation
-   * \param sendrecvbuf the in place send-recv buffer
-   * \param count number of elements to be reduced
-   * \param prepare_fun Lazy preprocessing function, if it is not NULL, prepare_fun(prepare_arg)
-   *                     will be called by the function before performing Allreduce, to initialize the data in sendrecvbuf.
-   *                     If the result of Allreduce can be recovered directly, then prepare_func will NOT be called
-   * \param prepare_arg argument used to pass into the lazy preprocessing function
-   */
-  inline void Allreduce(DType *sendrecvbuf, size_t count,
-                        void (*prepare_fun)(void *) = NULL,
-                        void *prepare_arg = NULL);
-  /*!
-   * \brief customized in-place all reduce operation, with lambda function as preprocessor
-   * \param sendrecvbuf pointer to the array of objects to be reduced
-   * \param count number of elements to be reduced
-   * \param prepare_fun lambda function executed to prepare the data, if necessary
-   */
-  inline void Allreduce(DType *sendrecvbuf, size_t count,
-                        std::function<void()> prepare_fun);
+public:
+    Reducer();
+    /*!
+     * \brief customized in-place all reduce operation
+     * \param sendrecvbuf the in place send-recv buffer
+     * \param count number of elements to be reduced
+     */
+    inline void Allreduce(DType *sendrecvbuf, size_t count);
 };
 /*!
  * \brief template class to make customized reduce,
@@ -286,39 +235,20 @@ class Reducer {
  */
 template<typename DType>
 class SerializeReducer {
- public:
-  SerializeReducer();
-  /*!
-   * \brief customized in-place all reduce operation
-   * \param sendrecvobj pointer to the array of objects to be reduced
-   * \param max_nbyte maximum amount of memory needed to serialize each object
-   *        this includes budget limit for intermediate and final result
-   * \param count number of elements to be reduced
-   * \param prepare_fun Lazy preprocessing function, if it is not NULL, prepare_fun(prepare_arg)
-   *                     will be called by the function before performing Allreduce, to initialize the data in sendrecvbuf.
-   *                     If the result of Allreduce can be recovered directly, then the prepare_func will NOT be called
-   * \param prepare_arg argument used to pass into the lazy preprocessing function
-   */
-  inline void Allreduce(DType *sendrecvobj,
-                        size_t max_nbyte, size_t count,
-                        void (*prepare_fun)(void *) = NULL,
-                        void *prepare_arg = NULL);
-// C++11 support for lambda prepare function
-  /*!
-   * \brief customized in-place all reduce operation, with lambda function as preprocessor
-   * \param sendrecvobj pointer to the array of objects to be reduced
-   * \param max_nbyte maximum amount of memory needed to serialize each object
-   *        this includes budget limit for intermediate and final result
-   * \param count number of elements to be reduced
-   * \param prepare_fun lambda function executed to prepare the data, if necessary
-   */
-  inline void Allreduce(DType *sendrecvobj,
-                        size_t max_nbyte, size_t count,
-                        std::function<void()> prepare_fun);
-
- private:
-  /*! \brief temporal buffer used to do reduce*/
-  std::string buffer_;
+public:
+    SerializeReducer();
+    /*!
+     * \brief customized in-place all reduce operation
+     * \param sendrecvobj pointer to the array of objects to be reduced
+     * \param max_nbyte maximum amount of memory needed to serialize each object
+     *        this includes budget limit for intermediate and final result
+     * \param count number of elements to be reduced
+     */
+    inline void Allreduce(DType *sendrecvobj,
+                          size_t max_nbyte, size_t count);
+private:
+    /*! \brief temporal buffer used to do reduce*/
+    std::string buffer_;
 };
 }  // namespace rdc
 // implementation of template functions

@@ -10,37 +10,36 @@
 #include <cstring>
 #include "utils/network_utils.h"
 #include "core/logging.h"
-#include "engine/allreduce_base.h"
+#include "comm/communicator_base.h"
 
 static const std::string kTerminalStr = "_";
 namespace rdc {
-namespace engine {
+namespace comm {
 // constructor
 Communicator::Communicator(void) {
-    tracker_uri = "NULL";
-    tracker_port = 9000;
-    host_uri = "";
-    slave_port = 9910;
-    nport_trial = 1000;
-    rank = -1;
-    world_size = -1;
-    connect_retry = 5;
+    tracker_uri_ = "NULL";
+    tracker_port_ = 9000;
+    host_uri_ = "";
+    slave_port_ = 9910;
+    rank_ = -1;
+    world_size_ = -1;
+    connect_retry_ = 5;
     version_number = 0;
     // 32 K items
     //reduce_ring_mincount = 32 << 10;
-    reduce_ring_mincount = 1;
+    reduce_ring_mincount_ = 1;
     // tracker URL
     err_link = NULL;
+    child_counter_ = 0;
     this->SetParam("rdc_reduce_buffer", "256MB");
     // setup possible enviroment variable of intrest
-    env_vars.push_back("rdc_num_trial");
-    env_vars.push_back("rdc_reduce_buffer");
-    env_vars.push_back("rdc_reduce_ring_mincount");
+    env_vars_.push_back("rdc_reduce_buffer");
+    env_vars_.push_back("rdc_reduce_ring_mincount");
     // also include dmlc support direct variables
-    env_vars.push_back("DMLC_NUM_ATTEMPT");
-    env_vars.push_back("TRACKER_URI");
-    env_vars.push_back("TRACKER_PORT");
-    env_vars.push_back("WORKER_CONNECT_RETRY");
+    env_vars_.push_back("DMLC_NUM_ATTEMPT");
+    env_vars_.push_back("TRACKER_URI");
+    env_vars_.push_back("TRACKER_PORT");
+    env_vars_.push_back("WORKER_CONNECT_RETRY");
 }
 
 // initialization function
@@ -50,10 +49,10 @@ void Communicator::Init(int argc, char* argv[]) {
     logging::set_thread_name("main");
     // setup from enviroment variables
     // handler to get variables from env
-    for (size_t i = 0; i < env_vars.size(); ++i) {
-        const char *value = getenv(env_vars[i].c_str());
+    for (size_t i = 0; i < env_vars_.size(); ++i) {
+        const char *value = getenv(env_vars_[i].c_str());
         if (value != nullptr) {
-            this->SetParam(env_vars[i].c_str(), value);
+            this->SetParam(env_vars_[i].c_str(), value);
         }
     }
     // pass in arguments override env variable.
@@ -65,41 +64,35 @@ void Communicator::Init(int argc, char* argv[]) {
     }
 
     // clear the setting before start reconnection
-    this->rank = -1;
+    this->rank_ = -1;
     //---------------------
     // start
     CHECK_F(all_links.size() == 0, "can only call Init once");
     std::string interface, ip;
     network_utils::GetAvailableInterfaceAndIP(&interface, &ip);
-    slave_port = network_utils::GetAvailablePort();
-    this->host_uri = ip;
+    slave_port_ = network_utils::GetAvailablePort();
+    this->host_uri_ = ip;
     this->ConnectTracker();
     // get information from tracker
     this->ReConnectLinks();
 }
 
-void Communicator::Shutdown(void) {
-//    for (auto& link : all_links) {
-//        link.channel->Close();
-//    }
-//    all_links.clear();
-//    tree_links.clear();
-
-    if (tracker_uri == "NULL") return;
+void Communicator::Shutdown() {
+    if (tracker_uri_ == "NULL") return;
     // notify tracker rank i have shutdown
-    tracker->SendStr(std::string("shutdown"));
-    tracker->SendStr(kTerminalStr);
-    tracker->Close();
+    tracker_->SendStr(std::string("shutdown"));
+    tracker_->SendStr(kTerminalStr);
+    tracker_->Close();
 }
 void Communicator::TrackerPrint(const std::string &msg) {
-    if (tracker_uri == "NULL") {
-        LOG_F(INFO, "@node[%d] %s", rank, msg.c_str()); 
+    if (tracker_uri_ == "NULL") {
+        LOG_F(INFO, "@node[%d] %s", rank_, msg.c_str());
         return;
     }
-    tracker->SendStr(std::string("print"));
-    tracker->SendStr(kTerminalStr);
-    tracker->SendStr(msg);
-    tracker->SendStr(kTerminalStr);
+    tracker_->SendStr(std::string("print"));
+    tracker_->SendStr(kTerminalStr);
+    tracker_->SendStr(msg);
+    tracker_->SendStr(kTerminalStr);
 }
 // util to parse data with unit suffix
 inline size_t ParseUnit(const char *name, const char *val) {
@@ -124,17 +117,14 @@ inline size_t ParseUnit(const char *name, const char *val) {
     }
 }
 void Communicator::SetParam(const char *name, const char *val) {
-    if (!strcmp(name, "TRACKER_URI")) tracker_uri = val;
-    if (!strcmp(name, "TRACKER_PORT")) tracker_port = atoi(val);
-    if (!strcmp(name, "rdc_world_size")) world_size = atoi(val);
+    if (!strcmp(name, "TRACKER_URI")) tracker_uri_ = val;
+    if (!strcmp(name, "TRACKER_PORT")) tracker_port_ = atoi(val);
+    if (!strcmp(name, "rdc_world_size_")) world_size_ = atoi(val);
     if (!strcmp(name, "rdc_reduce_ring_mincount")) {
-        reduce_ring_mincount = ParseUnit(name, val);
+        reduce_ring_mincount_ = ParseUnit(name, val);
     }
-    if (!strcmp(name, "rdc_reduce_buffer")) {
-        reduce_buffer_size = (ParseUnit(name, val) + 7) >> 3;
-    }
-    if (!strcmp(name, "DMLC_WORKER_CONNECT_RETRY")) {
-        connect_retry = atoi(val);
+    if (!strcmp(name, "WORKER_CONNECT_RETRY")) {
+        connect_retry_ = atoi(val);
     }
 }
 /*!
@@ -143,18 +133,18 @@ void Communicator::SetParam(const char *name, const char *val) {
  */
 void Communicator::ConnectTracker()  {
     // get information from tracker
-    tracker = utils::make_unique<TcpChannel>();
+    tracker_ = utils::make_unique<TcpChannel>();
     int retry = 0;
     do {
-        if (tracker->Connect(tracker_uri.c_str(), tracker_port)
+        if (tracker_->Connect(tracker_uri_.c_str(), tracker_port_)
                 != Status::kSuccess) {
-            if (++retry >= connect_retry) {
+            if (++retry >= connect_retry_) {
                 LOG_F(ERROR, "connect to (failed): [%s]\n",
-                      tracker_uri.c_str());
+                      tracker_uri_.c_str());
                 LOG_F(ERROR, "Connect");
             } else {
                 LOG_F(ERROR, "retry connect to ip(retry time %d): [%s]\n",
-                              retry, tracker_uri.c_str());
+                              retry, tracker_uri_.c_str());
                 #ifdef _MSC_VER
                 Sleep(1);
                 #else
@@ -170,111 +160,102 @@ void Communicator::ConnectTracker()  {
 }
 /*!
  * \brief connect to the tracker to fix the the missing links
- *   this function is also used when the engine start up
+ *   this function is also used when the comm start up
  */
 void Communicator::ReConnectLinks(const char *cmd) {
     // single node mode
-    if (tracker_uri == "NULL") {
-        rank = 0;
-        world_size = 1;
+    if (tracker_uri_ == "NULL") {
+        rank_ = 0;
+        world_size_ = 1;
         return;
     }
-    tracker->SendStr(std::string(cmd));
-    tracker->SendStr(kTerminalStr);
-    CHECK_F(tracker->RecvInt(rank) == Status::kSuccess,
+    tracker_->SendStr(std::string(cmd));
+    tracker_->SendStr(kTerminalStr);
+    CHECK_F(tracker_->RecvInt(rank_) == Status::kSuccess,
            "ReConnectLink failure 3");
-    CHECK_F(tracker->RecvInt(world_size) == Status::kSuccess,
+    CHECK_F(tracker_->RecvInt(world_size_) == Status::kSuccess,
             "ReConnectLink failure 3");
-    TcpPoller::Get()->Listen(slave_port);
+    TcpPoller::Get()->Listen(slave_port_);
     // send back socket listening port to tracker
-    CHECK_F(tracker->SendStr(host_uri) == Status::kSuccess,
+    CHECK_F(tracker_->SendStr(host_uri_) == Status::kSuccess,
            "ReConnectLink failure 14");
-    CHECK_F(tracker->SendInt(slave_port) == Status::kSuccess,
+    CHECK_F(tracker_->SendInt(slave_port_) == Status::kSuccess,
            "ReConnectLink failure 14");
-    tracker->SendStr(kTerminalStr);
-    // the rank of previous link, next link in ring
-    int prev_rank, next_rank;
-    // the rank of neighbors
-    std::map<int, int> tree_neighbors;
+    tracker_->SendStr(kTerminalStr);
     // get new ranks
-    int num_neighbors;
-    CHECK_F(tracker->RecvInt(parent_rank) ==
+    CHECK_F(tracker_->RecvInt(parent_rank_) ==
             Status::kSuccess, "ReConnectLink failure 4");
-    CHECK_F(tracker->RecvInt(num_neighbors) == Status::kSuccess, 
+    CHECK_F(tracker_->RecvInt(num_neighbors_) == Status::kSuccess, 
             "ReConnectLink failure 4");
-    for (int i = 0; i < num_neighbors; ++i) {
+    for (int i = 0; i < num_neighbors_; ++i) {
           int nrank;
-          CHECK_F(tracker->RecvInt(nrank) == Status::kSuccess,
+          CHECK_F(tracker_->RecvInt(nrank) == Status::kSuccess,
                   "ReConnectLink failure 4");
-          tree_neighbors[nrank] = 1;
+          tree_neighbors_[nrank] = 1;
     }
-    CHECK_F(tracker->RecvInt(prev_rank) == Status::kSuccess,
+    CHECK_F(tracker_->RecvInt(prev_rank_) == Status::kSuccess,
            "ReConnectLink failure 4");
-    CHECK_F(tracker->RecvInt(next_rank) == Status::kSuccess,
+    CHECK_F(tracker_->RecvInt(next_rank_) == Status::kSuccess,
            "ReConnectLink failure 4");
     // get number of to connect and number of to accept nodes from tracker
     int num_conn, num_accept, num_error;
     do {
-        CHECK_F(tracker->RecvInt(num_conn) == Status::kSuccess,
+        CHECK_F(tracker_->RecvInt(num_conn) == Status::kSuccess,
                "ReConnectLink failure 7");
-        CHECK_F(tracker->RecvInt(num_accept) ==  Status::kSuccess, 
+        CHECK_F(tracker_->RecvInt(num_accept) ==  Status::kSuccess, 
                 "ReConnectLink failure 8");
         num_error = 0;
         for (int i = 0; i < num_conn; ++i) {
-            LinkRecord r;
-            r.channel = utils::make_unique<TcpChannel>();
+            std::shared_ptr<IChannel> channel = std::make_shared<TcpChannel>();
             int hport, hrank;
             std::string hname;
-            tracker->RecvStr(hname);
-            CHECK_F(tracker->RecvInt(hport) == Status::kSuccess,
+            tracker_->RecvStr(hname);
+            CHECK_F(tracker_->RecvInt(hport) == Status::kSuccess,
                     "ReConnectLink failure 9");
-            CHECK_F(tracker->RecvInt(hrank) == Status::kSuccess,
+            CHECK_F(tracker_->RecvInt(hrank) == Status::kSuccess,
                     "ReConnectLink failure 10");
-            if (r.channel->Connect(hname.c_str(), hport) != Status::kSuccess) {
-                LOG_S(ERROR);
+            if (channel->Connect(hname.c_str(), hport) != Status::kSuccess) {
                 num_error += 1;
-                r.channel->Close();
+                channel->Close();
                 continue;
             } else {
                 int hrank = 0;
-                CHECK_F(r.channel->RecvInt(hrank) == Status::kSuccess,
+                CHECK_F(channel->RecvInt(hrank) == Status::kSuccess,
                         "Reconnect Link failure 10");
-                r.channel->SendInt(rank);
-                r.rank = hrank;
+                channel->SendInt(rank_);
             }
-            all_links[hrank] = std::move(r);
+            all_links[hrank] = channel;
         }
     } while (num_error != 0);
     // listen to incoming links
     for (int i = 0; i < num_accept; ++i) {
-        LinkRecord r;
-        r.channel= TcpPoller::Get()->Accept();
+        TcpChannel* channel= TcpPoller::Get()->Accept();
+        std::shared_ptr<IChannel> schannel(channel);
         int hrank = 0;
-        r.channel->SendInt(rank);
-        CHECK_F(r.channel->RecvInt(hrank) == Status::kSuccess,
+        channel->SendInt(rank_);
+        CHECK_F(channel->RecvInt(hrank) == Status::kSuccess,
                 "ReConnect Link failure 11");
-        r.rank = hrank;
-        all_links[hrank] = std::move(r);
+        all_links[hrank] = schannel;
     }
     // setup tree links and ring structure
     tree_links.clear();
     for (auto&& link_with_rank : all_links) {
         // set the socket to non-blocking mode, enable TCP keepalive
         auto cur_rank = link_with_rank.first;
-        auto&& cur_link = link_with_rank.second;
-        if (tree_neighbors.count(cur_rank) != 0) {
-            tree_links.push_back(&cur_link);
+        auto cur_link = link_with_rank.second;
+        if (tree_neighbors_.count(cur_rank) != 0) {
+            tree_links.push_back(cur_link.get());
         }
-        if (cur_rank == prev_rank) {
-            ring_prev = &cur_link;
+        if (cur_rank == prev_rank_) {
+            ring_prev_ = cur_link.get();
         }
-        if (cur_rank == next_rank) {
-            ring_next = &cur_link;
+        if (cur_rank == next_rank_) {
+            ring_next_ = cur_link.get();
         }
     }
-    CHECK_F(prev_rank == -1 || ring_prev != nullptr,
+    CHECK_F(prev_rank_ == -1 || ring_prev_ != nullptr,
            "cannot find prev ring in the link");
-    CHECK_F(next_rank == -1 || ring_next != nullptr,
+    CHECK_F(next_rank_ == -1 || ring_next_ != nullptr,
            "cannot find next ring in the link");
     TrackerPrint("Connected done");
 }
@@ -282,9 +263,9 @@ void Communicator::TryAllreduce(void *sendrecvbuf_,
                             size_t type_nbytes,
                             size_t count,
                             ReduceFunction reducer) {
-    if (count > reduce_ring_mincount) {
+    if (count > reduce_ring_mincount_) {
         return this->TryAllreduceRing(sendrecvbuf_, type_nbytes, count, reducer);
-    } 
+    }
 //    else {
 //    return this->TryAllreduceTree(sendrecvbuf_, type_nbytes, count, reducer);
 //  }
@@ -432,7 +413,7 @@ void Communicator::TryAllreduceTree(void *sendrecvbuf_,
 void Communicator::TryBroadcast(void *sendrecvbuf_, size_t total_size, int root) {
 //    auto& links = tree_links;
 //    if (links.size() == 0 || total_size == 0) return;
-//    CHECK_F(root < world_size,
+//    CHECK_F(root < world_size_,
 //                 "Broadcast: root should be smaller than world size");
 //    // number of links
 //    const int nlink = static_cast<int>(links.size());
@@ -505,16 +486,16 @@ void Communicator::TryBroadcast(void *sendrecvbuf_, size_t total_size, int root)
 void Communicator::TryAllgatherRing(void** sendrecvbufs_, size_t type_nbytes,
                                      size_t* counts) {
     // read from next link and send to prev one
-    auto &prev = *ring_prev, &next = *ring_next;
+    auto &prev = ring_prev_, &next = ring_next_;
     // need to reply on special rank structure
-    CHECK_F(next.rank == (rank + 1) % world_size &&
-           rank == (prev.rank + 1) % world_size,
+    CHECK_F(next_rank_ == (rank_ + 1) % world_size_ &&
+           rank_ == (prev_rank_ + 1) % world_size_,
            "need to assume rank structure");
-    const size_t count_bufs = world_size;
-    const size_t stop_write_idx = count_bufs + rank - 1;
-    const size_t stop_read_idx = count_bufs + rank;
-    size_t write_idx = rank;
-    size_t read_idx = rank + 1;
+    const size_t count_bufs = world_size_;
+    const size_t stop_write_idx = count_bufs + rank_ - 1;
+    const size_t stop_read_idx = count_bufs + rank_;
+    size_t write_idx = rank_;
+    size_t read_idx = rank_ + 1;
     while (true) {
         bool finished = true;
         if (read_idx != stop_read_idx) {
@@ -526,15 +507,15 @@ void Communicator::TryAllgatherRing(void** sendrecvbufs_, size_t type_nbytes,
         if (finished) break;
         if (write_idx < read_idx && write_idx != stop_write_idx) {
             size_t start = write_idx % count_bufs;
-            auto wc = prev.channel->ISend(*(sendrecvbufs_ + start),
-                                          counts[start] * type_nbytes);
+            auto wc = prev->ISend(*(sendrecvbufs_ + start),
+                                  counts[start] * type_nbytes);
             wc.Wait();
             write_idx++;
         }
         if (read_idx != stop_read_idx) {
             size_t start = read_idx % count_bufs;
-            auto wc = next.channel->IRecv(*(sendrecvbufs_ + start),
-                                          counts[start] * type_nbytes);
+            auto wc = next->IRecv(*(sendrecvbufs_ + start),
+                                  counts[start] * type_nbytes);
             wc.Wait();
             read_idx++;
         }
@@ -546,27 +527,26 @@ void Communicator::TryReduceScatterRing(void *sendrecvbuf_,
                                     size_t count,
                                     ReduceFunction reducer) {
     // read from next link and send to prev one
-    auto& prev = *ring_prev, &next = *ring_next;
+    auto& prev = ring_prev_, &next = ring_next_;
     // need to reply on special rank structure
-    CHECK_F(next.rank == (rank + 1) % world_size &&
-            rank == (prev.rank + 1) % world_size,
-            "need to assume rank structure");
+    CHECK_F(next_rank_ == (rank_ + 1) % world_size_ &&
+           rank_ == (prev_rank_ + 1) % world_size_,
+           "need to assume rank structure");
     // total size of message
     const size_t total_size = type_nbytes * count;
-    size_t n = static_cast<size_t>(world_size);
+    size_t n = static_cast<size_t>(world_size_);
     const auto& ranges = utils::Split(0, count, n);
-    size_t next_rank = static_cast<size_t>(next.rank);
-    size_t write_idx = next_rank;
-    size_t read_idx = next_rank + 1;
+    size_t write_idx = next_rank_;
+    size_t read_idx = next_rank_ + 1;
     size_t reduce_idx = read_idx;
     // send recv buffer
     char* sendrecvbuf = reinterpret_cast<char*>(sendrecvbuf_);
     // reduce buffer
     char* reducebuf = reinterpret_cast<char*>(reducebuf_);
     // position to stop reading
-    const size_t stop_read_idx = n + next_rank;
+    const size_t stop_read_idx = n + next_rank_;
     // position to stop writing
-    size_t stop_write_idx = n + rank;
+    size_t stop_write_idx = n + rank_;
     if (stop_write_idx > stop_read_idx) {
         stop_write_idx -= n;
         CHECK_F(write_idx <= stop_write_idx, "write ptr boundary check");
@@ -582,32 +562,24 @@ void Communicator::TryReduceScatterRing(void *sendrecvbuf_,
         if (finished) break;
         if (write_idx < reduce_idx && write_idx != stop_write_idx) {
             size_t write_pos = write_idx % n;
-            //size_t size = std::min(reduce_ptr, stop_write) - write_ptr;
             size_t write_size = (ranges[write_pos].second -
                                  ranges[write_pos].first) * type_nbytes;
             size_t write_start = ranges[write_pos].first * type_nbytes;
-            auto wc = prev.channel->ISend(sendrecvbuf + write_start,
+            auto wc = prev->ISend(sendrecvbuf + write_start,
                                           write_size);
             wc.Wait();
             write_idx ++;
-            //int* a = reinterpret_cast<int*>(sendrecvbuf + start);
-            //LOG_S(INFO) << "@node:" << rdc::GetRank() <<  " send:" << a[0];
         }
         if (read_idx != stop_read_idx) {
-            //LOG_F(INFO,"%d",rdc::GetRank());
-            //next.ReadToRingBuffer(reduce_ptr, stop_read);
-            // sync the rate
-            //read_ptr = next.size_read;
             size_t read_pos = read_idx % n;
             size_t read_start = ranges[read_pos].first * type_nbytes;
             size_t read_size = (ranges[read_pos].second -
                                 ranges[read_pos].first) * type_nbytes;
-            auto wc = next.channel->IRecv(reducebuf + read_start, read_size);
+            auto wc = next->IRecv(reducebuf + read_start, read_size);
             wc.Wait();
-            LOG_F(INFO, "%d %d %d", rank, read_idx, reduce_idx);
             read_idx++;
             CHECK_F(read_idx <= stop_read_idx,"[%d] read_ptr boundary check",
-                     rank);
+                     rank_);
             size_t reduce_pos = reduce_idx % n;
             size_t reduce_start = ranges[reduce_pos].first * type_nbytes;
             size_t reduce_size = (ranges[reduce_pos].second -
@@ -629,12 +601,8 @@ void Communicator::TryAllreduceRing(void *sendrecvbuf_,
     TryReduceScatterRing(sendrecvbuf_, reducebuf, type_nbytes, 
                          count, reducer);
     free(reducebuf);
-    int* a = reinterpret_cast<int*>(sendrecvbuf_);
-    LOG_F(INFO, "@node: %d after reduce scatter %d %d %d %d",rank, a[0], a[1], a[2], a[3]);
-    size_t n = static_cast<size_t>(world_size);
+    size_t n = static_cast<size_t>(world_size_);
     const auto& ranges = utils::Split(0, count, n);
-    // previous rank
-    int prank = ring_prev->rank;
     // get rank of previous
     std::vector<void*> sendrecv_bufs(n);
     std::vector<size_t> sizes(n);
@@ -642,7 +610,6 @@ void Communicator::TryAllreduceRing(void *sendrecvbuf_,
         size_t begin = ranges[i].first;
         size_t end = ranges[i].second;
         size_t size = end - begin;
-        LOG_F(INFO, "%d %d", begin, size);
         sizes[i] = size;
         sendrecv_bufs[i] = utils::IncrVoidPtr(sendrecvbuf_, begin * type_nbytes);
     }
@@ -650,15 +617,20 @@ void Communicator::TryAllreduceRing(void *sendrecvbuf_,
                             utils::BeginPtr(sizes));
 }
 
+std::unique_ptr<ICommunicator> Communicator::CreateGroup(
+        const std::vector<int>& groups,
+        const std::string& name) {
+    return utils::make_unique<Communicator>();
+}
 void Communicator::Send(void* sendbuf_, size_t nbytes, int dest) {
-    auto wc = all_links[dest].channel->ISend(sendbuf_, nbytes);
+    auto wc = all_links[dest]->ISend(sendbuf_, nbytes);
     wc.Wait();
     //return wc.status();
 }
 void Communicator::Recv(void* recvbuf_, size_t nbytes, int src)  {
-    auto wc= all_links[src].channel->IRecv(recvbuf_, nbytes);
+    auto wc= all_links[src]->IRecv(recvbuf_, nbytes);
     wc.Wait();
     //return wc.status();
 }
-}  // namespace engine
+}  // namespace comm
 }  // namespace rdc

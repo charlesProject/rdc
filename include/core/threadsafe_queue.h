@@ -22,28 +22,23 @@ public:
         mu_.unlock();
         cond_.notify_all();
     }
-    /**
-     * \brief wait until there is at least one element, threadsafe
-     * use it carefully
-     */
-    T Peek() { 
-        std::unique_lock<std::mutex> lk(mu_);
-        cond_.wait(lk, [this]{return !queue_.empty();});
-        return queue_.front();
-    }
     bool TryPeek(T& value) {
-        std::lock_guard<std::mutex> lk(mu_);
+        mu_.lock();
         if (queue_.empty()) {
+            mu_.unlock();
             return false;
         }
-        value = queue_.front();
-        return true;
+        else {
+            value = queue_.front();
+            mu_.unlock();
+            return true;
+        }
     }
 
     void Pop() {
         mu_.lock();
         queue_.pop();
-        mu_.unlock(); 
+        mu_.unlock();
     }
     /**
      * \brief wait until pop an element from the beginning, threadsafe
@@ -55,10 +50,6 @@ public:
         *value = std::move(queue_.front());
         queue_.pop();
     }
-    int32_t size() {
-      std::lock_guard<std::mutex> lk(mu_);
-      return queue_.size();
-    }
 
 private:
     mutable std::mutex mu_;
@@ -66,12 +57,3 @@ private:
     std::condition_variable cond_;
 };
 
-
-// bool TryPop(T& value) {
-//   std::lock_guard<std::mutex> lk(mut);
-//   if(data_queue.empty())
-//     return false;
-//   value=std::move(data_queue.front());
-//   data_queue.pop();
-//   return true;
-// }

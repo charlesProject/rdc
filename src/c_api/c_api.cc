@@ -2,6 +2,7 @@
 // implementations in ctypes
 #include <cstring>
 #include <string>
+#define LOGGING_IMPLEMENTATION 1
 #include "rdc.h"
 #include "c_api/c_api.h"
 
@@ -10,110 +11,97 @@ namespace c_api {
 // helper use to avoid BitOR operator
 template<typename OP, typename DType>
 struct AllreduceFloat {
-  inline static void
-  Allreduce(DType *senrecvbuf_,
-            size_t count,
-            void (*prepare_fun)(void *arg),
-            void *prepare_arg) {
-    rdc::Allreduce<OP>(senrecvbuf_, count,
-                         prepare_fun, prepare_arg);
-  }
+    inline static void
+    Allreduce(DType *senrecvbuf_,
+              size_t count) {
+      rdc::Allreduce<OP>(senrecvbuf_, count);
+    }
 };
 
 template<typename DType>
 struct AllreduceFloat<op::BitOR, DType> {
-  inline static void
-  Allreduce(DType *senrecvbuf_,
-            size_t count,
-            void (*prepare_fun)(void *arg),
-            void *prepare_arg) {
-    LOG_F(ERROR, "DataType does not support bitwise or operation");
-  }
+    inline static void
+    Allreduce(DType *senrecvbuf_,
+              size_t count) {
+        LOG_F(ERROR, "DataType does not support bitwise or operation");
+    }
 };
 
 template<typename OP>
 inline void Allreduce_(void *sendrecvbuf_,
                        size_t count,
-                       engine::mpi::DataType enum_dtype,
-                       void (*prepare_fun)(void *arg),
-                       void *prepare_arg) {
-    using namespace engine::mpi;
+                       comm::mpi::DataType enum_dtype) {
+    using namespace comm::mpi;
     switch (enum_dtype) {
         case kChar:
             rdc::Allreduce<OP>
                 (static_cast<char*>(sendrecvbuf_),
-                count, prepare_fun, prepare_arg);
+                count);
             return;
         case kUChar:
             rdc::Allreduce<OP>
                 (static_cast<unsigned char*>(sendrecvbuf_),
-                count, prepare_fun, prepare_arg);
+                count);
             return;
         case kInt:
             rdc::Allreduce<OP>
                 (static_cast<int*>(sendrecvbuf_),
-                 count, prepare_fun, prepare_arg);
+                 count);
             return;
         case kUInt:
             rdc::Allreduce<OP>
                 (static_cast<unsigned*>(sendrecvbuf_),
-                 count, prepare_fun, prepare_arg);
+                 count);
             return;
         case kLong:
             rdc::Allreduce<OP>
                 (static_cast<long*>(sendrecvbuf_),  // NOLINT(*)
-                 count, prepare_fun, prepare_arg);
+                 count);
             return;
         case kULong:
             rdc::Allreduce<OP>
                 (static_cast<unsigned long*>(sendrecvbuf_),  // NOLINT(*)
-                 count, prepare_fun, prepare_arg);
+                 count);
             return;
         case kFloat:
             AllreduceFloat<OP, float>::Allreduce
                 (static_cast<float*>(sendrecvbuf_),
-                 count, prepare_fun, prepare_arg);
+                 count);
             return;
         case kDouble:
             AllreduceFloat<OP, double>::Allreduce
                 (static_cast<double*>(sendrecvbuf_),
-                 count, prepare_fun, prepare_arg);
+                 count);
             return;
         default:
-            LOG_F(ERROR, "unknown data_type");  
+            LOG_F(ERROR, "unknown data_type");
     }
 }
 inline void Allreduce(void *sendrecvbuf,
                       size_t count,
-                      engine::mpi::DataType enum_dtype,
-                      engine::mpi::OpType enum_op,
-                      void (*prepare_fun)(void *arg),
-                      void *prepare_arg) {
-    using namespace engine::mpi;
+                      comm::mpi::DataType enum_dtype,
+                      comm::mpi::OpType enum_op) {
+    using namespace comm::mpi;
     switch (enum_op) {
         case kMax:
             Allreduce_<op::Max>
                 (sendrecvbuf,
-                 count, enum_dtype,
-                 prepare_fun, prepare_arg);
+                 count, enum_dtype);
             return;
         case kMin:
             Allreduce_<op::Min>
                 (sendrecvbuf,
-                 count, enum_dtype,
-                 prepare_fun, prepare_arg);
+                 count, enum_dtype);
             return;
         case kSum:
             Allreduce_<op::Sum>
                 (sendrecvbuf,
-                 count, enum_dtype,
-                 prepare_fun, prepare_arg);
+                 count, enum_dtype);
             return;
         case kBitwiseOR:
             Allreduce_<op::BitOR>
                 (sendrecvbuf,
-                 count, enum_dtype,
-                 prepare_fun, prepare_arg);
+                 count, enum_dtype);
             return;
         default:
             LOG_F(ERROR, "unknown enum_op");
@@ -162,85 +150,82 @@ struct WriteWrapper : public Serializable {
 }  // namespace rdc
 
 void RdcInit(int argc, char *argv[]) {
-  rdc::Init(argc, argv);
+    rdc::Init(argc, argv);
 }
 
 void RdcFinalize() {
-  rdc::Finalize();
+    rdc::Finalize();
 }
 
 int RdcGetRank() {
-  return rdc::GetRank();
+    return rdc::GetRank();
 }
 
 int RdcGetWorldSize() {
-  return rdc::GetWorldSize();
+    return rdc::GetWorldSize();
 }
 
 int RdcIsDistributed() {
-  return rdc::IsDistributed();
+    return rdc::IsDistributed();
 }
 
 void RdcTrackerPrint(const char *msg) {
-  std::string m(msg);
-  rdc::TrackerPrint(m);
+    std::string m(msg);
+    rdc::TrackerPrint(m);
 }
 
 void RdcGetProcessorName(char *out_name,
                            rbc_ulong *out_len,
                            rbc_ulong max_len) {
-  std::string s = rdc::GetProcessorName();
-  if (s.length() > max_len) {
-    s.resize(max_len - 1);
-  }
-  strcpy(out_name, s.c_str()); // NOLINT(*)
-  *out_len = static_cast<rbc_ulong>(s.length());
+    std::string s = rdc::GetProcessorName();
+    if (s.length() > max_len) {
+      s.resize(max_len - 1);
+    }
+    strcpy(out_name, s.c_str()); // NOLINT(*)
+    *out_len = static_cast<rbc_ulong>(s.length());
 }
 
 void RdcBroadcast(void *sendrecv_data,
                     rbc_ulong size, int root) {
-  rdc::Broadcast(sendrecv_data, size, root);
+    rdc::Broadcast(sendrecv_data, size, root);
 }
 
 void RdcAllreduce(void *sendrecvbuf,
                     size_t count,
                     int enum_dtype,
-                    int enum_op,
-                    void (*prepare_fun)(void *arg),
-                    void *prepare_arg) {
-  rdc::c_api::Allreduce
-      (sendrecvbuf, count,
-       static_cast<rdc::engine::mpi::DataType>(enum_dtype),
-       static_cast<rdc::engine::mpi::OpType>(enum_op),
-       prepare_fun, prepare_arg);
+                    int enum_op) {
+    rdc::c_api::Allreduce
+        (sendrecvbuf, count,
+         static_cast<rdc::comm::mpi::DataType>(enum_dtype),
+         static_cast<rdc::comm::mpi::OpType>(enum_op));
 }
 
 int RdcLoadCheckPoint(char **out_global_model,
                         rbc_ulong *out_global_len,
                         char **out_local_model,
                         rbc_ulong *out_local_len) {
-  // NOTE: this function is not thread-safe
-  using rdc::utils::BeginPtr;
-  using namespace rdc::c_api; // NOLINT(*)
-  static std::string global_buffer;
-  static std::string local_buffer;
+    // NOTE: this function is not thread-safe
+    using rdc::utils::BeginPtr;
+    using namespace rdc::c_api; // NOLINT(*)
+    static std::string global_buffer;
+    static std::string local_buffer;
 
-  ReadWrapper sg(&global_buffer);
-  ReadWrapper sl(&local_buffer);
-  int version;
+    ReadWrapper sg(&global_buffer);
+    ReadWrapper sl(&local_buffer);
+    int version;
 
-  if (out_local_model == NULL) {
-    version = rdc::LoadCheckPoint(&sg, NULL);
-    *out_global_model = BeginPtr(global_buffer);
-    *out_global_len = static_cast<rbc_ulong>(global_buffer.length());
-  } else {
-    version = rdc::LoadCheckPoint(&sg, &sl);
-    *out_global_model = BeginPtr(global_buffer);
-    *out_global_len = static_cast<rbc_ulong>(global_buffer.length());
-    *out_local_model = BeginPtr(local_buffer);
-    *out_local_len = static_cast<rbc_ulong>(local_buffer.length());
-  }
-  return version;
+    if (out_local_model == NULL) {
+        version = rdc::LoadCheckPoint(&sg, NULL);
+        *out_global_model = BeginPtr(global_buffer);
+        *out_global_len = static_cast<rbc_ulong>(global_buffer.length());
+    } else {
+        version = rdc::LoadCheckPoint(&sg, &sl);
+        *out_global_model = BeginPtr(global_buffer);
+        *out_global_len = static_cast<rbc_ulong>(global_buffer.length());
+        *out_local_model = BeginPtr(local_buffer);
+        *out_local_len = static_cast<rbc_ulong>(local_buffer.length());
+    }
+    return version;
 }
 
 void RdcCheckPoint(const char *global_model,
@@ -258,9 +243,9 @@ void RdcCheckPoint(const char *global_model,
 }
 
 int RdcVersionNumber() {
-  return rdc::VersionNumber();
+    return rdc::VersionNumber();
 }
 
 int RdcLinkTag() {
-  return 0;
+    return 0;
 }

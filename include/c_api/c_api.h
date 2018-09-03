@@ -87,17 +87,11 @@ RDC_DLL void RdcBroadcast(void *sendrecv_data,
  * \param count number of elements to be reduced
  * \param enum_dtype the enumeration of data type, see rdc::engine::mpi::DataType in engine.h of rdc include
  * \param enum_op the enumeration of operation type, see rdc::engine::mpi::OpType in engine.h of rdc
- * \param prepare_fun Lazy preprocessing function, if it is not NULL, prepare_fun(prepare_arg)
- *                    will be called by the function before performing Allreduce, to intialize the data in sendrecvbuf_.
- *                     If the result of Allreduce can be recovered directly, then prepare_func will NOT be called
-   * \param prepare_arg argument used to passed into the lazy preprocessing function
-   */
+ */
 RDC_DLL void RdcAllreduce(void *sendrecvbuf,
                               size_t count,
                               int enum_dtype,
-                              int enum_op,
-                              void (*prepare_fun)(void *arg),
-                              void *prepare_arg);
+                              int enum_op);
 
 /*!
  * \brief load latest check point

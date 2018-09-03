@@ -10,6 +10,7 @@ namespace rdc {
  * @brief a channel which send and recv data on tcp protocal and ethernet
  */
 struct TcpPoller;
+const int INVALID_SOCKET = -1;
 class TcpChannel final: public IChannel {
 public:
     TcpChannel();
@@ -18,7 +19,7 @@ public:
     TcpChannel(int32_t fd, ChannelType type);
     TcpChannel(TcpPoller* poller, ChannelType type);
     TcpChannel(TcpPoller* poller, int32_t fd, ChannelType type);
-    virtual ~TcpChannel();
+    ~TcpChannel();
     /**
       * Function to add this channel to the poller obeject
       * @note if add is performed on an fd already in Reactor, the flags are updated in the existing object
@@ -28,8 +29,15 @@ public:
     Status Connect(const std::string& hostname, const int32_t& port);
     WorkCompletion ISend(const void* data, size_t size) override;
     WorkCompletion IRecv(void* data, size_t size) override;
+
     void Close() override {
-        close(fd_);
+        if (fd_ != INVALID_SOCKET) {
+#ifdef _WIN32
+            closesocket(fd_);
+#else
+            close(fd_);
+#endif
+        }
     }
 
     void ReadCallback();
@@ -38,7 +46,11 @@ public:
     int32_t fd() const {
         return fd_;
     }
-    int counter{0};
+
+    bool IsClosed() const {
+        return fd_ == INVALID_SOCKET;
+    }
+
 private:
     int32_t fd_;
     // send recv request queue

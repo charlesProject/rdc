@@ -25,24 +25,10 @@ public:
     /** epoll file descriptor*/
     int32_t epoll_fd_;
     std::unordered_map<int32_t, TcpChannel*> channels_;
-    ~TcpPoller() {
-        this->Shutdown();
-        loop_thrd->join();
-        close(this->epoll_fd_);
-        //listen_thrd->join();
-    }
-    void AddChannel(int32_t fd, TcpChannel* channel) {
-        lock_.lock();
-        channels_[fd] = channel;
-        LOG_S(INFO) << "Added new channel with fd :" << fd;
-        lock_.unlock();
-    }
-    void AddChannel(TcpChannel* channel) {
-        lock_.lock();
-        channels_[channel->fd()] = channel;
-        LOG_S(INFO) << "Added new channel with fd :" << channel->fd();
-        lock_.unlock();
-    }
+    ~TcpPoller();
+    void AddChannel(int32_t fd, TcpChannel* channel);
+    void AddChannel(TcpChannel* channel);
+    void RemoveChannel(TcpChannel* channel);
     void Shutdown();
     int32_t epoll_fd() const {
         return epoll_fd_;
@@ -51,11 +37,12 @@ public:
     std::unique_ptr<std::thread> listen_thrd;
     void PollForever();
     int Poll();
-    int Listen(const int32_t& port, const size_t& backlog = 1024); 
-    std::unique_ptr<TcpChannel> Accept();
+    int Listen(const int32_t& port, const size_t& backlog = 1024);
+    TcpChannel* Accept();
     int32_t shutdown_fd_;
     int32_t listen_fd_;
-    utils::SpinLock lock_;
-    //std::mutex lock_;
+    bool shutdown_;
+    //utils::SpinLock lock_;
+    std::mutex lock_;
 };
 }

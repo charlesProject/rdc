@@ -1,10 +1,13 @@
 #pragma once
+#include <unistd.h>
+#include <cstring>
 #include <atomic>
 #include <thread>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
-#include <cstring>
+#include <condition_variable>
+#include "rdc.h"
 #include "utils/utils.h"
 #include "utils/lock_utils.h"
 #include "core/status.h"
@@ -31,7 +34,7 @@ struct WorkRequest {
 //        this->size_ = other.size_;
 //        this->work_type_ = other.work_type_;
 //        this->completed_bytes_ = other.completed_bytes_;
-//        //this->completed_bytes_.store(other.completed_bytes_.load());
+//        //this->completed_bytes_.store(other.completed_bytes_.load());$
 //    }
 //    WorkRequest operator=(const WorkRequest& other) {
 //        this->req_id_ = other.req_id_;
@@ -39,20 +42,22 @@ struct WorkRequest {
 //        this->size_ = other.size_;
 //        this->work_type_ = other.work_type_;
 //        this->completed_bytes_ = other.completed_bytes_;
-//        //this->completed_bytes_.store(other.completed_bytes_.load());
+//        //this->completed_bytes_.store(other.completed_bytes_.load());$
 //        return *this;
 //    }
+ 
     bool operator()() {
         return done_;
 //        return done_.load(std::memory_order_acquire);
     }
     bool done() {
+//        LOG_F(INFO, "%d", done_);
+//        return done_;
         return done_;
-//        return done_.load(std::memory_order_acquire);
     }
     void set_done(const bool& done) {
         done_ = done;
-//        done_.store(done, std::memory_order_release);
+        //done_.store(done, std::memory_order_release);
     }
     Status status() {
         return status_;
@@ -79,7 +84,7 @@ struct WorkRequest {
         return req_id_;
     }
     void* ptr() {
-      return ptr_;  
+      return ptr_;
     }
     template <typename T>
     T* ptr_at(const size_t& pos) {
@@ -101,8 +106,10 @@ private:
 struct WorkRequestManager {
     std::unordered_map<uint64_t, WorkRequest> all_work_reqs;
     WorkRequestManager() {
-       store_lock = utils::make_unique<utils::SpinLock>();
-       id_lock = utils::make_unique<utils::SpinLock>();
+       store_lock = utils::make_unique<std::mutex>();
+       id_lock = utils::make_unique<std::mutex>();
+       cond_lock_ = utils::make_unique<std::mutex>();
+       cond_ = utils::make_unique<std::condition_variable>();
        cur_req_id = 0;
     }
     static WorkRequestManager* Get() {
@@ -119,7 +126,6 @@ struct WorkRequestManager {
         id_lock->lock();
         cur_req_id++;
         WorkRequest work_req(cur_req_id, work_type, ptr, size);
-//        LOG_S(INFO) << cur_req_id;
         id_lock->unlock();
         AddWorkRequest(work_req);
         return work_req.id();
@@ -128,7 +134,6 @@ struct WorkRequestManager {
             const size_t& size) {
         id_lock->lock();
         cur_req_id++;
-//        LOG_S(INFO) << cur_req_id;
         WorkRequest work_req(cur_req_id, work_type, ptr, size);
         id_lock->unlock();
         AddWorkRequest(work_req);
@@ -136,41 +141,45 @@ struct WorkRequestManager {
     }
 
     WorkRequest& GetWorkRequest(uint64_t req_id) {
-        utils::LockGuard<utils::SpinLock> lg(*store_lock);
+        std::lock_guard<std::mutex> lg(*store_lock);
         return all_work_reqs[req_id];
     }
     bool AddBytes(uint64_t req_id, size_t nbytes) {
-//        utils::LockGuard<utils::SpinLock> lg(*store_lock);
-//        LOG_S(INFO) << req_id;
         return all_work_reqs[req_id].AddBytes(nbytes);
     }
     bool Contain(uint64_t req_id) {
-//        utils::LockGuard<utils::SpinLock> lg(*store_lock);
         return all_work_reqs.count(req_id);
     }
+    void Wait(uint64_t req_id) {
+        std::unique_lock<std::mutex> lck(*cond_lock_);
+        cond_->wait(lck, [this, req_id]{ return all_work_reqs[req_id].done(); });
+    }
+    void Notify() {
+        cond_->notify_all();
+    }
     bool done(uint64_t req_id) {
-//        utils::LockGuard<utils::SpinLock> lg(*store_lock);
         return all_work_reqs[req_id].done();
     }
     void set_done(uint64_t req_id, bool done) {
-//        utils::LockGuard<utils::SpinLock> lg(*store_lock);
+        cond_lock_->lock();
         all_work_reqs[req_id].set_done(done);
+        cond_lock_->unlock();
+        cond_->notify_all();
     }
     size_t completed_bytes(uint64_t req_id) {
-//        utils::LockGuard<utils::SpinLock> lg(*store_lock);
         return all_work_reqs[req_id].completed_bytes();
     }
     Status status(uint64_t req_id) {
-//        utils::LockGuard<utils::SpinLock> lg(*store_lock);
         return all_work_reqs[req_id].status();
     }
     void set_status(uint64_t req_id, const Status& status) {
-//        utils::LockGuard<utils::SpinLock> lg(*store_lock);
         all_work_reqs[req_id].set_status(status);
     }
     uint64_t cur_req_id;
-    std::unique_ptr<utils::SpinLock> store_lock;
-    std::unique_ptr<utils::SpinLock> id_lock;
+    std::unique_ptr<std::mutex> store_lock;
+    std::unique_ptr<std::mutex> cond_lock_;
+    std::unique_ptr<std::condition_variable> cond_;
+    std::unique_ptr<std::mutex> id_lock;
 };
 
 
@@ -198,7 +207,7 @@ struct WorkCompletion {
         if (WorkRequestManager::Get()->Contain(id_)) {
     //    if (!done_) {
             completed_bytes_ = WorkRequestManager::Get()
-                                    ->completed_bytes(id_);
+                               ->completed_bytes(id_);
         }
         return completed_bytes_;
     }
@@ -208,10 +217,14 @@ struct WorkCompletion {
         }
         return done_;
     }
-    void Wait() {
-        while (!done_) {
-            done_ = WorkRequestManager::Get()->done(id_);
-        };
+    void Wait(bool spin = false) {
+        if (spin) {
+            while (!done_) {
+                done_ = WorkRequestManager::Get()->done(id_);
+            };
+        } else {
+            WorkRequestManager::Get()->Wait(id_);
+        }
     }
     Status status() {
         if (WorkRequestManager::Get()->Contain(id_)) {
@@ -241,13 +254,6 @@ public:
         for (auto& work_comp : work_comps_) {
             work_comp.Wait();
         }
-//        work_comps_.back().Wait();
-//        if(this->done()) {
-//            LOG_F(ERROR, "Not all requests are done, please ensure"\
-//                "all work completions are associated with the same"\
-//                " communication channel and were added by their actual"\
-//                " execution order");
-//        }
     }
     Status status() {
         for (auto& work_comp : work_comps_) {

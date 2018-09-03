@@ -15,9 +15,10 @@
 #include <string>
 #include <algorithm>
 #include "utils/utils.h"
+#include "utils/graph.h"
 #include "core/status.h"
 #include "core/logging.h"
-#include "engine/engine.h"
+#include "comm/communicator.h"
 #include "transport/channel.h"
 #include "transport/tcp/tcpchannel.h"
 #include "transport/tcp/tcppoller.h"
@@ -30,48 +31,46 @@ public:
 };
 }
 namespace rdc {
-namespace engine {
-/*! \brief implementation of basic Allreduce engine */
-class Communicator : public IEngine {
+namespace comm {
+/*! \brief implementation of basic Allreduce comm */
+class Communicator : public ICommunicator {
 public:
-    // magic number to verify server
-    static const int kMagic = 0xff99;
     // constant one byte out of band message to indicate error happening
-    Communicator(void);
-    virtual ~Communicator(void) {}
+    Communicator();
+    virtual ~Communicator() {}
     // initialize the manager
     virtual void Init(int argc, char* argv[]);
-    // shutdown the engine
+    // shutdown the comm
     virtual void Shutdown(void);
     /*!
-     * \brief set parameters to the engine
+     * \brief set parameters to the comm
      * \param name parameter name
      * \param val parameter value
      */
     virtual void SetParam(const char *name, const char *val);
     /*!
-     * \brief print the msg in the tracker,
+     * \brief print the msg in the tracker_,
      *    this function can be used to communicate the information of the progress to
-     *    the user who monitors the tracker
-     * \param msg message to be printed in the tracker
+     *    the user who monitors the tracker_
+     * \param msg message to be printed in the tracker_
      */
     virtual void TrackerPrint(const std::string &msg);
     /*! \brief get rank */
     virtual int GetRank(void) const {
-      return rank;
+        return rank_;
     }
     /*! \brief get rank */
     virtual int GetWorldSize(void) const {
-      if (world_size == -1) return 1;
-      return world_size;
+        if (world_size_ == -1) return 1;
+        return world_size_;
     }
     /*! \brief whether is distributed or not */
     virtual bool IsDistributed(void) const {
-      return tracker_uri != "NULL";
+        return tracker_uri_ != "NULL";
     }
     /*! \brief get rank */
     virtual std::string GetHost(void) const {
-      return host_uri;
+        return host_uri_;
     }
     void Send(void* sendbuf_, size_t type_nbytes, int dest) override;
     void Recv(void* recvbuf_, size_t type_nbytes, int src) override;
@@ -82,19 +81,12 @@ public:
      * \param type_nbytes the unit number of bytes the type have
      * \param count number of elements to be reduced
      * \param reducer reduce function
-     * \param prepare_func Lazy preprocessing function, lazy prepare_fun(prepare_arg)
-     *                     will be called by the function before performing Allreduce, to intialize the data in sendrecvbuf_.
-     *                     If the result of Allreduce can be recovered directly, then prepare_func will NOT be called
-     * \param prepare_arg argument used to passed into the lazy preprocessing function
      */
     virtual void Allreduce(void *sendrecvbuf_,
                            size_t type_nbytes,
                            size_t count,
-                           ReduceFunction reducer,
-                           PreprocFunction prepare_fun = nullptr,
-                           void *prepare_arg = nullptr) {
-        if (prepare_fun != nullptr) prepare_fun(prepare_arg);
-        if (world_size == 1 || world_size == -1) return;
+                           ReduceFunction reducer) override {
+        if (world_size_ == 1 || world_size_ == -1) return;
         TryAllreduce(sendrecvbuf_, type_nbytes, count, reducer);
     }
     /*!
@@ -103,13 +95,14 @@ public:
      * \param size the size of the data to be broadcasted
      * \param root the root worker id to broadcast the data
      */
-    virtual void Broadcast(void* sendrecvbuf_, size_t total_size, int root) {
-        if (world_size == 1 || world_size == -1) return;
+    virtual void Broadcast(void* sendrecvbuf_, size_t total_size, 
+            int root) override {
+        if (world_size_ == 1 || world_size_ == -1) return;
         TryBroadcast(sendrecvbuf_, total_size, root);
     }
     virtual void Allgather(void** sendrecvbufs_, size_t type_nbytes,
                            size_t* counts) override {
-        if (world_size == 1 || world_size == -1) return;
+        if (world_size_ == 1 || world_size_ == -1) return;
         TryAllgatherRing(sendrecvbufs_, type_nbytes, counts);
     }
     /*!
@@ -135,7 +128,7 @@ public:
      * \sa CheckPoint, VersionNumber
      */
     virtual int LoadCheckPoint(Serializable *global_model,
-                               Serializable *local_model = NULL) {
+                               Serializable *local_model = nullptr) {
         return 0;
     }
     /*!
@@ -156,7 +149,7 @@ public:
      */
     virtual void CheckPoint(const Serializable *global_model,
                             const Serializable *local_model = NULL) {
-      version_number += 1;
+        version_number += 1;
     }
     /*!
      * \brief This function can be used to replace CheckPoint for global_model only,
@@ -179,7 +172,7 @@ public:
      * \sa LoadCheckPoint, CheckPoint, VersionNumber
      */
     virtual void LazyCheckPoint(const Serializable *global_model) {
-      version_number += 1;
+        version_number += 1;
     }
     /*!
      * \return version number of current stored model,
@@ -187,156 +180,29 @@ public:
      * \sa LoadCheckPoint, CheckPoint
      */
     virtual int VersionNumber(void) const {
-      return version_number;
+        return version_number;
     }
     /*!
      * \brief explicitly re-init everything before calling LoadCheckPoint
-     *    call this function when IEngine throw an exception out,
+     *    call this function when ICommunicator throw an exception out,
      *    this function is only used for test purpose
      */
-    virtual void InitAfterException(void) {
+    virtual void InitAfterException() {
         LOG_F(ERROR, "InitAfterException: not implemented");
     }
-
-   protected:
-    // link record to a neighbor
-    struct LinkRecord {
-    public:
-        // socket to get data from/to link
-        std::unique_ptr<IChannel> channel;
-        // rank of the node in this link
-        int rank;
-        // size of data readed from link
-        size_t size_read;
-        // size of data sent to the link
-        size_t size_write;
-        // pointer to buffer head
-        char *buffer_head;
-        // buffer size, in bytes
-        size_t buffer_size;
-        // constructor
-        LinkRecord()
-            : buffer_head(nullptr), buffer_size(0), buffer_(nullptr) {
-        }
-        LinkRecord(LinkRecord&& other) {
-            this->channel = std::move(other.channel);
-            this->rank = other.rank;
-            this->size_read = other.size_read;
-            this->size_write = other.size_write;
-            this->buffer_size = other.buffer_size;
-            this->buffer_head = other.buffer_head;
-            this->buffer_  = other.buffer_;
-        }
-
-        LinkRecord& operator=(LinkRecord&& other) {
-            this->channel = std::move(other.channel);
-            this->rank = other.rank;
-            this->size_read = other.size_read;
-            this->size_write = other.size_write;
-            this->buffer_size = other.buffer_size;
-            this->buffer_head = other.buffer_head;
-            this->buffer_  = other.buffer_;
-            return *this;
-        }
-        ~LinkRecord() {
-            if (buffer_) {
-                delete[] buffer_;
-            }
-        }
-        // initialize buffer
-        inline void InitBuffer(size_t type_nbytes, size_t count) {
-            //size_t n = (type_nbytes * count + 7)/ 8;
-            size_t n = type_nbytes * count;
-            //buffer_.resize(n);
-            buffer_size = n;
-            buffer_ = new char[buffer_size];
-            // make sure align to type_nbytes
-            //buffer_size = buffer_.size() * sizeof(uint64_t) / type_nbytes * type_nbytes;
-            CHECK_F(type_nbytes <= buffer_size,
-                          "too large type_nbytes=%lu, buffer_size=%lu",
-                          type_nbytes, buffer_size);
-            // set buffer head
-            buffer_head = buffer_;
-        }
-        // reset the recv and sent size
-        inline void ResetSize(void) {
-            size_write = size_read = 0;
-        }
-        /*!
-         * \brief read data into ring-buffer, with care not to existing useful override data
-         *  position after protect_start
-         * \param protect_start all data start from protect_start is still needed in buffer
-         *                      read shall not override this
-         * \param max_size_read maximum logical amount we can read, size_read cannot exceed this value
-         */
-        inline void ReadToRingBuffer(size_t protect_start, size_t max_size_read) {
-            CHECK_F(buffer_head != nullptr, "ReadToRingBuffer: buffer not allocated");
-            CHECK_F(size_read <= max_size_read, "ReadToRingBuffer: max_size_read check");
-            size_t ngap = size_read - protect_start;
-            CHECK_F(ngap <= buffer_size, "Allreduce: boundary check");
-            size_t offset = size_read % buffer_size;
-            size_t nmax = max_size_read - size_read;
-            nmax = std::min(nmax, buffer_size - ngap);
-            nmax = std::min(nmax, buffer_size - offset);
-            LOG_F(INFO, "%d %d", rdc::GetRank(), nmax);
-            if (nmax == 0) {
-                return;
-            //    LOG_F(INFO, "no space for data receiving");
-            }
-            auto wc = channel->IRecv(buffer_head + offset, nmax);
-            wc.Wait();
-            //int* a = reinterpret_cast<int*>(buffer_head + offset);
-            const size_t len = wc.completed_bytes();
-            //LOG_S(INFO) << "@node:" << rdc::GetRank() <<  " recv:" << 
-            //    a[0] << " size:" << nmax;
-            size_read += static_cast<size_t>(len);
-            return;
-        }
-        /*!
-         * \brief read data into array,
-         * this function can not be used together with ReadToRingBuffer
-         * a link can either read into the ring buffer, or existing array
-         * \param max_size maximum size of array
-         * \return true if it is an successful read, false if there is some error happens, check errno
-         */
-        inline void ReadToArray(void *recvbuf_, size_t max_size) {
-            if (max_size == size_read) return;
-            char *p = static_cast<char*>(recvbuf_);
-            auto wc = channel->IRecv(p + size_read, max_size - size_read);
-            wc.Wait();
-            const size_t len = wc.completed_bytes();
-            size_read += static_cast<size_t>(len);
-            return;
-        }
-        /*!
-         * \brief write data in array to channel
-         * \param sendbuf_ head of array
-         * \param max_size maximum size of array
-         * \return true if it is an successful write, false if there is some error happens, check errno
-         */
-        inline void WriteFromArray(const void *sendbuf_, size_t max_size) {
-            const char *p = static_cast<const char*>(sendbuf_);
-            auto wc = channel->ISend(p + size_write, max_size - size_write);
-            wc.Wait();
-            const size_t& len = wc.completed_bytes();
-            size_write += static_cast<size_t>(len);
-            return;
-        }
-
-       private:
-          // recv buffer to get data from child
-          // aligned with 64 bits, will be able to perform 64 bits operations freely
-          char* buffer_;
-    };
+    std::unique_ptr<ICommunicator> CreateGroup(
+            const std::vector<int>& ranks,
+            const std::string& group_name) override;
+protected:
     /*!
-     * \brief initialize connection to the tracker
+     * \brief initialize connection to the tracker_
      * \return a channel that initializes the connection
      */
     void ConnectTracker();
     /*!
-     * \brief connect to the tracker to fix the the missing links
-     *   this function is also used when the engine start up
-     * \param cmd possible command to sent to tracker
+     * \brief connect to the tracker_ to fix the the missing links
+     *   this function is also used when the comm start up
+     * \param cmd possible command to sent to tracker_
      */
     void ReConnectLinks(const char *cmd = "start");
     /*!
@@ -404,7 +270,7 @@ public:
      *
      *  after the function, node k get k-th segment of the reduction result
      *  the k-th segment is defined by [k * step, min((k + 1) * step,count) )
-     *  where step = ceil(count / world_size)
+     *  where step = ceil(count / world_size_)
      *
      * \param sendrecvbuf_ buffer for both sending and recving data
      * \param reducebuf_ buffer for reducing data
@@ -435,52 +301,55 @@ public:
                                 size_t count,
                                 ReduceFunction reducer);
     //---- data structure related to model ----
-    // channel for communication with tracker
-    std::unique_ptr<TcpChannel> tracker;
+    // channel for communication with tracker_
+    std::unique_ptr<TcpChannel> tracker_;
     // call sequence counter, records how many calls we made so far
     // from last call to CheckPoint, LoadCheckPoint
     int seq_counter;
     // version number of model
     int version_number;
     //---- local data related to link ----
-    // index of parent link, can be -1, meaning this is root of the tree
-    int parent_index;
     // rank of parent node, can be -1
-    int parent_rank;
+    int parent_rank_;
     // channels of all links referenced by rank
-    std::unordered_map<int, LinkRecord> all_links;
+    std::unordered_map<int, std::shared_ptr<IChannel>> all_links;
     // used to record the link where things goes wrong
-    LinkRecord *err_link;
+    IChannel* err_link;
+    graph::UndirectedGraph<int> tree;
     // all the links in the reduction tree connection
-    std::vector<LinkRecord*> tree_links;
+    std::vector<IChannel*> tree_links;
+    // the rank of neighbors 
+    std::map<int, int> tree_neighbors_;
+    int num_neighbors_;
     // pointer to links in the ring
-    LinkRecord *ring_prev, *ring_next;
+    IChannel *ring_prev_, *ring_next_;
+    int prev_rank_, next_rank_;
     //----- meta information-----
     // list of enviroment variables that are of possible interest
-    std::vector<std::string> env_vars;
+    std::vector<std::string> env_vars_;
     // unique identifier of the possible job this process is doing
-    // used to assign ranks, optional, default to NULL
-    std::string task_id;
     // uri of current host, to be set by Init
-    std::string host_uri;
+    std::string host_uri_;
     // uri of tracker
-    std::string tracker_uri;
+    std::string tracker_uri_;
     // port of tracker address
-    int tracker_port;
+    int tracker_port_;
     // port of slave process
-    int slave_port, nport_trial;
-    // reduce buffer size
-    size_t reduce_buffer_size;
+    int slave_port_, nport_trial_;
     // reduction method
     int reduce_method;
     // mininum count of cells to use ring based method
-    size_t reduce_ring_mincount;
+    size_t reduce_ring_mincount_;
     // current rank
-    int rank;
+    int rank_;
     // world size
-    int world_size;
+    int world_size_;
     // connect retry time
-    int connect_retry;
+    int connect_retry_;
+    // children communicators
+    std::unordered_map<uint32_t, Communicator*> children_;
+    // children counter
+    uint32_t child_counter_;
 };
-}  // namespace engine
+}  // namespace comm
 }  // namespace rdc
