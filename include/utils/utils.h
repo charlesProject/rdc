@@ -141,7 +141,27 @@ inline std::vector<std::pair<int, int>> Split(
     }
     return ranges;
 }
+template <typename Container>
+std::string ConcatList(const Container& container) {
+    std::string str = "";
+    for (const auto& item : container) {
+        str += std::to_string(item);
+        str += '\t';
+    }
+    return str;
+}
+inline void* AllocTemp(const size_t& nbytes) {
+    return malloc(nbytes);
+}
 
+inline void Free(void* ptr) {
+    return free(ptr);
+}
+
+inline void ZeroBuf(void* buf, size_t nbytes) {
+//    memset(buf, 0, nbytes);
+    return;
+}
 template<typename T, typename... Args>
 inline std::unique_ptr<T> make_unique(Args&&... args) {
     return std::unique_ptr<T>(new T(std::forward<Args>(args)...));

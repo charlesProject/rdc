@@ -212,7 +212,8 @@ inline std::unique_ptr<comm::ICommunicator> CreateGroup(
  * \tparam freduce the customized reduction function
  *  DType must be a struct, with no pointer
  */
-template<typename DType, void (*freduce)(DType &dst, const DType &src)>  // NOLINT(*)
+template<typename DType, std::function<
+         void(DType &dst, const DType &src)> freduce>  // NOLINT(*)
 class Reducer {
 public:
     Reducer();

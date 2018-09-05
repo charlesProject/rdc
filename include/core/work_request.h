@@ -22,63 +22,61 @@ struct WorkRequest {
     WorkRequest(const uint64_t& req_id, const WorkType& work_type,
         void* ptr, const size_t& size) : req_id_(req_id), 
             work_type_(work_type), done_(false),
-            ptr_(ptr), size_(size), completed_bytes_(0) {}
+            ptr_(ptr), size_in_bytes_(size), completed_bytes_(0) {}
     WorkRequest(const uint64_t& req_id, const WorkType& work_type, 
         const void* ptr, const size_t& size) : req_id_(req_id), 
             work_type_(work_type), done_(false),
-            ptr_(const_cast<void*>(ptr)), size_(size), completed_bytes_(0) {}
-    WorkRequest(const WorkRequest& other) = default;
-//    WorkRequest(const WorkRequest& other) {
-//        this->req_id_ = other.req_id_;
-//        this->ptr_ = other.ptr_;
-//        this->size_ = other.size_;
-//        this->work_type_ = other.work_type_;
-//        this->completed_bytes_ = other.completed_bytes_;
-//        //this->completed_bytes_.store(other.completed_bytes_.load());$
-//    }
-//    WorkRequest operator=(const WorkRequest& other) {
-//        this->req_id_ = other.req_id_;
-//        this->ptr_ = other.ptr_;
-//        this->size_ = other.size_;
-//        this->work_type_ = other.work_type_;
-//        this->completed_bytes_ = other.completed_bytes_;
-//        //this->completed_bytes_.store(other.completed_bytes_.load());$
-//        return *this;
-//    }
- 
+            ptr_(const_cast<void*>(ptr)), size_in_bytes_(size), completed_bytes_(0) {}
+//    WorkRequest(const WorkRequest& other) = default;
+    WorkRequest(const WorkRequest& other) {
+        this->req_id_ = other.req_id_;
+        this->ptr_ = other.ptr_;
+        this->size_in_bytes_ = other.size_in_bytes_;
+        this->work_type_ = other.work_type_;
+        this->completed_bytes_ = other.completed_bytes_;
+        this->done_ = false;
+    //    this->done_.store(other.done_.load(std::memory_order_release), 
+    //        std::memory_order_acquire);
+        //this->completed_bytes_.store(other.completed_bytes_.load());
+    }
+    WorkRequest operator=(const WorkRequest& other) {
+        this->req_id_ = other.req_id_;
+        this->ptr_ = other.ptr_;
+        this->size_in_bytes_ = other.size_in_bytes_;
+        this->work_type_ = other.work_type_;
+        this->completed_bytes_ = other.completed_bytes_;
+        this->done_ = false;
+    //    this->done_.store(other.done_.load(std::memory_order_release), 
+    //        std::memory_order_acquire);
+        //this->completed_bytes_.store(other.completed_bytes_.load());
+        return *this;
+    }
+
     bool operator()() {
         return done_;
-//        return done_.load(std::memory_order_acquire);
     }
     bool done() {
-//        LOG_F(INFO, "%d", done_);
-//        return done_;
-        return done_;
+        return done_.load(std::memory_order_acquire);
     }
     void set_done(const bool& done) {
-        done_ = done;
-        //done_.store(done, std::memory_order_release);
+        done_.store(done, std::memory_order_release);
     }
     Status status() {
         return status_;
-        //return status_.load(std::memory_order_acquire);
     }
     void set_status(const Status& status) {
-        //status_.store(status, std::memory_order_release);
         status_ = status;
         return;
     }
     bool AddBytes(const size_t nbytes);
     size_t nbytes() const {
-        return size_;
+        return size_in_bytes_;
     }
     size_t completed_bytes() const {
         return completed_bytes_;
-        //return completed_bytes_.load(std::memory_order_acquire);
     }
     size_t remain_nbytes() const {
-        return size_ - completed_bytes_;
-        //return size_ - completed_bytes_.load(std::memory_order_acquire);
+        return size_in_bytes_ - completed_bytes_;
     }
     uint64_t id() const {
         return req_id_;
@@ -93,14 +91,11 @@ struct WorkRequest {
 private:
     uint64_t req_id_;
     WorkType work_type_;
-    bool done_;
-//    std::atomic<bool> done_;
+    std::atomic<bool> done_;
     void* ptr_;
-    size_t size_;
-    //std::atomic<size_t> completed_bytes_;
+    size_t size_in_bytes_;
     size_t completed_bytes_;
     Status status_;
-//    std::atomic<Status> status_;
     void* extra_data_;
 };
 struct WorkRequestManager {
@@ -152,7 +147,8 @@ struct WorkRequestManager {
     }
     void Wait(uint64_t req_id) {
         std::unique_lock<std::mutex> lck(*cond_lock_);
-        cond_->wait(lck, [this, req_id]{ return all_work_reqs[req_id].done(); });
+        cond_->wait(lck, [this, req_id]{
+            return all_work_reqs[req_id].done(); });
     }
     void Notify() {
         cond_->notify_all();
@@ -161,6 +157,9 @@ struct WorkRequestManager {
         return all_work_reqs[req_id].done();
     }
     void set_done(uint64_t req_id, bool done) {
+        all_work_reqs[req_id].set_done(done);
+    }
+    void set_finished(uint64_t req_id, bool done) {
         cond_lock_->lock();
         all_work_reqs[req_id].set_done(done);
         cond_lock_->unlock();
@@ -190,7 +189,6 @@ struct WorkCompletion {
 
     uint64_t id_;
     bool done_;
-//    std::atomic<bool> done_;
     size_t completed_bytes_;
     Status status_;
     bool is_status_setted_;
@@ -205,9 +203,8 @@ struct WorkCompletion {
     }
     size_t completed_bytes() {
         if (WorkRequestManager::Get()->Contain(id_)) {
-    //    if (!done_) {
-            completed_bytes_ = WorkRequestManager::Get()
-                               ->completed_bytes(id_);
+            completed_bytes_ = WorkRequestManager::Get()->
+              completed_bytes(id_);
         }
         return completed_bytes_;
     }

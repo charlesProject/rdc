@@ -15,6 +15,7 @@ class Datatype;
 
 /*! \brief namespace of rdc */
 namespace rdc {
+const std::string kWorldCommName = "main";
 /*! \brief core interface of the comm */
 namespace comm {
 /*! \brief interface of core Allreduce comm */
@@ -71,7 +72,7 @@ public:
      *   when calling this function, the caller needs to guarantee that the global_model
      *   is the same in all nodes
      * \param local_model pointer to the local model that is specific to current node/rank
-     *   this can be NULL when no local model is needed
+     *   this can be nullptr when no local model is needed
      *
      * \return the version number of the model loaded
      *     if returned version == 0, this means no model has been CheckPointed
@@ -88,7 +89,7 @@ public:
      * \sa CheckPoint, VersionNumber
      */
     virtual int LoadCheckPoint(Serializable *global_model,
-                               Serializable *local_model = NULL) = 0;
+                               Serializable *local_model = nullptr) = 0;
     /*!
      * \brief checkpoints the model, meaning a stage of execution was finished
      *  every time we call check point, a version number increases by ones
@@ -97,7 +98,7 @@ public:
      *   when calling this function, the caller needs to guarantee that the global_model
      *   is the same in every node
      * \param local_model pointer to the local model that is specific to current node/rank
-     *   this can be NULL when no local state is needed
+     *   this can be nullptr when no local state is needed
      *
      * NOTE: local_model requires explicit replication of the model for fault-tolerance, which will
      *       bring replication cost in CheckPoint function. global_model does not need explicit replication.
@@ -106,7 +107,7 @@ public:
      * \sa LoadCheckPoint, VersionNumber
      */
     virtual void CheckPoint(const Serializable *global_model,
-                            const Serializable *local_model = NULL) = 0;
+                            const Serializable *local_model = nullptr) = 0;
     /*!
      * \brief This function can be used to replace CheckPoint for global_model only,
      *   when certain condition is met (see detailed explanation).
@@ -161,11 +162,11 @@ public:
 };
 
 /*! \brief initializes the comm module */
-void Init(int argc, char *argv[]);
+void Init(int argc, char *argv[], const std::string& name = kWorldCommName);
 /*! \brief finalizes the comm module */
-void Finalize();
+void Finalize(const std::string& name = kWorldCommName);
 /*! \brief singleton method to get comm */
-ICommunicator *GetEngine();
+ICommunicator *GetCommunicator(const std::string& name = kWorldCommName);
 
 /*! \brief namespace that contains stubs to be compatible with MPI */
 namespace mpi {

@@ -1,8 +1,8 @@
 /*!
- *  Copyright (c) 2014 by Contributors
+ *  Copyright (c) 2018 by Contributors
  * \file serializable.h
  * \brief defines serializable interface of rdc
- * \author Tianqi Chen
+ * \author Ankun Zheng
  */
 #pragma once
 #include <vector>

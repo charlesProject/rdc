@@ -36,12 +36,13 @@ namespace comm {
 class Communicator : public ICommunicator {
 public:
     // constant one byte out of band message to indicate error happening
+    Communicator(const std::string& name);
     Communicator();
     virtual ~Communicator() {}
     // initialize the manager
     virtual void Init(int argc, char* argv[]);
     // shutdown the comm
-    virtual void Shutdown(void);
+    virtual void Shutdown();
     /*!
      * \brief set parameters to the comm
      * \param name parameter name
@@ -198,13 +199,13 @@ protected:
      * \brief initialize connection to the tracker_
      * \return a channel that initializes the connection
      */
-    void ConnectTracker();
+    std::tuple<int, int> ConnectTracker(const char* cmd = "start");
     /*!
      * \brief connect to the tracker_ to fix the the missing links
      *   this function is also used when the comm start up
      * \param cmd possible command to sent to tracker_
      */
-    void ReConnectLinks(const char *cmd = "start");
+    void ReConnectLinks(const std::tuple<int, int>& num_conn_accept);
     /*!
      * \brief perform in-place allreduce, on sendrecvbuf, this function can fail, and will return the cause of failure
      *
@@ -220,10 +221,19 @@ protected:
      * \return this function can return Status::kSuccess, kSockError, kGetExcept, see void for details
      * \sa void
      */
-    void TryAllreduce(void *sendrecvbuf_,
+    void TryAllreduce(void* sendrecvbuf_,
                             size_t type_nbytes,
                             size_t count,
                             ReduceFunction reducer);
+
+
+    void TryReduceTree(void* sendrecvbuf_,
+                            void* reducebuf_,
+                            size_t type_nbytes,
+                            size_t count,
+                            ReduceFunction reducer,
+                            int root);
+
     /*!
      * \brief broadcast data from root to all nodes, this function can fail,and will return the cause of failure
      * \param sendrecvbuf_ buffer for both sending and receiving data
@@ -233,7 +243,7 @@ protected:
      * \sa void
      */
     void TryBroadcast(void* sendrecvbuf_, size_t size, int root);
-    
+
     /*!
      * \brief perform in-place allreduce, on sendrecvbuf,
      * this function implements tree-shape reduction
@@ -301,8 +311,13 @@ protected:
                                 size_t count,
                                 ReduceFunction reducer);
     //---- data structure related to model ----
+    // my name
+    std::string name_;
     // channel for communication with tracker_
     std::unique_ptr<TcpChannel> tracker_;
+    bool tracker_connected_;
+    std::mutex tracker_lock_;
+    std::condition_variable trakcer_cond_;
     // call sequence counter, records how many calls we made so far
     // from last call to CheckPoint, LoadCheckPoint
     int seq_counter;
@@ -312,10 +327,10 @@ protected:
     // rank of parent node, can be -1
     int parent_rank_;
     // channels of all links referenced by rank
-    std::unordered_map<int, std::shared_ptr<IChannel>> all_links;
+    std::unordered_map<int, std::shared_ptr<IChannel>> all_links_;
     // used to record the link where things goes wrong
     IChannel* err_link;
-    graph::UndirectedGraph<int> tree;
+    graph::UndirectedGraph<int> tree_map_;
     // all the links in the reduction tree connection
     std::vector<IChannel*> tree_links;
     // the rank of neighbors 
@@ -334,8 +349,8 @@ protected:
     std::string tracker_uri_;
     // port of tracker address
     int tracker_port_;
-    // port of slave process
-    int slave_port_, nport_trial_;
+    // port of worker process
+    int worker_port_, nport_trial_;
     // reduction method
     int reduce_method;
     // mininum count of cells to use ring based method
@@ -350,6 +365,7 @@ protected:
     std::unordered_map<uint32_t, Communicator*> children_;
     // children counter
     uint32_t child_counter_;
+    int num_conn_, num_accept_;
 };
 }  // namespace comm
 }  // namespace rdc
