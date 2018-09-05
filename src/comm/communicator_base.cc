@@ -12,24 +12,24 @@
 #include "core/logging.h"
 #include "comm/communicator_base.h"
 
-static const std::string kTerminalStr = "_";
 namespace rdc {
 namespace comm {
 // constructor
-Communicator::Communicator(void) {
+Communicator::Communicator(const std::string& name) {
+    name_ = name;
     tracker_uri_ = "NULL";
     tracker_port_ = 9000;
     host_uri_ = "";
-    slave_port_ = 9910;
+    worker_port_ = 9910;
     rank_ = -1;
     world_size_ = -1;
     connect_retry_ = 5;
     version_number = 0;
     // 32 K items
     //reduce_ring_mincount = 32 << 10;
-    reduce_ring_mincount_ = 1;
+    reduce_ring_mincount_ = 32;
     // tracker URL
-    err_link = NULL;
+    err_link = nullptr;
     child_counter_ = 0;
     this->SetParam("rdc_reduce_buffer", "256MB");
     // setup possible enviroment variable of intrest
@@ -41,17 +41,20 @@ Communicator::Communicator(void) {
     env_vars_.push_back("TRACKER_PORT");
     env_vars_.push_back("WORKER_CONNECT_RETRY");
 }
-
+Communicator::Communicator() : Communicator(kWorldCommName) {}
 // initialization function
 void Communicator::Init(int argc, char* argv[]) {
     // init logging
     //logging::init(argc, argv);
-    logging::set_thread_name("main");
+    const std::string& thread_name = std::string(
+        "comm:") + name_;
+    logging::set_thread_name(thread_name.c_str());
     // setup from enviroment variables
     // handler to get variables from env
     for (size_t i = 0; i < env_vars_.size(); ++i) {
         const char *value = getenv(env_vars_[i].c_str());
         if (value != nullptr) {
+            LOG_F(INFO, "%s %s", env_vars_[i].c_str(), value);
             this->SetParam(env_vars_[i].c_str(), value);
         }
     }
@@ -67,21 +70,20 @@ void Communicator::Init(int argc, char* argv[]) {
     this->rank_ = -1;
     //---------------------
     // start
-    CHECK_F(all_links.size() == 0, "can only call Init once");
+    CHECK_F(all_links_.size() == 0, "can only call Init once");
     std::string interface, ip;
     network_utils::GetAvailableInterfaceAndIP(&interface, &ip);
-    slave_port_ = network_utils::GetAvailablePort();
+    worker_port_ = network_utils::GetAvailablePort();
     this->host_uri_ = ip;
-    this->ConnectTracker();
+    auto num_conn_accept = this->ConnectTracker();
     // get information from tracker
-    this->ReConnectLinks();
+    this->ReConnectLinks(num_conn_accept);
 }
 
 void Communicator::Shutdown() {
     if (tracker_uri_ == "NULL") return;
     // notify tracker rank i have shutdown
     tracker_->SendStr(std::string("shutdown"));
-    tracker_->SendStr(kTerminalStr);
     tracker_->Close();
 }
 void Communicator::TrackerPrint(const std::string &msg) {
@@ -90,9 +92,7 @@ void Communicator::TrackerPrint(const std::string &msg) {
         return;
     }
     tracker_->SendStr(std::string("print"));
-    tracker_->SendStr(kTerminalStr);
     tracker_->SendStr(msg);
-    tracker_->SendStr(kTerminalStr);
 }
 // util to parse data with unit suffix
 inline size_t ParseUnit(const char *name, const char *val) {
@@ -131,102 +131,125 @@ void Communicator::SetParam(const char *name, const char *val) {
  * \brief initialize connection to the tracker
  * \return a socket that initializes the connection
  */
-void Communicator::ConnectTracker()  {
+std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
     // get information from tracker
-    tracker_ = utils::make_unique<TcpChannel>();
-    int retry = 0;
-    do {
-        if (tracker_->Connect(tracker_uri_.c_str(), tracker_port_)
-                != Status::kSuccess) {
-            if (++retry >= connect_retry_) {
-                LOG_F(ERROR, "connect to (failed): [%s]\n",
-                      tracker_uri_.c_str());
-                LOG_F(ERROR, "Connect");
-            } else {
-                LOG_F(ERROR, "retry connect to ip(retry time %d): [%s]\n",
-                              retry, tracker_uri_.c_str());
-                #ifdef _MSC_VER
-                Sleep(1);
-                #else
-                sleep(1);
-                #endif
-                continue;
+  std::lock_guard<std::mutex> lg(tracker_lock_);
+    if (!tracker_connected_) {
+        tracker_ = utils::make_unique<TcpChannel>();
+        int retry = 0;
+        do {
+            if (tracker_->Connect(tracker_uri_.c_str(), tracker_port_)
+                    != Status::kSuccess) {
+                if (++retry >= connect_retry_) {
+                    LOG_F(ERROR, "connect to (failed): [%s]\n",
+                          tracker_uri_.c_str());
+                    LOG_F(ERROR, "Connect");
+                } else {
+                    LOG_F(ERROR, "retry connect to ip(retry time %d): [%s]\n",
+                                  retry, tracker_uri_.c_str());
+                    #ifdef _MSC_VER
+                    Sleep(1);
+                    #else
+                    sleep(1);
+                    #endif
+                    continue;
+                }
+            }
+            break;
+        } while (true);
+        tracker_connected_ = true;
+        // single node mode
+        if (tracker_uri_ == "NULL") {
+            rank_ = 0;
+            world_size_ = 1;
+            return std::make_tuple(-1, -1);
+        }
+        
+        // start listener at very begining
+        TcpPoller::Get()->Listen(worker_port_);
+        tracker_->SendStr(std::string(cmd));
+        
+        tracker_->SendStr(name_);
+        CHECK_F(tracker_->RecvInt(world_size_) == Status::kSuccess,
+                "ReConnectLink failure 1");
+        CHECK_F(tracker_->RecvInt(rank_) == Status::kSuccess,
+               "ReConnectLink failure 2");
+        // send back socket listening port to tracker
+        CHECK_F(tracker_->SendStr(host_uri_) == Status::kSuccess,
+               "ReConnectLink failure 3");
+        CHECK_F(tracker_->SendInt(worker_port_) == Status::kSuccess,
+               "ReConnectLink failure 4");
+        // get new ranks
+        CHECK_F(tracker_->RecvInt(parent_rank_) ==
+                Status::kSuccess, "ReConnectLink failure 5");
+        CHECK_F(tracker_->RecvInt(num_neighbors_) == Status::kSuccess,
+                "ReConnectLink failure 6");
+        for (int i = 0; i < num_neighbors_; ++i) {
+              int nrank;
+              CHECK_F(tracker_->RecvInt(nrank) == Status::kSuccess,
+                      "ReConnectLink failure 7");
+              tree_neighbors_[nrank] = 1;
+        }
+        CHECK_F(tracker_->RecvInt(prev_rank_) == Status::kSuccess,
+               "ReConnectLink failure 8");
+        CHECK_F(tracker_->RecvInt(next_rank_) == Status::kSuccess,
+               "ReConnectLink failure 9");
+
+        // get the global tree map
+        std::vector<int> nodes(this->world_size_);
+        std::vector<std::pair<int, int>> edges;
+        for (int i = 0; i < this->world_size_; i++) {
+            int from = 0;
+            CHECK_F(tracker_->RecvInt(from) == Status::kSuccess,
+                    "ReConnectLink failure 10");
+            nodes[i] = from;
+            int num_neighbors = 0;
+            CHECK_F(tracker_->RecvInt(num_neighbors) == Status::kSuccess,
+                    "ReConnectLink failure 10");
+            for (int j = 0; j < num_neighbors; j++) {
+                int to = 0;
+                CHECK_F(tracker_->RecvInt(to) == Status::kSuccess,
+                    "   ReConnectLink failure 10");
+                edges.emplace_back(std::make_pair(from, to));
             }
         }
-        break;
-    } while (1);
-
-    return;
+        tree_map_.Create(nodes, edges);
+        // get number of to connect and number of to accept nodes from tracker
+        CHECK_F(tracker_->RecvInt(num_conn_) == Status::kSuccess,
+               "ReConnectLink failure 10");
+        CHECK_F(tracker_->RecvInt(num_accept_) ==  Status::kSuccess,
+                "ReConnectLink failure 11");
+    }
+    return std::tie(num_conn_, num_accept_);
 }
 /*!
  * \brief connect to the tracker to fix the the missing links
  *   this function is also used when the comm start up
  */
-void Communicator::ReConnectLinks(const char *cmd) {
-    // single node mode
-    if (tracker_uri_ == "NULL") {
-        rank_ = 0;
-        world_size_ = 1;
-        return;
-    }
-    tracker_->SendStr(std::string(cmd));
-    tracker_->SendStr(kTerminalStr);
-    CHECK_F(tracker_->RecvInt(rank_) == Status::kSuccess,
-           "ReConnectLink failure 3");
-    CHECK_F(tracker_->RecvInt(world_size_) == Status::kSuccess,
-            "ReConnectLink failure 3");
-    TcpPoller::Get()->Listen(slave_port_);
-    // send back socket listening port to tracker
-    CHECK_F(tracker_->SendStr(host_uri_) == Status::kSuccess,
-           "ReConnectLink failure 14");
-    CHECK_F(tracker_->SendInt(slave_port_) == Status::kSuccess,
-           "ReConnectLink failure 14");
-    tracker_->SendStr(kTerminalStr);
-    // get new ranks
-    CHECK_F(tracker_->RecvInt(parent_rank_) ==
-            Status::kSuccess, "ReConnectLink failure 4");
-    CHECK_F(tracker_->RecvInt(num_neighbors_) == Status::kSuccess, 
-            "ReConnectLink failure 4");
-    for (int i = 0; i < num_neighbors_; ++i) {
-          int nrank;
-          CHECK_F(tracker_->RecvInt(nrank) == Status::kSuccess,
-                  "ReConnectLink failure 4");
-          tree_neighbors_[nrank] = 1;
-    }
-    CHECK_F(tracker_->RecvInt(prev_rank_) == Status::kSuccess,
-           "ReConnectLink failure 4");
-    CHECK_F(tracker_->RecvInt(next_rank_) == Status::kSuccess,
-           "ReConnectLink failure 4");
-    // get number of to connect and number of to accept nodes from tracker
-    int num_conn, num_accept, num_error;
-    do {
-        CHECK_F(tracker_->RecvInt(num_conn) == Status::kSuccess,
-               "ReConnectLink failure 7");
-        CHECK_F(tracker_->RecvInt(num_accept) ==  Status::kSuccess, 
-                "ReConnectLink failure 8");
-        num_error = 0;
-        for (int i = 0; i < num_conn; ++i) {
-            std::shared_ptr<IChannel> channel = std::make_shared<TcpChannel>();
-            int hport, hrank;
-            std::string hname;
-            tracker_->RecvStr(hname);
-            CHECK_F(tracker_->RecvInt(hport) == Status::kSuccess,
-                    "ReConnectLink failure 9");
-            CHECK_F(tracker_->RecvInt(hrank) == Status::kSuccess,
-                    "ReConnectLink failure 10");
-            if (channel->Connect(hname.c_str(), hport) != Status::kSuccess) {
-                num_error += 1;
-                channel->Close();
-                continue;
-            } else {
-                int hrank = 0;
-                CHECK_F(channel->RecvInt(hrank) == Status::kSuccess,
-                        "Reconnect Link failure 10");
-                channel->SendInt(rank_);
-            }
-            all_links[hrank] = channel;
+void Communicator::ReConnectLinks(const std::tuple<int, int>&
+        num_conn_accept) {
+    int num_conn = 0, num_accept = 0;
+    std::tie(num_conn, num_accept) = num_conn_accept;
+    for (int i = 0; i < num_conn; ++i) {
+        std::shared_ptr<IChannel> channel = std::make_shared<TcpChannel>();
+        int hport, hrank;
+        std::string hname;
+        tracker_->RecvStr(hname);
+        CHECK_F(tracker_->RecvInt(hport) == Status::kSuccess,
+                "ReConnectLink failure 12");
+        CHECK_F(tracker_->RecvInt(hrank) == Status::kSuccess,
+                "ReConnectLink failure 13");
+        if (channel->Connect(hname.c_str(), hport) != Status::kSuccess) {
+            channel->Close();
+            continue;
+        } else {
+            int hrank = 0;
+            CHECK_F(channel->RecvInt(hrank) == Status::kSuccess,
+                    "Reconnect Link failure 14");
+            channel->SendInt(rank_);
         }
-    } while (num_error != 0);
+        all_links_[hrank] = channel;
+    }
     // listen to incoming links
     for (int i = 0; i < num_accept; ++i) {
         TcpChannel* channel= TcpPoller::Get()->Accept();
@@ -234,12 +257,12 @@ void Communicator::ReConnectLinks(const char *cmd) {
         int hrank = 0;
         channel->SendInt(rank_);
         CHECK_F(channel->RecvInt(hrank) == Status::kSuccess,
-                "ReConnect Link failure 11");
-        all_links[hrank] = schannel;
+                "ReConnect Link failure 15");
+        all_links_[hrank] = schannel;
     }
     // setup tree links and ring structure
     tree_links.clear();
-    for (auto&& link_with_rank : all_links) {
+    for (auto&& link_with_rank : all_links_) {
         // set the socket to non-blocking mode, enable TCP keepalive
         auto cur_rank = link_with_rank.first;
         auto cur_link = link_with_rank.second;
@@ -266,222 +289,81 @@ void Communicator::TryAllreduce(void *sendrecvbuf_,
     if (count > reduce_ring_mincount_) {
         return this->TryAllreduceRing(sendrecvbuf_, type_nbytes, count, reducer);
     }
-//    else {
-//    return this->TryAllreduceTree(sendrecvbuf_, type_nbytes, count, reducer);
-//  }
+    else {
+        return this->TryAllreduceTree(sendrecvbuf_, type_nbytes, count, reducer);
+    }
 }
+void Communicator::TryReduceTree(void* sendrecvbuf_,
+                                void* reducebuf_,
+                                size_t type_nbytes,
+                                size_t count,
+                                ReduceFunction reducer,
+                                int root) {
+    auto dists_from_root = tree_map_.ShortestDist(root);
+    int dist_from_root = dists_from_root[rank_];
+    auto neighbors = tree_map_.GetNeighbors(rank_);
+    std::unordered_set<int> recv_from_nodes;
+    int send_to_node = -1;
+    for (const auto& neighbor : neighbors) {
+        if (dists_from_root[neighbor] == dist_from_root + 1) {
+            recv_from_nodes.insert(neighbor);
+        } else if (dists_from_root[neighbor] == dist_from_root - 1){
+            send_to_node = neighbor;
+        }
+    }
+    int total_size = count * type_nbytes;
+    char* reducebuf = reinterpret_cast<char*>(reducebuf_);
+    char* sendrecvbuf = reinterpret_cast<char*>(sendrecvbuf_);
+
+    for (const auto& recv_from_node : recv_from_nodes) {
+        auto wc = all_links_[recv_from_node]->IRecv(reducebuf_, total_size);
+        wc.Wait();
+        reducer(reducebuf, sendrecvbuf,
+                count, MPI::Datatype(type_nbytes));
+    }
+
+
+    if (send_to_node != -1) {
+        auto wc = all_links_[send_to_node]->ISend(sendrecvbuf_, total_size);
+        wc.Wait();
+    }
+
+    return;
+}
+void Communicator::TryBroadcast(void *sendrecvbuf_, size_t total_size, int root) {
+    auto dists_from_root = tree_map_.ShortestDist(root);
+    int dist_from_root = dists_from_root[rank_];
+    auto neighbors = tree_map_.GetNeighbors(rank_);
+    std::unordered_set<int> send_to_nodes;
+    int recv_from_node = -1;
+    for (const auto& neighbor : neighbors) {
+        if (dists_from_root[neighbor] == dist_from_root + 1) {
+            send_to_nodes.insert(neighbor);
+        } else if (dists_from_root[neighbor] == dist_from_root - 1){
+            recv_from_node = neighbor;
+        }
+    }
+
+    if (recv_from_node != -1) {
+        auto wc = all_links_[recv_from_node]->IRecv(sendrecvbuf_, total_size);
+        wc.Wait();
+    }
+    for (const auto& send_to_node : send_to_nodes) {
+        auto wc = all_links_[send_to_node]->ISend(sendrecvbuf_, total_size);
+        wc.Wait();
+    }
+    return;
+}
+
+
 void Communicator::TryAllreduceTree(void *sendrecvbuf_,
                                 size_t type_nbytes,
                                 size_t count,
                                 ReduceFunction reducer) {
-//  auto& links = tree_links;
-//  if (links.size() == 0 || count == 0) return Status::kSuccess;
-//  // total size of message
-//  const size_t total_size = type_nbytes * count;
-//  // number of links
-//  const int nlink = static_cast<int>(links.size());
-//  // send recv buffer
-//  char *sendrecvbuf = reinterpret_cast<char*>(sendrecvbuf_);
-//  // size of space that we already performs reduce in up pass
-//  size_t size_up_reduce = 0;
-//  // size of space that we have already passed to parent
-//  size_t size_up_out = 0;
-//  // size of message we received, and send in the down pass
-//  size_t size_down_in = 0;
-//  // initialize the link ring-buffer and pointer
-//  for (int i = 0; i < nlink; ++i) {
-//      if (i != parent_index) {
-//            links[i].InitBuffer(type_nbytes, count, reduce_buffer_size);
-//      }
-//      links[i].ResetSize();
-//  }
-//  // if no childs, no need to reduce
-//  if (nlink == static_cast<int>(parent_index != -1)) {
-//      size_up_reduce = total_size;
-//  }
-//  // while we have not passed the messages out
-//  while (true) {
-//     bool finished = true;
-//     for (int i = 0; i < nlink; ++i) {
-//          if (i == parent_index) {
-//             if (size_down_in != total_size) {
-//             finished = false;
-//          }
-//     } else {
-//          // size_write <= size_read
-//          if (links[i].size_write != total_size) {
-//              // only watch for exception in live channel->
-//              finished = false;
-//          }
-//      }
-//    }
-//    // finish runing allreduce
-//    if (finished) break;
-//    // read data from childs
-//    for (int i = 0; i < nlink; ++i) {
-//      if (i != parent_index) {
-//        ReturnType ret = links[i].ReadToRingBuffer(size_up_out, total_size);
-//        if (ret != Status::kSuccess) {
-//          return ReportError(&links[i], ret);
-//        }
-//      }
-//    }
-//    // this node have childs, peform reduce
-//    if (nlink > static_cast<int>(parent_index != -1)) {
-//      size_t buffer_size = 0;
-//      // do upstream reduce
-//      size_t max_reduce = total_size;
-//      for (int i = 0; i < nlink; ++i) {
-//        if (i != parent_index) {
-//          max_reduce = std::min(max_reduce, links[i].size_read);
-//          utils::CHECK_F(buffer_size == 0 || buffer_size == links[i].buffer_size,
-//                        "buffer size inconsistent");
-//          buffer_size = links[i].buffer_size;
-//        }
-//      }
-//      utils::CHECK_F(buffer_size != 0, "must assign buffer_size");
-//      // round to type_n4bytes
-//      max_reduce = (max_reduce / type_nbytes * type_nbytes);
-//      // peform reduce, can be at most two rounds
-//      while (size_up_reduce < max_reduce) {
-//        // start position
-//        size_t start = size_up_reduce % buffer_size;
-//        // peform read till end of buffer
-//        size_t nread = std::min(buffer_size - start,
-//                                max_reduce - size_up_reduce);
-//        utils::CHECK_F(nread % type_nbytes == 0, "Allreduce: size check");
-//        for (int i = 0; i < nlink; ++i) {
-//          if (i != parent_index) {
-//            reducer(links[i].buffer_head + start,
-//                    sendrecvbuf + size_up_reduce,
-//                    static_cast<int>(nread / type_nbytes),
-//                    MPI::Datatype(type_nbytes));
-//          }
-//        }
-//        size_up_reduce += nread;
-//      }
-//    }
-//    if (parent_index != -1) {
-//      // pass message up to parent, can pass data that are already been reduced
-//      if (size_up_out < size_up_reduce) {
-//        ssize_t len = links[parent_index].sock.
-//            Send(sendrecvbuf + size_up_out, size_up_reduce - size_up_out);
-//        if (len != -1) {
-//          size_up_out += static_cast<size_t>(len);
-//        } else {
-//          ReturnType ret = Errno2Return();
-//          if (ret != Status::kSuccess) {
-//            return ReportError(&links[parent_index], ret);
-//          }
-//        }
-//      }
-//      // read data from parent
-//      if (total_size > size_down_in) {
-//        ssize_t len = links[parent_index].sock.
-//            Recv(sendrecvbuf + size_down_in, total_size - size_down_in);
-//        if (len == 0) {
-//          links[parent_index].sock.Close();
-//          return ReportError(&links[parent_index], kRecvZeroLen);
-//        }
-//        if (len != -1) {
-//          size_down_in += static_cast<size_t>(len);
-//          CHECK_F(size_down_in <= size_up_out,
-//                        "Allreduce: boundary error");
-//        } else {
-//          ReturnType ret = Errno2Return();
-//          if (ret != Status::kSuccess) {
-//            return ReportError(&links[parent_index], ret);
-//          }
-//        }
-//      }
-//    } else {
-//      // this is root, can use reduce as most recent point
-//      size_down_in = size_up_out = size_up_reduce;
-//    }
-//    // can pass message down to childs
-//    for (int i = 0; i < nlink; ++i) {
-//      if (i != parent_index && links[i].size_write < size_down_in) {
-//        ReturnType ret = links[i].WriteFromArray(sendrecvbuf, size_down_in);
-//        if (ret != Status::kSuccess) {
-//          return ReportError(&links[i], ret);
-//        }
-//      }
-//    }
-//  }
-//  return Status::kSuccess;
-}
-void Communicator::TryBroadcast(void *sendrecvbuf_, size_t total_size, int root) {
-//    auto& links = tree_links;
-//    if (links.size() == 0 || total_size == 0) return;
-//    CHECK_F(root < world_size_,
-//                 "Broadcast: root should be smaller than world size");
-//    // number of links
-//    const int nlink = static_cast<int>(links.size());
-//    // size of space already read from data
-//    size_t size_in = 0;
-//    // input link, -2 means unknown yet, -1 means this is root
-//    int in_link = -2;
-//
-//    // initialize the link statistics
-//    for (int i = 0; i < nlink; ++i) {
-//        links[i].ResetSize();
-//    }
-//    // root have all the data
-//    if (this->rank == root) {
-//        size_in = total_size;
-//        in_link = -1;
-//    }
-//    // while we have not passed the messages out
-//    while (true) {
-//        bool finished = true;
-//        std::vector<bool> read_flags(nlink, false), \
-//        write_flags(nlink, false);
-//    for (int i = 0; i < nlink; ++i) {
-//      if (in_link == -2) {
-//        read_flags[i] = true;
-//        finished = false;
-//      }
-//      if (i == in_link && links[i].size_read != total_size) {
-//          read_flags[i] = true;
-//          finished = false;
-//      }
-//      if (in_link != -2 && i != in_link && links[i].size_write != total_size) {
-//        if (links[i].size_write < size_in) {
-//            write_flags[i] = true;
-//        }
-//        finished = false;
-//      }
-//    }
-//    // finish running
-//    if (finished) break;
-//    // select
-//    // exception handling
-//    if (in_link == -2) {
-//      // probe in-link
-//      for (int i = 0; i < nlink; ++i) {
-//        if (read_flags[i] == true) {
-//          ReturnType ret = links[i].ReadToArray(sendrecvbuf_, total_size);
-//          size_in = links[i].size_read;
-//          if (size_in != 0) {
-//            in_link = i; break;
-//          }
-//        }
-//      }
-//    } else {
-//      // read from in link
-//      if (in_link >= 0 && read_flags[in_link]) {
-//        ReturnType ret = links[in_link].ReadToArray(sendrecvbuf_, total_size);
-//        size_in = links[in_link].size_read;
-//      }
-//    }
-//    // send data to all out-link
-//    for (int i = 0; i < nlink; ++i) {
-//      if (i != in_link && links[i].size_write < size_in) {
-//        ReturnType ret = links[i].WriteFromArray(sendrecvbuf_, size_in);
-//      }
-//    }
-//  }
-//  return Status::kSuccess;
+    void* reducebuf_  = utils::AllocTemp(type_nbytes * count);
+    TryReduceTree(sendrecvbuf_, reducebuf_, type_nbytes, count, reducer, 0);
+    utils::Free(reducebuf_);
+    TryBroadcast(sendrecvbuf_, type_nbytes * count, 0);
 }
 void Communicator::TryAllgatherRing(void** sendrecvbufs_, size_t type_nbytes,
                                      size_t* counts) {
@@ -597,10 +479,10 @@ void Communicator::TryAllreduceRing(void *sendrecvbuf_,
                                 size_t type_nbytes,
                                 size_t count,
                                 ReduceFunction reducer) {
-    void* reducebuf = malloc(count * type_nbytes);
+    void* reducebuf = utils::AllocTemp(count * type_nbytes);
     TryReduceScatterRing(sendrecvbuf_, reducebuf, type_nbytes, 
                          count, reducer);
-    free(reducebuf);
+    utils::Free(reducebuf);
     size_t n = static_cast<size_t>(world_size_);
     const auto& ranges = utils::Split(0, count, n);
     // get rank of previous
@@ -623,12 +505,12 @@ std::unique_ptr<ICommunicator> Communicator::CreateGroup(
     return utils::make_unique<Communicator>();
 }
 void Communicator::Send(void* sendbuf_, size_t nbytes, int dest) {
-    auto wc = all_links[dest]->ISend(sendbuf_, nbytes);
+    auto wc = all_links_[dest]->ISend(sendbuf_, nbytes);
     wc.Wait();
     //return wc.status();
 }
 void Communicator::Recv(void* recvbuf_, size_t nbytes, int src)  {
-    auto wc= all_links[src]->IRecv(recvbuf_, nbytes);
+    auto wc= all_links_[src]->IRecv(recvbuf_, nbytes);
     wc.Wait();
     //return wc.status();
 }

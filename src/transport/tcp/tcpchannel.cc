@@ -144,16 +144,16 @@ void TcpChannel::ReadCallback() {
                             recv_req.completed_bytes()),
                             recv_req.remain_nbytes());
     if (read_nbytes == -1) {
-        LOG_F(ERROR, "recv error %s", strerror(errno));
+        LOG_F(ERROR, "Error during recieving : %s", strerror(errno));
         WorkRequestManager::Get()->set_status(
             recv_req.id(), static_cast<Status>(errno));
-        WorkRequestManager::Get()->set_done(recv_req.id(), true);
+        WorkRequestManager::Get()->set_finished(recv_req.id(), true);
         //WorkRequestManager::Get()->Notify();
     }
     if (recv_req.AddBytes(read_nbytes)) {
         recv_reqs_.Pop();
-        WorkRequestManager::Get()->set_done(recv_req.id(), true);
-    //    WorkRequestManager::Get()->Notify();
+        WorkRequestManager::Get()->set_finished(recv_req.id(), true);
+        //WorkRequestManager::Get()->Notify();
     }
     return;
 }
@@ -169,15 +169,15 @@ void TcpChannel::WriteCallback() {
                             send_req.completed_bytes()),
                             send_req.remain_nbytes());
     if (write_nbytes == -1) {
-        LOG_F(ERROR, "send error %s", strerror(errno));
+        LOG_F(ERROR, "Error during sending : %s", strerror(errno));
         WorkRequestManager::Get()->set_status(
             send_req.id(), static_cast<Status>(errno));
-        WorkRequestManager::Get()->set_done(send_req.id(), true);
+        WorkRequestManager::Get()->set_finished(send_req.id(), true);
         //WorkRequestManager::Get()->Notify();
     }
     if (send_req.AddBytes(write_nbytes)) {
         send_reqs_.Pop();
-        WorkRequestManager::Get()->set_done(send_req.id(), true);
+        WorkRequestManager::Get()->set_finished(send_req.id(), true);
         //WorkRequestManager::Get()->Notify();
     }
     return;

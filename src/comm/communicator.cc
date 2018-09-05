@@ -14,57 +14,62 @@ namespace rdc {
 namespace comm {
 // singleton sync manager
 //#ifndef RDC_USE_BASE
-//typedef CommunicatorRobust WorldComm;
+//typedef CommunicatorRobust Comm;
 //#else
-typedef Communicator WorldComm;
+typedef Communicator Comm;
 //#endif
 
 /*! \brief entry to to easily hold returning information */
 struct ThreadLocalEntry {
     /*! \brief stores the current comm */
-    std::unique_ptr<WorldComm> comm;
-    /*! \brief whether init has been called */
-    bool initialized;
+    std::unordered_map<std::string, std::unique_ptr<Comm>> comms;
     /*! \brief constructor */
-    ThreadLocalEntry() : initialized(false) {}
+    ThreadLocalEntry() {
+        lock = utils::make_unique<std::mutex>();
+    }
+    void AddComm(const std::string& name) {
+        lock->lock();
+        CHECK_F(!comms.count(name), "Init is already called in this thread");
+        comms[name] = utils::make_unique<Comm>(name);
+        lock->unlock();
+    }
+    Comm* GetComm(const std::string& name) {
+        std::lock_guard<std::mutex> lg(*lock);
+        return comms[name].get();
+    }
+    std::unique_ptr<std::mutex> lock;
 };
 
 // define the threadlocal store.
-typedef ThreadLocalStore<ThreadLocalEntry> EngineThreadLocal;
+typedef ThreadLocalStore<ThreadLocalEntry> ThreadLocalCommunicator;
 
 /*! \brief intiialize the synchronization module */
-void Init(int argc, char *argv[]) {
-    ThreadLocalEntry* e = EngineThreadLocal::Get();
-    utils::Check(e->comm.get() == nullptr,
-                 "rdc::Init is already called in this thread");
-    e->initialized = true;
-    e->comm.reset(new WorldComm());
-    e->comm->Init(argc, argv);
+void Init(int argc, char *argv[], const std::string& name) {
+    ThreadLocalEntry* e = ThreadLocalCommunicator::Get();
+    e->AddComm(name);
+    e->GetComm(name)->Init(argc, argv);
 }
 
 /*! \brief finalize syncrhonization module */
-void Finalize() {
-    ThreadLocalEntry* e = EngineThreadLocal::Get();
-    utils::Check(e->comm.get() != nullptr,
+void Finalize(const std::string& name) {
+    ThreadLocalEntry* e = ThreadLocalCommunicator::Get();
+    CHECK_F(e->GetComm(name) != nullptr,
                  "rdc::Finalize comm is not initialized \
                  or already been finalized.");
-    e->comm->Shutdown();
-    e->comm.reset(nullptr);
+    e->GetComm(name)->Shutdown();
 }
 
 /*! \brief singleton method to get comm */
-ICommunicator *GetEngine() {
-  // un-initialized default manager.
-  static Communicator default_manager;
-  ThreadLocalEntry* e = EngineThreadLocal::Get();
-  ICommunicator* ptr = e->comm.get();
-  if (ptr == nullptr) {
-    utils::Check(!e->initialized,
-                 "Doing rdc call after Finalize");
-    return &default_manager;
-  } else {
-    return ptr;
-  }
+ICommunicator *GetCommunicator(const std::string& name) {
+    // un-initialized default manager.
+    static Communicator default_manager;
+    ThreadLocalEntry* e = ThreadLocalCommunicator::Get();
+    ICommunicator* ptr = e->GetComm(name);
+    if (ptr == nullptr) {
+        return &default_manager;
+    } else {
+        return ptr;
+    }
 }
 // perform in-place allreduce, on sendrecvbuf
 void Allreduce_(void *sendrecvbuf,
@@ -73,7 +78,7 @@ void Allreduce_(void *sendrecvbuf,
                 ICommunicator::ReduceFunction red,
                 mpi::DataType dtype,
                 mpi::OpType op) {
-    GetEngine()->Allreduce(sendrecvbuf, type_nbytes, count,
+    GetCommunicator()->Allreduce(sendrecvbuf, type_nbytes, count,
                            red);
 }
 
