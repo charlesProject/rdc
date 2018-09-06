@@ -1,14 +1,16 @@
-#include "rabit.h"
+#include "rdc.h"
 
 int main(int argc, char** argv) {
-    if (rabit::GetRank() == 0) {
+    rdc::Init(argc, argv);
+    if (rdc::GetRank() == 0) {
         char s[1024] = "hello world";
-        rabit::Send(s, 1024, 1);
+        rdc::Send(s, 1024, 1);
     }
-    if (rabit::GetRank() == 1) {
+    if (rdc::GetRank() == 1) {
         char s[1024] = {0};
-        rabit::Recv(s, 1024, 0);
-        rabit::TrackerPrintf(s);
+        rdc::Recv(s, 1024, 0);
+        rdc::TrackerPrint(s);
+        DCHECK_EQ(strncmp(s, "hello world", 11), 0);
     }
     return 0;
 }

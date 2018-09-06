@@ -1,14 +1,15 @@
 /*!
  *  Copyright (c) 2018 by Contributors
  * \file basic.cc
- * \brief This is an example demonstrating what is Allreduce
+ * \brief This is an example demonstrating setup and finalize of rdc
  *
  * \author AnkunZheng
  */
 #include <vector>
-#include "rabit.h"
-using namespace rabit;
+#include "rdc.h"
+using namespace rdc;
 int main(int argc, char *argv[]) {
-    rabit::Init(argc, argv);
+    rdc::Init(argc, argv);
+    rdc::Finalize();
     return 0;
 }

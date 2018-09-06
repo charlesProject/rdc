@@ -19,6 +19,9 @@ namespace rdc {
 inline void Init(int argc, char *argv[]) {
     comm::Init(argc, argv);
 }
+inline void NewCommunicator(const std::string& name) {
+    comm::GetCommunicator()->NewCommunicator(name);
+}
 // finalize the rdc comm
 inline void Finalize() {
     comm::Finalize();
@@ -46,32 +49,39 @@ inline void Recv(void *recv_data, size_t size, int src) {
     comm::GetCommunicator()->Recv(recv_data, size, src);
 }
 // broadcast data to all other nodes from root
-inline void Broadcast(void *sendrecv_data, size_t size, int root) {
-    comm::GetCommunicator()->Broadcast(sendrecv_data, size, root);
+inline void Broadcast(void *sendrecv_data, size_t size, int root,
+        const std::string& comm_name) {
+    comm::GetCommunicator(comm_name)->Broadcast(sendrecv_data, size, root);
 }
 template<typename DType>
-inline void Broadcast(std::vector<DType> *sendrecv_data, int root) {
-    size_t size = sendrecv_data->size();
-    Broadcast(&size, sizeof(size), root);
-    if (sendrecv_data->size() != size) {
-        sendrecv_data->resize(size);
+inline void Broadcast(std::vector<DType>& sendrecv_data, int root,
+        const std::string& comm_name) {
+    size_t size = sendrecv_data.size();
+    Broadcast(&size, sizeof(size), root, comm_name);
+    if (sendrecv_data.size() != size) {
+        sendrecv_data.resize(size);
     }
     if (size != 0) {
-        Broadcast(&(*sendrecv_data)[0], size * sizeof(DType), root);
+        Broadcast(utils::BeginPtr(sendrecv_data),
+            size * sizeof(DType), root, comm_name);
     }
 }
-inline void Broadcast(std::string *sendrecv_data, int root) {
-    size_t size = sendrecv_data->length();
+inline void Broadcast(std::string& sendrecv_data, int root,
+        const std::string& comm_name) {
+    size_t size = sendrecv_data.length();
     Broadcast(&size, sizeof(size), root);
-    if (sendrecv_data->length() != size) {
-        sendrecv_data->resize(size);
+    if (sendrecv_data.length() != size) {
+        sendrecv_data.resize(size);
     }
     if (size != 0) {
-        Broadcast(&(*sendrecv_data)[0], size * sizeof(char), root);
+        Broadcast(utils::BeginPtr(sendrecv_data),
+            size * sizeof(char), root, comm_name);
     }
 }
+
 template<typename DType>
-inline void Allgather(std::vector<std::vector<DType>>& sendrecv_data) {
+inline void Allgather(std::vector<std::vector<DType>>& sendrecv_data,
+                      const std::string& comm_name) {
     std::vector<void*> sendrecv_ptrs(sendrecv_data.size());
     std::vector<size_t> sizes(sendrecv_data.size());
     for (int i = 0; i < sendrecv_data.size(); ++i) {
@@ -79,19 +89,23 @@ inline void Allgather(std::vector<std::vector<DType>>& sendrecv_data) {
                            utils::BeginPtr(sendrecv_data[i]));
         sizes[i] = sendrecv_data[i].size();
     }
-    Allgather(utils::BeginPtr(sendrecv_ptrs), sizeof(DType), 
-              utils::BeginPtr(sizes));
+    Allgather(utils::BeginPtr(sendrecv_ptrs), sizeof(DType),
+              utils::BeginPtr(sizes), comm_name);
 }
 inline void Allgather(void** sendrecv_data, size_t size_nbytes,
-                      size_t* counts) {
-    comm::GetCommunicator()->Allgather(sendrecv_data, size_nbytes, counts);
+                      size_t* counts, const std::string& comm_name) {
+    comm::GetCommunicator(comm_name)->Allgather(sendrecv_data, size_nbytes,
+                                       counts);
 }
 
 // perform inplace Allreduce
 template<typename OP, typename DType>
-inline void Allreduce(DType *sendrecvbuf, size_t count) {
-    comm::Allreduce_(sendrecvbuf, sizeof(DType), count, op::Reducer<OP, DType>,
-                       comm::mpi::GetType<DType>(), OP::kType);
+inline void Allreduce(DType *sendrecvbuf, size_t count,
+        const std::string& comm_name) {
+    comm::Allreduce_(sendrecvbuf, sizeof(DType),
+                     count, op::Reducer<OP, DType>,
+                     comm::mpi::GetType<DType>(),
+                     OP::kType, comm_name);
 }
 
 // print message to the tracker
@@ -101,7 +115,8 @@ inline void TrackerPrint(const std::string &msg) {
 // load latest check point
 inline int LoadCheckPoint(Serializable *global_model,
                           Serializable *local_model) {
-    return comm::GetCommunicator()->LoadCheckPoint(global_model, local_model);
+    return comm::GetCommunicator()->LoadCheckPoint(
+            global_model, local_model);
 }
 // checkpoint the model, meaning we finished a stage of execution
 inline void CheckPoint(const Serializable *global_model,

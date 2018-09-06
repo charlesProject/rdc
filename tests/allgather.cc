@@ -6,13 +6,13 @@
  * \author AnkunZheng
  */
 #include <vector>
-#include "rabit.h"
-using namespace rabit;
+#include "rdc.h"
+using namespace rdc;
 int main(int argc, char *argv[]) {
-    rabit::Init(argc, argv);
+    rdc::Init(argc, argv);
     int N = atoi(argv[1]);
-    int world_size = rabit::GetWorldSize();
-    int rank = rabit::GetRank();
+    int world_size = rdc::GetWorldSize();
+    int rank = rdc::GetRank();
     std::vector<std::vector<int>> a(world_size);
     for (int i = 0; i < world_size; ++i) {
         a[i].resize(i + N);
@@ -22,10 +22,11 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-    rabit::Allgather(a);
+    rdc::Allgather(a);
     for (int i = 0; i < world_size; ++i) {
         for (int j = 0; j < i + N; ++j) {
             CHECK_F(a[i][j] == i + j);
         }
     }
+    Finalize();
 }

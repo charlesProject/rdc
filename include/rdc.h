@@ -64,6 +64,7 @@ struct BitOR;
  * \param argv the array of input arguments
  */
 inline void Init(int argc, char *argv[]);
+inline void NewCommunicator(const std::string& name);
 /*!
  * \brief finalizes the rdc engine, call this function after you finished with all the jobs
  */
@@ -95,29 +96,34 @@ inline void Barrier();
  * \param size the data size
  * \param root the process root
  */
-inline void Broadcast(void *sendrecv_data, size_t size, int root);
+inline void Broadcast(void *sendrecv_data, size_t size, int root,
+        const std::string& comm_name = kWorldCommName);
 /*!
  * \brief broadcasts an std::vector<DType> to every node from root
- * \param sendrecv_data the pointer to send/receive vector,
+ * \param sendrecv_data the send/receive vector,
  *        for the receiver, the vector does not need to be pre-allocated
  * \param root the process root
  * \tparam DType the data type stored in the vector, has to be a simple data type
  *               that can be directly transmitted by sending the sizeof(DType)
  */
 template<typename DType>
-inline void Broadcast(std::vector<DType> *sendrecv_data, int root);
+inline void Broadcast(std::vector<DType>& sendrecv_data, int root,
+        const std::string& comm_name = kWorldCommName);
 /*!
  * \brief broadcasts a std::string to every node from the root
- * \param sendrecv_data the pointer to the send/receive buffer,
+ * \param sendrecv_data the the send/receive buffer,
  *        for the receiver, the vector does not need to be pre-allocated
  * \param root the process root
  */
-inline void Broadcast(std::string *sendrecv_data, int root);
+inline void Broadcast(std::string& sendrecv_data, int root,
+        const std::string& comm_name = kWorldCommName);
 
 template<typename DType>
-inline void Allgather(std::vector<std::vector<DType>>& sendrecv_data);
+inline void Allgather(std::vector<std::vector<DType>>& sendrecv_data,
+        const std::string& comm_name = kWorldCommName);
 
-inline void Allgather(void** sendrecv_data, size_t type_nbyes, size_t* counts);
+inline void Allgather(void** sendrecv_data, size_t type_nbyes, size_t* counts,
+        const std::string& comm_name = kWorldCommName);
 /*!
  * \brief performs in-place Allreduce, on sendrecvbuf
  *        with a prepare function specified by a lambda function
@@ -127,7 +133,8 @@ inline void Allgather(void** sendrecv_data, size_t type_nbyes, size_t* counts);
  * \tparam DType data type
  */
 template<typename OP, typename DType>
-inline void Allreduce(DType *sendrecvbuf, size_t count);
+inline void Allreduce(DType *sendrecvbuf, size_t count,
+        const std::string& comm_name = kWorldCommName);
 
 /*!
  * \brief loads the latest check point

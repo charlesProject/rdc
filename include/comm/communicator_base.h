@@ -38,9 +38,11 @@ public:
     // constant one byte out of band message to indicate error happening
     Communicator(const std::string& name);
     Communicator();
+    Communicator(const Communicator& other);
     virtual ~Communicator() {}
     // initialize the manager
     virtual void Init(int argc, char* argv[]);
+    virtual void NewCommunicator(const std::string& name);
     // shutdown the comm
     virtual void Shutdown();
     /*!
@@ -56,6 +58,15 @@ public:
      * \param msg message to be printed in the tracker_
      */
     virtual void TrackerPrint(const std::string &msg);
+    virtual ICommunicator* GetCommunicator(const std::string& name) {
+        if (name == kWorldCommName) {
+            return this;
+        } else {
+            std::lock_guard<std::mutex> lg(comm_lock_);
+            return this->sub_comms_[name].get();
+        }
+    }
+
     /*! \brief get rank */
     virtual int GetRank(void) const {
         return rank_;
@@ -101,6 +112,7 @@ public:
         if (world_size_ == 1 || world_size_ == -1) return;
         TryBroadcast(sendrecvbuf_, total_size, root);
     }
+
     virtual void Allgather(void** sendrecvbufs_, size_t type_nbytes,
                            size_t* counts) override {
         if (world_size_ == 1 || world_size_ == -1) return;
@@ -310,14 +322,29 @@ protected:
                                 size_t type_nbytes,
                                 size_t count,
                                 ReduceFunction reducer);
+    std::shared_ptr<TcpChannel> get_trakcer() const {
+        return this->tracker_;
+    }
+    void set_tracker(const std::shared_ptr<TcpChannel>& tracker) {
+        this->tracker_ = tracker;
+    }
+    void set_worker_port(const int& worker_port) {
+        this->worker_port_ = worker_port;
+    }
+    void set_name(const std::string& name) {
+        this->name_ = name;
+    }
     //---- data structure related to model ----
     // my name
     std::string name_;
     // channel for communication with tracker_
-    std::unique_ptr<TcpChannel> tracker_;
+    std::shared_ptr<TcpChannel> tracker_;
     bool tracker_connected_;
+    bool tracker_closed_;
     std::mutex tracker_lock_;
-    std::condition_variable trakcer_cond_;
+    std::condition_variable tracker_cond_;
+    // addr of all peers
+    std::unordered_map<int, std::tuple<std::string, int>> peer_addrs_;
     // call sequence counter, records how many calls we made so far
     // from last call to CheckPoint, LoadCheckPoint
     int seq_counter;
@@ -362,10 +389,12 @@ protected:
     // connect retry time
     int connect_retry_;
     // children communicators
-    std::unordered_map<uint32_t, Communicator*> children_;
+    std::unordered_map<uint32_t, Communicator*> groups_;
     // children counter
     uint32_t child_counter_;
     int num_conn_, num_accept_;
+    std::mutex comm_lock_;
+    std::unordered_map<std::string, std::unique_ptr<Communicator>> sub_comms_;
 };
 }  // namespace comm
 }  // namespace rdc

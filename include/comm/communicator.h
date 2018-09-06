@@ -37,6 +37,8 @@ public:
                                    const MPI::Datatype &dtype)>;
     /*! \brief virtual destructor */
     virtual ~ICommunicator() {}
+    virtual void NewCommunicator(const std::string& name) = 0;
+    virtual ICommunicator* GetCommunicator(const std::string& name) = 0;
     virtual void Send(void *sendbuf, size_t type_nbytes, int dest) = 0;
     virtual void Recv(void *recvbuf, size_t type_nbytes, int src) = 0;
     /*!
@@ -162,9 +164,9 @@ public:
 };
 
 /*! \brief initializes the comm module */
-void Init(int argc, char *argv[], const std::string& name = kWorldCommName);
+void Init(int argc, char *argv[]);
 /*! \brief finalizes the comm module */
-void Finalize(const std::string& name = kWorldCommName);
+void Finalize();
 /*! \brief singleton method to get comm */
 ICommunicator *GetCommunicator(const std::string& name = kWorldCommName);
 
@@ -207,6 +209,7 @@ void Allreduce_(void *sendrecvbuf,
                 size_t count,
                 ICommunicator::ReduceFunction red,
                 mpi::DataType dtype,
-                mpi::OpType op);
+                mpi::OpType op,
+                const std::string& comm_name);
 }  // namespace comm
 }  // namespace rdc

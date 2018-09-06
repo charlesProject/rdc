@@ -22,41 +22,33 @@ typedef Communicator Comm;
 /*! \brief entry to to easily hold returning information */
 struct ThreadLocalEntry {
     /*! \brief stores the current comm */
-    std::unordered_map<std::string, std::unique_ptr<Comm>> comms;
+    std::unique_ptr<Comm> comm;
     /*! \brief constructor */
-    ThreadLocalEntry() {
-        lock = utils::make_unique<std::mutex>();
-    }
-    void AddComm(const std::string& name) {
-        lock->lock();
-        CHECK_F(!comms.count(name), "Init is already called in this thread");
-        comms[name] = utils::make_unique<Comm>(name);
-        lock->unlock();
-    }
-    Comm* GetComm(const std::string& name) {
-        std::lock_guard<std::mutex> lg(*lock);
-        return comms[name].get();
-    }
-    std::unique_ptr<std::mutex> lock;
+    ThreadLocalEntry() : initialized(false) {}
+    /*! \brief whether init has been called */
+    bool initialized;
 };
 
 // define the threadlocal store.
 typedef ThreadLocalStore<ThreadLocalEntry> ThreadLocalCommunicator;
 
 /*! \brief intiialize the synchronization module */
-void Init(int argc, char *argv[], const std::string& name) {
+void Init(int argc, char *argv[]) {
     ThreadLocalEntry* e = ThreadLocalCommunicator::Get();
-    e->AddComm(name);
-    e->GetComm(name)->Init(argc, argv);
+    CHECK_F(e->comm.get() == nullptr,
+            "rdc::Init is already called in this thread");
+    e->initialized = true;
+    e->comm.reset(new Comm(kWorldCommName));
+    e->comm->Init(argc, argv);
 }
 
 /*! \brief finalize syncrhonization module */
-void Finalize(const std::string& name) {
+void Finalize() {
     ThreadLocalEntry* e = ThreadLocalCommunicator::Get();
-    CHECK_F(e->GetComm(name) != nullptr,
+    CHECK_F(e->comm.get() != nullptr,
                  "rdc::Finalize comm is not initialized \
                  or already been finalized.");
-    e->GetComm(name)->Shutdown();
+    e->comm->Shutdown();
 }
 
 /*! \brief singleton method to get comm */
@@ -64,7 +56,7 @@ ICommunicator *GetCommunicator(const std::string& name) {
     // un-initialized default manager.
     static Communicator default_manager;
     ThreadLocalEntry* e = ThreadLocalCommunicator::Get();
-    ICommunicator* ptr = e->GetComm(name);
+    ICommunicator* ptr = e->comm->GetCommunicator(name);
     if (ptr == nullptr) {
         return &default_manager;
     } else {
@@ -77,8 +69,9 @@ void Allreduce_(void *sendrecvbuf,
                 size_t count,
                 ICommunicator::ReduceFunction red,
                 mpi::DataType dtype,
-                mpi::OpType op) {
-    GetCommunicator()->Allreduce(sendrecvbuf, type_nbytes, count,
+                mpi::OpType op,
+                const std::string& name) {
+    GetCommunicator(name)->Allreduce(sendrecvbuf, type_nbytes, count,
                            red);
 }
 

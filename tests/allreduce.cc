@@ -6,51 +6,51 @@
  * \author AnkunZheng
  */
 #include <vector>
-#include "rabit.h"
-using namespace rabit;
+#include "rdc.h"
+using namespace rdc;
 int main(int argc, char *argv[]) {
-    rabit::Init(argc, argv);
+    rdc::Init(argc, argv);
     int N = atoi(argv[1]);
-//    int N = rabit::GetWorldSize();
     std::vector<int> a(N);
-    for (int i = 0; i < N; ++i) {
-        a[i] = rabit::GetRank() + N + i;
-    }
-    std::vector<int> result_max(N, 0);
-    for (int i = 0; i < N; ++i) {
-        for (int j = 0; j < rabit::GetWorldSize(); ++j) {
-            result_max[i] = std::max(result_max[i], j + N + i);
-        }
-    }
-
-//  if (rabit::GetRank() == 0) {char s[1024] = "hello world"; Send(s, 1024, 1);}
-//  if (rabit::GetRank() == 1) {char s[1024] = {}; Recv(s, 1024, 0); TrackerPrintf(s);}
-//    LOG_F(INFO, "@node[%d] before-allreduce: a={%d, %d, %d}\n",
-//            rabit::GetRank(), a[0], a[1], a[2]);
+    // test allreduce max
+//    for (int i = 0; i < N; ++i) {
+//        a[i] = rdc::GetRank() + N + i;
+//    }
+//    std::vector<int> result_max(N, 0);
+//    for (int i = 0; i < N; ++i) {
+//        for (int j = 0; j < rdc::GetWorldSize(); ++j) {
+//            result_max[i] = std::max(result_max[i], j + N + i);
+//        }
+//    }
+//
+//    LOG_F(INFO, "@node[%d] before-allreduce-max: a={%d, %d, %d}\n",
+//            rdc::GetRank(), a[0], a[1], a[2]);
 //    // allreduce take max of each elements in all processes
 //    Allreduce<op::Max>(&a[0], N);
 //    LOG_F(INFO, "@node[%d] after-allreduce-max: a={%d, %d, %d}\n",
-//            rabit::GetRank(), a[0], a[1], a[2]);
+//            rdc::GetRank(), a[0], a[1], a[2]);
 //    for (int i = 0; i < N; ++i) {
 //        DCHECK_F(a[i] == result_max[i]);
 //    }
     std::vector<int> result_sum(N, 0);
     for (int i = 0; i < N; ++i) {
-        for (int j = 0; j < rabit::GetWorldSize(); ++j) {
-            result_sum[i] += (j + i);
+        for (int j = 0; j < rdc::GetWorldSize(); ++j) {
+            result_sum[i] += (j + N + i);
         }
     }
- 
+
     for (int i = 0; i < N; ++i) {
-        a[i] = rabit::GetRank() + i;
+        a[i] = rdc::GetRank() + N + i;
     }
+    LOG_F(INFO, "@node[%d] before-allreduce-sum: a={%d, %d, %d}\n",
+            rdc::GetRank(), a[0], a[1], a[2]);
     // second allreduce that sums everything up
     Allreduce<op::Sum>(&a[0], N);
     LOG_F(INFO, "@node[%d] after-allreduce-sum: a={%d, %d, %d}\n",
-            rabit::GetRank(), a[0], a[1], a[2]);
+            rdc::GetRank(), a[0], a[1], a[2]);
     for (int i = 0; i < N; ++i) {
         DCHECK_EQ_F(a[i], result_sum[i]);
     }
-    //rabit::Finalize();
+    Finalize();
     return 0;
 }

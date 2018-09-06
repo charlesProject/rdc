@@ -23,6 +23,8 @@ public:
     }
     UndirectedGraph(const UndirectedGraph& other) = default;
     UndirectedGraph(UndirectedGraph&& other) = default;
+    
+    UndirectedGraph& operator=(const UndirectedGraph& other) = default;
 
     void Create(const std::vector<Node>& nodes,
           const std::vector<std::pair<Node, Node>>& edges) {
