@@ -20,21 +20,28 @@ enum WorkType : uint32_t {
 struct WorkRequest {
     WorkRequest(): done_(false), completed_bytes_(0) {};
     WorkRequest(const uint64_t& req_id, const WorkType& work_type,
-        void* ptr, const size_t& size) : req_id_(req_id), 
+        void* ptr, const size_t& size) : req_id_(req_id),
             work_type_(work_type), done_(false),
-            ptr_(ptr), size_in_bytes_(size), completed_bytes_(0) {}
-    WorkRequest(const uint64_t& req_id, const WorkType& work_type, 
-        const void* ptr, const size_t& size) : req_id_(req_id), 
+            ptr_(ptr), size_in_bytes_(size), completed_bytes_(0) {
+            }
+    WorkRequest(const uint64_t& req_id, const WorkType& work_type,
+        const void* ptr, const size_t& size) : req_id_(req_id),
             work_type_(work_type), done_(false),
-            ptr_(const_cast<void*>(ptr)), size_in_bytes_(size), completed_bytes_(0) {}
-//    WorkRequest(const WorkRequest& other) = default;
+            ptr_(const_cast<void*>(ptr)), size_in_bytes_(size), completed_bytes_(0) {
+            }
+    //WorkRequest(const WorkRequest& other) = default;
+    ~WorkRequest() {
+        //delete done_lock_;
+        //delete done_cond_;
+    }
+
     WorkRequest(const WorkRequest& other) {
         this->req_id_ = other.req_id_;
         this->ptr_ = other.ptr_;
         this->size_in_bytes_ = other.size_in_bytes_;
         this->work_type_ = other.work_type_;
         this->completed_bytes_ = other.completed_bytes_;
-        this->done_ = false;
+        this->done_ = other.done_;
     //    this->done_.store(other.done_.load(std::memory_order_release), 
     //        std::memory_order_acquire);
         //this->completed_bytes_.store(other.completed_bytes_.load());
@@ -45,7 +52,7 @@ struct WorkRequest {
         this->size_in_bytes_ = other.size_in_bytes_;
         this->work_type_ = other.work_type_;
         this->completed_bytes_ = other.completed_bytes_;
-        this->done_ = false;
+        this->done_ = other.done_;
     //    this->done_.store(other.done_.load(std::memory_order_release), 
     //        std::memory_order_acquire);
         //this->completed_bytes_.store(other.completed_bytes_.load());
@@ -56,10 +63,12 @@ struct WorkRequest {
         return done_;
     }
     bool done() {
-        return done_.load(std::memory_order_acquire);
+        return done_;
+    //    return done_.load(std::memory_order_acquire);
     }
     void set_done(const bool& done) {
-        done_.store(done, std::memory_order_release);
+        done_ = done;
+    //    done_.store(done, std::memory_order_release);
     }
     Status status() {
         return status_;
@@ -88,21 +97,33 @@ struct WorkRequest {
     T* ptr_at(const size_t& pos) {
         return reinterpret_cast<T*>(ptr_) + pos;
     }
+    void Wait() {
+        std::unique_lock<std::mutex> lock(done_lock_);
+        done_cond_.wait(lock, [this] { return done_;});
+    }
+    void Notify() {
+        done_lock_.lock();
+        done_ = true;
+        done_lock_.unlock();
+        done_cond_.notify_one();
+    }
 private:
     uint64_t req_id_;
     WorkType work_type_;
-    std::atomic<bool> done_;
+    bool done_;
     void* ptr_;
     size_t size_in_bytes_;
     size_t completed_bytes_;
     Status status_;
     void* extra_data_;
+    std::mutex done_lock_;
+    std::condition_variable done_cond_;
 };
 struct WorkRequestManager {
     std::unordered_map<uint64_t, WorkRequest> all_work_reqs;
     WorkRequestManager() {
-       store_lock = utils::make_unique<std::mutex>();
-       id_lock = utils::make_unique<std::mutex>();
+       store_lock = utils::make_unique<utils::SpinLock>();
+       id_lock = utils::make_unique<utils::SpinLock>();
        cond_lock_ = utils::make_unique<std::mutex>();
        cond_ = utils::make_unique<std::condition_variable>();
        cur_req_id = 0;
@@ -136,7 +157,7 @@ struct WorkRequestManager {
     }
 
     WorkRequest& GetWorkRequest(uint64_t req_id) {
-        std::lock_guard<std::mutex> lg(*store_lock);
+        std::lock_guard<utils::SpinLock> lg(*store_lock);
         return all_work_reqs[req_id];
     }
     bool AddBytes(uint64_t req_id, size_t nbytes) {
@@ -146,9 +167,10 @@ struct WorkRequestManager {
         return all_work_reqs.count(req_id);
     }
     void Wait(uint64_t req_id) {
-        std::unique_lock<std::mutex> lck(*cond_lock_);
-        cond_->wait(lck, [this, req_id]{
-            return all_work_reqs[req_id].done(); });
+        store_lock->lock();
+        auto& work_req = all_work_reqs[req_id];
+        store_lock->unlock();
+        work_req.Wait();
     }
     void Notify() {
         cond_->notify_all();
@@ -175,10 +197,10 @@ struct WorkRequestManager {
         all_work_reqs[req_id].set_status(status);
     }
     uint64_t cur_req_id;
-    std::unique_ptr<std::mutex> store_lock;
+    std::unique_ptr<utils::SpinLock> store_lock;
     std::unique_ptr<std::mutex> cond_lock_;
     std::unique_ptr<std::condition_variable> cond_;
-    std::unique_ptr<std::mutex> id_lock;
+    std::unique_ptr<utils::SpinLock> id_lock;
 };
 
 

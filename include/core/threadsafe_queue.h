@@ -3,7 +3,9 @@
 #include <mutex>
 #include <condition_variable>
 #include <memory>
+#include "utils/lock_utils.h"
 #include "logging.h"
+
 /**
  * \brief thread-safe queue allowing push and waited pop
  */
@@ -22,23 +24,33 @@ public:
         mu_.unlock();
         cond_.notify_all();
     }
+
+    void NonLockPush(T new_value) {
+        spin_.lock();
+        queue_.push(std::move(new_value));
+        spin_.unlock();
+    }
     bool TryPeek(T& value) {
-        mu_.lock();
+        spin_.lock();
         if (queue_.empty()) {
-            mu_.unlock();
+            spin_.unlock();
             return false;
         }
         else {
             value = queue_.front();
-            mu_.unlock();
+            spin_.unlock();
             return true;
         }
     }
-
     void Pop() {
         mu_.lock();
         queue_.pop();
         mu_.unlock();
+    }
+    void NonLockPop() {
+        spin_.lock();
+        queue_.pop();
+        spin_.unlock();
     }
     /**
      * \brief wait until pop an element from the beginning, threadsafe
@@ -53,6 +65,7 @@ public:
 
 private:
     mutable std::mutex mu_;
+    mutable rdc::utils::SpinLock spin_;
     std::queue<T> queue_;
     std::condition_variable cond_;
 };

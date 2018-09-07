@@ -4,13 +4,13 @@
 #include "core/threadsafe_queue.h"
 #include "core/work_request.h"
 #include "transport/channel.h"
+#include "transport/tcp/socket_utils.h"
 namespace rdc {
 /**
  * @struct TcpChannel
  * @brief a channel which send and recv data on tcp protocal and ethernet
  */
 struct TcpPoller;
-const int INVALID_SOCKET = -1;
 class TcpChannel final: public IChannel {
 public:
     TcpChannel();
@@ -31,13 +31,7 @@ public:
     WorkCompletion IRecv(void* data, size_t size) override;
 
     void Close() override {
-        if (fd_ != INVALID_SOCKET) {
-#ifdef _WIN32
-            closesocket(fd_);
-#else
-            close(fd_);
-#endif
-        }
+        CloseSocket(fd_);
     }
 
     void ReadCallback();
@@ -48,7 +42,7 @@ public:
     }
 
     bool IsClosed() const {
-        return fd_ == INVALID_SOCKET;
+        return fd_ == kInvalidSocket;
     }
 
 private:
