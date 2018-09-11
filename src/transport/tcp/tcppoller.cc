@@ -9,21 +9,41 @@
 #include <vector>
 #include <thread>
 #include <mutex>
-#include <condition_variable> 
+#include <condition_variable>
 #include <algorithm>
 #include <atomic>
 #include "transport/tcp/tcppoller.h"
 #include "transport/tcp/tcpchannel.h"
+#include "core/threadpool.h"
 #include "core/logging.h"
 #include "core/status.h"
 
-static const uint32_t kNumMaxEvents = 128;
+static const uint32_t kNumMaxEvents = 32;
 
 namespace rdc {
+
+static inline bool IsRead(uint32_t events) {
+    return (events & EPOLLIN || events & EPOLLPRI);
+//        && !(events & EPOLLOUT);
+}
+static inline bool IsWrite(uint32_t events) {
+    return events & EPOLLOUT;
+//        && (events & EPOLLOUT);
+}
+
+static inline bool IsReadWrite(uint32_t events) {
+    return (events & EPOLLIN || events & EPOLLPRI)
+        && (events & EPOLLOUT);
+}
+
+static inline bool IsError(uint32_t events) {
+    return (events & EPOLLERR || events & EPOLLHUP
+            || events & EPOLLRDHUP);
+}
 TcpPoller::TcpPoller() {
     this->listen_fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     this->shutdown_ = false;
-    this->timeout_ = 10;
+    this->timeout_ = -1;
     this->epoll_fd_ = epoll_create(kNumMaxEvents);
     PollForever();
 }
@@ -42,12 +62,8 @@ void TcpPoller::PollForever() {
 TcpPoller::~TcpPoller() {
     this->Shutdown();
     this->loop_thrd->join();
-    if (this->epoll_fd_ >= 0) {
-        close(this->epoll_fd_);
-    }
-    if (this->listen_fd_ >= 0) {
-        close(this->listen_fd_);
-    }
+    CloseSocket(this->epoll_fd_);
+    CloseSocket(this->listen_fd_);
 }
 void TcpPoller::AddChannel(int32_t fd, TcpChannel* channel) {
     lock_.lock();
@@ -88,9 +104,14 @@ int TcpPoller::Poll() {
     epoll_event events[kNumMaxEvents];
     int fds = epoll_wait(this->epoll_fd_, events,
                             kNumMaxEvents, this->timeout_);
-    if (fds < 0) {
-        LOG_F(ERROR, "%s", strerror(errno));
-    }
+    //lock_.lock();
+    //for (auto channel : channels_) 
+    //    channel.second->PrepareForNext();
+    //lock_.unlock();
+    //if (fds <= 0) {
+    //    LOG_F(ERROR, "%s", strerror(errno));
+    //    sleep(2);
+    //}
     for (size_t i = 0; i < fds; i++) {
         TcpChannel* channel = nullptr;
         lock_.lock();
@@ -98,7 +119,7 @@ int TcpPoller::Poll() {
         lock_.unlock();
         if (channel) {
             // when data avaliable for read or urgent flag is set
-            if (events[i].events & EPOLLIN || events[i].events & EPOLLPRI) {
+            if (IsRead(events[i].events)) {
                 if (events[i].events & EPOLLIN) {
                     if (this->shutdown_fd_) {
                         if (events[i].data.fd == this->shutdown_fd_) {
@@ -107,17 +128,26 @@ int TcpPoller::Poll() {
                         }
                     }
                 }
-                channel->ReadCallback();
+                channel->Delete(ChannelType::kRead);
+                ThreadPool::Get()->AddTask([channel] {
+                    channel->ReadCallback();
+                    channel->Add(ChannelType::kRead);
+                });
             }
+
             // when write possible
-            if (events[i].events & EPOLLOUT) {
-                channel->WriteCallback();
+            if (IsWrite(events[i].events)) {
+                channel->Delete(ChannelType::kWrite);
+                ThreadPool::Get()->AddTask([channel] {
+                    channel->WriteCallback();
+                    channel->Add(ChannelType::kWrite);
+                });
             }
             // shutdown or error
-            if (events[i].events & EPOLLRDHUP || events[i].events & EPOLLERR || 
-                    events[i].events & EPOLLHUP) {
-                LOG_F(ERROR, "%s", strerror(errno));
-                return 0;
+            if (IsError(events[i].events)) {
+                int32_t error = GetLastSocketError(events[i].data.fd);
+                LOG_F(ERROR, "%s", strerror(error));
+                return 1;
             }
         } // if
         else {

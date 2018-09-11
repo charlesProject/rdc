@@ -86,6 +86,8 @@ public:
     }
     void Send(void* sendbuf_, size_t type_nbytes, int dest) override;
     void Recv(void* recvbuf_, size_t type_nbytes, int src) override;
+    void Barrier();
+    void Register();
     /*!
      * \brief perform in-place allreduce, on sendrecvbuf
      *        this function is NOT thread-safe
@@ -341,7 +343,8 @@ protected:
     std::shared_ptr<TcpChannel> tracker_;
     bool tracker_connected_;
     bool tracker_closed_;
-    std::mutex tracker_lock_;
+    std::shared_ptr<std::mutex> tracker_lock_;
+    std::mutex conn_lock_;
     std::condition_variable tracker_cond_;
     // addr of all peers
     std::unordered_map<int, std::tuple<std::string, int>> peer_addrs_;

@@ -20,6 +20,7 @@ public:
     TcpChannel(TcpPoller* poller, ChannelType type);
     TcpChannel(TcpPoller* poller, int32_t fd, ChannelType type);
     ~TcpChannel();
+    void Modify(const ChannelType& type);
     /**
       * Function to add this channel to the poller obeject
       * @note if add is performed on an fd already in Reactor, the flags are updated in the existing object
@@ -41,6 +42,9 @@ public:
         return fd_;
     }
 
+    void PrepareForNext();
+    void Delete(const ChannelType& type);
+    void Add(const ChannelType& type);
     bool IsClosed() const {
         return fd_ == kInvalidSocket;
     }
@@ -53,5 +57,6 @@ private:
     /** only used to enable accept and listen callbacks */
     TcpPoller* poller_;
     ChannelType type_;
+    std::mutex mu_;
 };
 }

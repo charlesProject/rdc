@@ -2,20 +2,21 @@
 #include <atomic>
 #include <condition_variable>
 #include <functional>
-#include <list>
+#include <vector>
+#include <queue>
 #include <mutex>
 #include <thread>
 
-const int kNumThreads = 1;
+const int kNumThreads = 16;
 
 class ThreadPool {
 
 private:
     // number of thread
     unsigned num_threads;
-    std::list<std::thread> threads;
+    std::vector<std::thread> threads;
     // where tasks are storage
-    std::list<std::function<void(void)> > queue;
+    std::queue<std::function<void(void)> > queue;
 
     std::atomic_bool stop;
     std::condition_variable wait_var;
@@ -28,15 +29,12 @@ private:
         while (!stop) {
             std::function<void(void)> run;
             std::unique_lock<std::mutex> lock(queue_mutex);
-            if (!queue.empty()) {
-                run = queue.front();
-                queue.pop_front();
-                lock.unlock();
-                // unlock befor `run` to ensure parallelism
-                run();
-            }
-            // awake some sleeping threads
-            wait_var.notify_one();
+            wait_var.wait(lock, [this] {return !queue.empty();});
+            run = queue.front();
+            queue.pop();
+            lock.unlock();
+            // unlock befor `run` to ensure parallelism
+            run();
         }
     }
 
@@ -67,7 +65,7 @@ public:
     void AddTask(std::function<void(void)> job) {
         if (!stop) {
             std::lock_guard<std::mutex> lock(queue_mutex);
-            queue.emplace_back(job);
+            queue.emplace(job);
             wait_var.notify_one();
         }
     }

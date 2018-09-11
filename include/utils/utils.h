@@ -18,37 +18,14 @@ namespace utils {
 /*! \brief error message buffer length */
 const int kPrintBuffer = 1 << 12;
 
-/*!
- * \brief handling of Assert error, caused by inappropriate input
- * \param msg error message
- */
-inline void HandleAssertError(const char *msg) {
-  fprintf(stderr, "AssertError:%s\n", msg);
-  exit(-1);
-}
-/*!
- * \brief handling of Check error, caused by inappropriate input
- * \param msg error message
- */
-inline void HandleCheckError(const char *msg) {
-    fprintf(stderr, "%s\n", msg);
-    exit(-1);
-}
-inline void HandlePrint(const char *msg) {
-  printf("%s", msg);
-}
-inline void HandleLogPrint(const char *msg) {
-  fprintf(stderr, "%s", msg);
-  fflush(stderr);
-}
 // these function pointers are to be assigned
-inline void Printf(const char *fmt, ...) {
+inline std::string Printf(const char *fmt, ...) {
     std::string msg(kPrintBuffer, '\0');
     va_list args;
     va_start(args, fmt);
     vsnprintf(&msg[0], kPrintBuffer, fmt, args);
     va_end(args);
-    HandlePrint(msg.c_str());
+    return msg;
 }
 /*! \brief portable version of snprintf */
 inline int SPrintf(char *buf, size_t size, const char *fmt, ...) {
@@ -58,41 +35,6 @@ inline int SPrintf(char *buf, size_t size, const char *fmt, ...) {
     va_end(args);
     return ret;
 }
-
-/*! \brief assert a condition is true, use this to handle debug information */
-inline void Assert(bool exp, const char *fmt, ...) {
-    if (!exp) {
-        std::string msg(kPrintBuffer, '\0');
-        va_list args;
-        va_start(args, fmt);
-        vsnprintf(&msg[0], kPrintBuffer, fmt, args);
-        va_end(args);
-        HandleAssertError(msg.c_str());
-    }
-}
-
-/*!\brief same as assert, but this is intended to be used as a message for users */
-inline void Check(bool exp, const char *fmt, ...) {
-    if (!exp) {
-        std::string msg(kPrintBuffer, '\0');
-        va_list args;
-        va_start(args, fmt);
-        vsnprintf(&msg[0], kPrintBuffer, fmt, args);
-        va_end(args);
-        HandleCheckError(msg.c_str());
-    }
-}
-
-/*! \brief report error message, same as check */
-inline void Error(const char *fmt, ...) {
-    std::string msg(kPrintBuffer, '\0');
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(&msg[0], kPrintBuffer, fmt, args);
-    va_end(args);
-    HandleCheckError(msg.c_str());
-}
-
 // easy utils that can be directly accessed in xgboost
 /*! \brief get the beginning address of a vector */
 template<typename T>

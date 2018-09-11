@@ -42,9 +42,6 @@ struct WorkRequest {
         this->work_type_ = other.work_type_;
         this->completed_bytes_ = other.completed_bytes_;
         this->done_ = other.done_;
-    //    this->done_.store(other.done_.load(std::memory_order_release), 
-    //        std::memory_order_acquire);
-        //this->completed_bytes_.store(other.completed_bytes_.load());
     }
     WorkRequest operator=(const WorkRequest& other) {
         this->req_id_ = other.req_id_;
@@ -53,9 +50,6 @@ struct WorkRequest {
         this->work_type_ = other.work_type_;
         this->completed_bytes_ = other.completed_bytes_;
         this->done_ = other.done_;
-    //    this->done_.store(other.done_.load(std::memory_order_release), 
-    //        std::memory_order_acquire);
-        //this->completed_bytes_.store(other.completed_bytes_.load());
         return *this;
     }
 
@@ -118,6 +112,7 @@ private:
     void* extra_data_;
     std::mutex done_lock_;
     std::condition_variable done_cond_;
+    std::function<void()> done_callback_;
 };
 struct WorkRequestManager {
     std::unordered_map<uint64_t, WorkRequest> all_work_reqs;

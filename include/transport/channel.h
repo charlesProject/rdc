@@ -8,6 +8,7 @@ enum ChannelType : uint32_t {
     kRead,
     kWrite,
     kReadWrite,
+    kNone,
 };
 
 class IChannel {
@@ -19,6 +20,7 @@ public:
     Status SendInt(int32_t val) {
         auto wc = this->ISend(&val, sizeof(int32_t));
         wc.Wait();
+        //LOG_F(INFO, "sended");
         return wc.status();
     }
     Status SendStr(std::string str) {
@@ -27,6 +29,7 @@ public:
         wc << this->ISend(&size, sizeof(size));
         wc << this->ISend(utils::BeginPtr(str), str.size());
         wc.Wait();
+        //LOG_F(INFO, "sended");
         return wc.status();
     }
     Status RecvInt(int32_t& val) {
@@ -38,8 +41,10 @@ public:
         int32_t size = 0;
         auto wc = this->IRecv(&size, sizeof(int32_t));
         wc.Wait();
+        LOG_F(INFO, "%d", size);
         str.resize(size);
         wc = this->IRecv(utils::BeginPtr(str), str.size());
+        LOG_F(INFO, "%d", wc.id());
         wc.Wait();
         return wc.status();
     }

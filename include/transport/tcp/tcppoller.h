@@ -37,7 +37,7 @@ public:
     std::unique_ptr<std::thread> listen_thrd;
     void PollForever();
     int Poll();
-    int Listen(const int32_t& port, const size_t& backlog = 1024);
+    int Listen(const int32_t& port, const size_t& backlog = 10240);
     TcpChannel* Accept();
     int32_t shutdown_fd_;
     int32_t listen_fd_;

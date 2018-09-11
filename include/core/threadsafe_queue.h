@@ -25,6 +25,27 @@ public:
         cond_.notify_all();
     }
 
+    void Pop() {
+        mu_.lock();
+        queue_.pop();
+        mu_.unlock();
+    }
+    void WaitAndPeek(T& value) {
+        std::unique_lock<std::mutex> lk(mu_);
+        cond_.wait(lk, [this]{return !queue_.empty();});
+        value = queue_.front();
+    }
+    /**
+     * \brief wait until pop an element from the beginning, threadsafe
+     * \param value the poped value
+     */
+    void WaitAndPop(T* value) {
+        std::unique_lock<std::mutex> lk(mu_);
+        cond_.wait(lk, [this]{return !queue_.empty();});
+        *value = std::move(queue_.front());
+        queue_.pop();
+    }
+
     void NonLockPush(T new_value) {
         spin_.lock();
         queue_.push(std::move(new_value));
@@ -42,27 +63,20 @@ public:
             return true;
         }
     }
-    void Pop() {
-        mu_.lock();
-        queue_.pop();
-        mu_.unlock();
-    }
+
     void NonLockPop() {
         spin_.lock();
         queue_.pop();
         spin_.unlock();
     }
-    /**
-     * \brief wait until pop an element from the beginning, threadsafe
-     * \param value the poped value
-     */
-    void WaitAndPop(T* value) {
-        std::unique_lock<std::mutex> lk(mu_);
-        cond_.wait(lk, [this]{return !queue_.empty();});
-        *value = std::move(queue_.front());
-        queue_.pop();
+    bool empty() {
+        std::lock_guard<std::mutex> lg(mu_);
+        return queue_.empty();
     }
-
+    int size() {
+        std::lock_guard<std::mutex> lg(mu_);
+        return queue_.size();
+    }
 private:
     mutable std::mutex mu_;
     mutable rdc::utils::SpinLock spin_;

@@ -19,7 +19,7 @@ inline int GetLastSocketError(const int32_t& fd) {
     return -1;
 }
 
-inline void CloseSocket(const int32_t& fd) {
+inline void CloseSocket(int32_t& fd) {
     if (fd != kInvalidSocket) {
 #ifdef _WIN32
         closesocket(fd);
@@ -27,4 +27,5 @@ inline void CloseSocket(const int32_t& fd) {
         close(fd);
 #endif
     }
+    fd = kInvalidSocket;
 }

@@ -21,6 +21,7 @@ Communicator::Communicator(const std::string& name) {
     tracker_port_ = 9000;
     tracker_connected_ = false;
     tracker_closed_ = false;
+    tracker_lock_ = std::make_shared<std::mutex>();
     host_uri_ = "";
     worker_port_ = 9910;
     rank_ = -1;
@@ -48,6 +49,7 @@ Communicator::Communicator(const Communicator& other) {
     world_size_ = other.world_size_;
     rank_ = other.rank_;
     tracker_ = other.tracker_;
+    tracker_lock_ = other.tracker_lock_;
     worker_port_ = other.worker_port_;
     peer_addrs_ = other.peer_addrs_;
     num_neighbors_ = other.num_neighbors_;
@@ -94,38 +96,63 @@ void Communicator::Init(int argc, char* argv[]) {
     this->host_uri_ = ip;
     std::tie(num_conn_, num_accept_) = this->ConnectTracker();
     // get information from tracker
+    conn_lock_.lock();
     this->ReConnectLinks(std::make_tuple(num_conn_, num_accept_));
+    conn_lock_.unlock();
 }
 
 void Communicator::NewCommunicator(const std::string& name) {
     comm_lock_.lock();
     if (name == kWorldCommName) return;
     if (sub_comms_.count(name)) return;
+    comm_lock_.unlock();
     auto comm = utils::make_unique<Communicator>(*this);
     comm->set_name(name);
-    std::unique_lock<std::mutex> lock(tracker_lock_);
+    std::unique_lock<std::mutex> lock(*tracker_lock_);
     tracker_cond_.wait(lock, [this]{ return tracker_connected_; });
+    conn_lock_.lock();
     comm->ReConnectLinks(std::make_tuple(num_conn_, num_accept_));
+    conn_lock_.unlock();
+    comm_lock_.lock();
     this->sub_comms_[name] = std::move(comm);
     comm_lock_.unlock();
+}
+// register communicator to tracker
+void Communicator::Register() {
+    if (tracker_uri_ == "NULL") return;
+    tracker_lock_->lock();
+    tracker_->SendStr(std::string("register"));
+    tracker_->SendStr(name_);
+    tracker_lock_->unlock();
 }
 void Communicator::Shutdown() {
     if (tracker_uri_ == "NULL") return;
     // notify tracker rank i have shutdown
+    tracker_lock_->lock();
     tracker_->SendStr(std::string("shutdown"));
-    tracker_lock_.lock();
     if (!tracker_closed_) {
         tracker_->Close();
     }
-    tracker_lock_.unlock();
+    tracker_lock_->unlock();
 }
 void Communicator::TrackerPrint(const std::string &msg) {
     if (tracker_uri_ == "NULL") {
         LOG_F(INFO, "@node[%d] %s", rank_, msg.c_str());
         return;
     }
+    tracker_lock_->lock();
     tracker_->SendStr(std::string("print"));
     tracker_->SendStr(msg);
+    tracker_lock_->unlock();
+}
+void Communicator::Barrier() {
+    tracker_lock_->lock();
+    tracker_->SendStr(std::string("barrier"));
+    tracker_->SendStr(name_.c_str());
+    std::string barrier_token_;
+    tracker_->RecvStr(barrier_token_);
+    CHECK_EQ(barrier_token_, "barrier_done");
+    tracker_lock_->unlock();
 }
 // util to parse data with unit suffix
 inline size_t ParseUnit(const char *name, const char *val) {
@@ -166,7 +193,7 @@ void Communicator::SetParam(const char *name, const char *val) {
  */
 std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
     // get information from tracker
-    tracker_lock_.lock();
+    tracker_lock_->lock();
     if (!tracker_connected_) {
         tracker_ = std::make_shared<TcpChannel>();
         int retry = 0;
@@ -200,12 +227,14 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
         // start listener at very begining
         TcpPoller::Get()->Listen(worker_port_);
         tracker_->SendStr(std::string(cmd));
-        
-        tracker_->SendStr(name_);
         CHECK_F(tracker_->RecvInt(world_size_) == Status::kSuccess,
                 "ReConnectLink fail to recv world size");
+        LOG_F(INFO, "%d", world_size_);
         CHECK_F(tracker_->RecvInt(rank_) == Status::kSuccess,
                "ReConnectLink fail to recv rank");
+        LOG_F(INFO, "%d", rank_);
+        logging::add_file(utils::Printf("log/%d", rank_).c_str(),
+                          logging::Truncate, logging::Verbosity_MAX);
         // send back socket listening port to tracker
         CHECK_F(tracker_->SendStr(host_uri_) == Status::kSuccess,
                "ReConnectLink fail to send my uri");
@@ -214,19 +243,24 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
         // get new ranks
         CHECK_F(tracker_->RecvInt(parent_rank_) ==
                 Status::kSuccess, "ReConnectLink fail to recv parent rank");
+        LOG_F(INFO, "%d", parent_rank_);
         CHECK_F(tracker_->RecvInt(num_neighbors_) == Status::kSuccess,
                 "ReConnectLink fail to recv num neighbors");
+        LOG_F(INFO, "%d", num_neighbors_);
         for (int i = 0; i < num_neighbors_; ++i) {
               int nrank;
               CHECK_F(tracker_->RecvInt(nrank) == Status::kSuccess,
                       "ReConnectLink fail to recv neighbor rank");
+              LOG_F(INFO, "%d", nrank);
               tree_neighbors_[nrank] = 1;
         }
         CHECK_F(tracker_->RecvInt(prev_rank_) == Status::kSuccess,
                "ReConnectLink fail to recv prev rank");
+        LOG_F(INFO, "pr %d", prev_rank_);
         CHECK_F(tracker_->RecvInt(next_rank_) == Status::kSuccess,
                "ReConnectLink fail to recv next rank");
 
+        LOG_F(INFO, "nr %d", next_rank_);
         // get the global tree map
         std::vector<int> nodes(this->world_size_);
         std::vector<std::pair<int, int>> edges;
@@ -249,14 +283,18 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
         // get number of to connect and number of to accept nodes from tracker
         CHECK_F(tracker_->RecvInt(num_conn_) == Status::kSuccess,
                "ReConnectLink fail to recv num conn");
+        
+        LOG_F(INFO, "nc %d", num_conn_);
         CHECK_F(tracker_->RecvInt(num_accept_) ==  Status::kSuccess,
                 "ReConnectLink fail to recv num accept");
-    
+
+        LOG_F(INFO, "na %d", num_accept_);
         for (int i = 0; i < num_conn_; ++i) {
             int hport, hrank;
             std::string hname;
             CHECK_F(tracker_->RecvStr(hname) == Status::kSuccess,
                     "ReConnectLink fail to recv peer hostname");
+            LOG_F(INFO, "hn %s", hname.c_str());
             CHECK_F(tracker_->RecvInt(hport) == Status::kSuccess,
                     "ReConnectLink fail to recv peer port");
             CHECK_F(tracker_->RecvInt(hrank) == Status::kSuccess,
@@ -264,7 +302,7 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
             peer_addrs_[hrank] = std::make_tuple(hname, hport);
         }
     }
-    tracker_lock_.unlock();
+    tracker_lock_->unlock();
     tracker_cond_.notify_all();
     return std::tie(num_conn_, num_accept_);
 }
@@ -274,6 +312,7 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
  */
 void Communicator::ReConnectLinks(const std::tuple<int, int>&
         num_conn_accept) {
+    this->Register();
     int num_conn = 0, num_accept = 0;
     std::tie(num_conn, num_accept) = num_conn_accept;
     for (auto& peer_addr : peer_addrs_) {
@@ -284,6 +323,7 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
         std::shared_ptr<IChannel> channel = std::make_shared<TcpChannel>();
         if (channel->Connect(hname.c_str(), hport) != Status::kSuccess) {
             channel->Close();
+            LOG_F(ERROR,"Error");
             continue;
         } else {
             int hrank = 0;
@@ -291,6 +331,7 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
                     "Reconnect Link failure 14");
             channel->SendInt(rank_);
         }
+        LOG_F(INFO, "PEER %s %d", name_.c_str(), hrank);
         all_links_[hrank] = channel;
     }
     // listen to incoming links
@@ -301,11 +342,19 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
         channel->SendInt(rank_);
         CHECK_F(channel->RecvInt(hrank) == Status::kSuccess,
                 "ReConnect Link failure 15");
+        LOG_F(INFO, "PEER %s %d", name_.c_str(), hrank);
         all_links_[hrank] = schannel;
     }
+    LOG_F(INFO, "LINKS %s %d", name_.c_str(), all_links_.size());
+    std::string msg;
+    for (auto& i : all_links_) {
+        msg += std::to_string(i.first) + " ";
+    }
+    LOG_F(INFO, msg.c_str());
+
     // setup tree links and ring structure
     tree_links.clear();
-    for (auto&& link_with_rank : all_links_) {
+    for (auto& link_with_rank : all_links_) {
         // set the socket to non-blocking mode, enable TCP keepalive
         auto cur_rank = link_with_rank.first;
         auto cur_link = link_with_rank.second;
@@ -319,10 +368,28 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
             ring_next_ = cur_link.get();
         }
     }
+    if (prev_rank_ != -1) {
+        std::string msg;
+        if(ring_prev_ == nullptr) {
+            msg += utils::Printf("RANK %s %d  %d :", name_.c_str(),rank_, prev_rank_);
+            for (auto& l : all_links_)
+                msg += utils::Printf("%d ", l.first);
+            LOG_F(INFO, msg.c_str());
+        }
+    }
+    if (next_rank_ != -1) {
+        std::string msg;
+        if(ring_next_ == nullptr) {
+            msg += utils::Printf("RANK %s %d  %d :",name_.c_str(), rank_, next_rank_);
+            for (auto& l : all_links_)
+                msg += std::to_string(l.first) + " ";
+            LOG_F(INFO, msg.c_str());
+        }
+    }
     CHECK_F(prev_rank_ == -1 || ring_prev_ != nullptr,
-           "cannot find prev ring in the link");
+           "cannot find prev link in the ring");
     CHECK_F(next_rank_ == -1 || ring_next_ != nullptr,
-           "cannot find next ring in the link");
+           "cannot find next link in the ring");
     TrackerPrint("Connected done");
 }
 void Communicator::TryAllreduce(void *sendrecvbuf_,
@@ -444,6 +511,7 @@ void Communicator::TryAllgatherRing(void** sendrecvbufs_, size_t type_nbytes,
             wc.Wait();
             read_idx++;
         }
+
     }
 }
 void Communicator::TryReduceScatterRing(void *sendrecvbuf_,
@@ -502,9 +570,9 @@ void Communicator::TryReduceScatterRing(void *sendrecvbuf_,
                                 ranges[read_pos].first) * type_nbytes;
             auto wc = next->IRecv(reducebuf + read_start, read_size);
             wc.Wait();
-            read_idx++;
             CHECK_F(read_idx <= stop_read_idx,"[%d] read_ptr boundary check",
                      rank_);
+            read_idx++;
             size_t reduce_pos = reduce_idx % n;
             size_t reduce_start = ranges[reduce_pos].first * type_nbytes;
             size_t reduce_size = (ranges[reduce_pos].second -
