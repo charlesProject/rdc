@@ -58,11 +58,9 @@ struct WorkRequest {
     }
     bool done() {
         return done_;
-    //    return done_.load(std::memory_order_acquire);
     }
     void set_done(const bool& done) {
         done_ = done;
-    //    done_.store(done, std::memory_order_release);
     }
     Status status() {
         return status_;
@@ -217,13 +215,6 @@ struct WorkCompletion {
           done_ = WorkRequestManager::Get()->done(id_);
         }
         return done_;
-    }
-    size_t completed_bytes() {
-        if (WorkRequestManager::Get()->Contain(id_)) {
-            completed_bytes_ = WorkRequestManager::Get()->
-              completed_bytes(id_);
-        }
-        return completed_bytes_;
     }
     bool operator()() {
         if (!done_) {

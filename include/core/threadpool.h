@@ -7,31 +7,31 @@
 #include <mutex>
 #include <thread>
 
-const int kNumThreads = 16;
+const int kNumThreads = 64;
 
 class ThreadPool {
 
 private:
     // number of thread
-    unsigned num_threads;
-    std::vector<std::thread> threads;
+    uint32_t num_workers_;
+    std::vector<std::thread> workers_;
     // where tasks are storage
-    std::queue<std::function<void(void)> > queue;
+    std::queue<std::function<void(void)> > queue_;
 
     std::atomic_bool stop;
-    std::condition_variable wait_var;
-    std::mutex queue_mutex;
-
+    std::condition_variable wait_var_;
+    std::mutex queue_mutex_;
+    std::mutex worker_mutex_;
     // Body of every running thread.
     // The thread will run until deconstructor or `JoinAll` are called
-    // and it fetch the top of the queue to find a task to exec.
+    // and it fetch the top of the queue_ to find a task to exec.
     void Run() {
         while (!stop) {
             std::function<void(void)> run;
-            std::unique_lock<std::mutex> lock(queue_mutex);
-            wait_var.wait(lock, [this] {return !queue.empty();});
-            run = queue.front();
-            queue.pop();
+            std::unique_lock<std::mutex> lock(queue_mutex_);
+            wait_var_.wait(lock, [this] {return !queue_.empty();});
+            run = queue_.front();
+            queue_.pop();
             lock.unlock();
             // unlock befor `run` to ensure parallelism
             run();
@@ -39,16 +39,19 @@ private:
     }
 
 public:
-    ThreadPool() : ThreadPool(kNumThreads) {}
+    ThreadPool() : ThreadPool(2 * std::atoi(getenv("NUM_WORKERS"))) {
+    }
     // Constructor
-    ThreadPool(int c)
-        : num_threads(c)
-        , threads(num_threads)
-        , stop(false)
-    {
-        // create the threads
-        for (std::thread& t : threads)
-            t = std::move(std::thread([this] { this->Run(); }));
+    ThreadPool(uint32_t num_workers)
+        : num_workers_(num_workers)
+        , workers_(num_workers)
+        , stop(false) {
+        // create the workers_
+        //worker_mutex_.lock();
+        for (std::thread& worker : workers_) {
+            worker = std::move(std::thread([this] { this->Run(); }));
+        }
+        //worker_mutex_.unlock();
     }
 
     // Deconstructor
@@ -59,29 +62,39 @@ public:
         static ThreadPool pool;
         return &pool;
     }
+    void AddWorker(uint32_t num_new_workers) {
+        worker_mutex_.lock();
+        num_workers_ += num_new_workers;
+        for (auto i = 0U; i < num_new_workers; i++) {
+            workers_.emplace_back(std::thread([this] { this->Run(); }));
+        }
+        worker_mutex_.unlock();
+    }
     // Add a task to queue
     // The function will add, at the end of the queue, a `void`
     // function only if no one is waiting for stop.
     void AddTask(std::function<void(void)> job) {
         if (!stop) {
-            std::lock_guard<std::mutex> lock(queue_mutex);
-            queue.emplace(job);
-            wait_var.notify_one();
+            std::lock_guard<std::mutex> lock(queue_mutex_);
+            queue_.emplace(job);
+            wait_var_.notify_one();
         }
     }
 
     // Wait until all tasks ended.
-    // If the queue is not empty wait the end of all tasks inserted
-    // and terminate the threads.
+    // If the queue_ is not empty wait the end of all tasks inserted
+    // and terminate the workers_.
     void JoinAll() {
-        std::unique_lock<std::mutex> lock(queue_mutex);
-        wait_var.wait(lock, [this]() -> bool { return queue.empty(); });
+        std::unique_lock<std::mutex> lock(queue_mutex_);
+        wait_var_.wait(lock, [this] { return queue_.empty(); });
         stop = true;
         lock.unlock();
-        for (std::thread& t : threads) {
-            if (t.joinable())
-                t.join();
+//        worker_mutex_.lock();
+        for (std::thread& worker : workers_) {
+            if (worker.joinable())
+                worker.join();
         }
+//        worker_mutex_.unlock();
     }
 };
 
