@@ -10,6 +10,7 @@
 #include <cstring>
 #include "utils/network_utils.h"
 #include "utils/string_utils.h"
+#include "core/threadpool.h"
 #include "core/logging.h"
 #include "comm/communicator_base.h"
 
@@ -103,6 +104,8 @@ void Communicator::Init(int argc, char* argv[]) {
 }
 
 void Communicator::NewCommunicator(const std::string& name) {
+    // increase volumn of threadpool
+    ThreadPool::Get()->AddWorkers(2 * std::atoi(getenv("RDC_NUM_WORKERS")));
     comm_lock_.lock();
     if (name == kWorldCommName) return;
     if (sub_comms_.count(name)) return;
@@ -111,9 +114,12 @@ void Communicator::NewCommunicator(const std::string& name) {
     comm->set_name(name);
     std::unique_lock<std::mutex> lock(*tracker_lock_);
     tracker_cond_.wait(lock, [this]{ return tracker_connected_; });
+    // connection in current communicator
+    lock.unlock();
     conn_lock_.lock();
     comm->ReConnectLinks(std::make_tuple(num_conn_, num_accept_));
     conn_lock_.unlock();
+    // add this communicator to the goverment of main communicator
     comm_lock_.lock();
     this->sub_comms_[name] = std::move(comm);
     comm_lock_.unlock();
@@ -121,7 +127,9 @@ void Communicator::NewCommunicator(const std::string& name) {
 // register communicator to tracker
 void Communicator::Register() {
     if (tracker_uri_ == "NULL") return;
+    LOG(INFO) << name_;
     tracker_lock_->lock();
+    LOG(INFO) << name_;
     tracker_->SendStr(std::string("register"));
     tracker_->SendStr(name_);
     tracker_lock_->unlock();
@@ -330,6 +338,7 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
         LOG_F(INFO, "PEER %s %d", name_.c_str(), hrank);
         all_links_[hrank] = channel;
     }
+    LOG(INFO) << name_;
     // listen to incoming links
     for (int i = 0; i < num_accept; ++i) {
         TcpChannel* channel= TcpPoller::Get()->Accept();
