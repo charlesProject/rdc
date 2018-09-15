@@ -12,6 +12,7 @@
 #include "utils/string_utils.h"
 #include "core/threadpool.h"
 #include "core/logging.h"
+#include "core/env.h"
 #include "comm/communicator_base.h"
 
 namespace rdc {
@@ -73,7 +74,7 @@ void Communicator::Init(int argc, char* argv[]) {
     // setup from enviroment variables
     // handler to get variables from env
     for (size_t i = 0; i < env_vars_.size(); ++i) {
-        const char *value = getenv(env_vars_[i].c_str());
+        const char *value = Env::Get()->Find(env_vars_[i].c_str());
         if (value != nullptr) {
             LOG_F(INFO, "%s %s", env_vars_[i].c_str(), value);
             this->SetParam(env_vars_[i].c_str(), value);
@@ -105,7 +106,8 @@ void Communicator::Init(int argc, char* argv[]) {
 
 void Communicator::NewCommunicator(const std::string& name) {
     // increase volumn of threadpool
-    ThreadPool::Get()->AddWorkers(2 * std::atoi(getenv("RDC_NUM_WORKERS")));
+    ThreadPool::Get()->AddWorkers(2 *
+            Env::Get()->GetEnv("RDC_NUM_WORKERS", 0));
     comm_lock_.lock();
     if (name == kWorldCommName) return;
     if (sub_comms_.count(name)) return;
@@ -141,6 +143,7 @@ void Communicator::Shutdown() {
         tracker_->Close();
     }
     tracker_lock_->unlock();
+    TcpAdapter::Get()->Shutdown();
 }
 void Communicator::TrackerPrint(const std::string &msg) {
     if (tracker_uri_ == "NULL") {
@@ -232,7 +235,7 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
             return std::make_tuple(-1, -1);
         }
         // start listener at very begining
-        TcpPoller::Get()->Listen(worker_port_);
+        TcpAdapter::Get()->Listen(worker_port_);
         tracker_->SendStr(std::string(cmd));
         CHECK_F(tracker_->RecvInt(world_size_) == Status::kSuccess,
                 "ReConnectLink fail to recv world size");
@@ -333,27 +336,18 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
                     "Reconnect Link failure 14");
             channel->SendInt(rank_);
         }
-        LOG_F(INFO, "PEER %s %d", name_.c_str(), hrank);
         all_links_[hrank] = channel;
     }
     // listen to incoming links
     for (int i = 0; i < num_accept; ++i) {
-        TcpChannel* channel= TcpPoller::Get()->Accept();
+        TcpChannel* channel= TcpAdapter::Get()->Accept();
         std::shared_ptr<IChannel> schannel(channel);
         int hrank = 0;
         channel->SendInt(rank_);
         CHECK_F(channel->RecvInt(hrank) == Status::kSuccess,
                 "ReConnect Link failure 15");
-        LOG_F(INFO, "PEER %s %d", name_.c_str(), hrank);
         all_links_[hrank] = schannel;
     }
-    LOG_F(INFO, "LINKS %s %d", name_.c_str(), all_links_.size());
-    std::string msg;
-    for (auto& i : all_links_) {
-        msg += std::to_string(i.first) + " ";
-    }
-    LOG_F(INFO, msg.c_str());
-
     // setup tree links and ring structure
     tree_links.clear();
     for (auto& link_with_rank : all_links_) {
@@ -370,6 +364,7 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
             ring_next_ = cur_link.get();
         }
     }
+    LOG_F(INFO,"");
     CHECK_F(prev_rank_ == -1 || ring_prev_ != nullptr,
            "cannot find prev link in the ring");
     CHECK_F(next_rank_ == -1 || ring_next_ != nullptr,

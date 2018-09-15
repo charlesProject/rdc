@@ -10,15 +10,15 @@ namespace rdc {
  * @struct TcpChannel
  * @brief a channel which send and recv data on tcp protocal and ethernet
  */
-struct TcpPoller;
+class TcpAdapter;
 class TcpChannel final: public IChannel {
 public:
     TcpChannel();
     TcpChannel(int32_t fd);
     TcpChannel(ChannelType type);
     TcpChannel(int32_t fd, ChannelType type);
-    TcpChannel(TcpPoller* poller, ChannelType type);
-    TcpChannel(TcpPoller* poller, int32_t fd, ChannelType type);
+    TcpChannel(TcpAdapter* poller, ChannelType type);
+    TcpChannel(TcpAdapter* poller, int32_t fd, ChannelType type);
     ~TcpChannel();
     /**
       * Function to add this channel to the poller obeject
@@ -56,7 +56,7 @@ private:
     ThreadsafeQueue<uint64_t> send_reqs_;
     ThreadsafeQueue<uint64_t> recv_reqs_;
     /** only used to enable accept and listen callbacks */
-    TcpPoller* poller_;
+    TcpAdapter* poller_;
     ChannelType type_;
     std::mutex mu_;
     std::atomic<bool> spin_;

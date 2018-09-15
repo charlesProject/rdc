@@ -1,8 +1,8 @@
 #pragma once
 #include <string>
-#include "transport/channel.h"
 #include "utils/string_utils.h"
 #include "core/logging.h"
+
 namespace rdc {
 enum Backend {
     kTcp = 0,

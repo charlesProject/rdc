@@ -10,7 +10,7 @@
 #include <cstring>
 
 #include "transport/channel.h"
-#include "transport/tcp/tcppoller.h"
+#include "transport/tcp/tcpadapter.h"
 #include "transport/tcp/tcpchannel.h"
 #include "core/status.h"
 
@@ -70,7 +70,7 @@ TcpChannel::TcpChannel(int32_t fd, ChannelType type) {
     this->type_ = type;
     this->spin_.store(false, std::memory_order_release);
 }
-TcpChannel::TcpChannel(TcpPoller* poller, ChannelType type) {
+TcpChannel::TcpChannel(TcpAdapter* poller, ChannelType type) {
     this->poller_ = poller;
     this->fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     this->type_ = type;
@@ -85,7 +85,7 @@ TcpChannel::TcpChannel(TcpPoller* poller, ChannelType type) {
 }
 
 
-TcpChannel::TcpChannel(TcpPoller* poller, int32_t fd, ChannelType type) {
+TcpChannel::TcpChannel(TcpAdapter* poller, int32_t fd, ChannelType type) {
     this->poller_ = poller;
     this->fd_ = fd;
     this->type_ = type;
@@ -142,7 +142,7 @@ Status TcpChannel::Connect(const std::string& hostname,
     }
     fcntl(this->fd_, F_SETFL, O_NONBLOCK);
     if (this->poller_ == nullptr) {
-        this->poller_ = TcpPoller::Get();
+        this->poller_ = TcpAdapter::Get();
         this->poller_->AddChannel(this);
         epoll_event ev;
         std::memset(&ev, 0, sizeof(ev));
@@ -182,7 +182,10 @@ void TcpChannel::ReadCallback() {
             return;
         }
     } else {
-        recv_reqs_.WaitAndPeek(recv_req_id);
+        if (!recv_reqs_.WaitAndPeek(recv_req_id,
+                    std::chrono::milliseconds(kCommTimeoutMs))) {
+            return;
+        }
     }
     WorkRequest& recv_req = WorkRequestManager::Get()->
                             GetWorkRequest(recv_req_id);
@@ -211,7 +214,10 @@ void TcpChannel::WriteCallback() {
             return;
         }
     } else {
-        send_reqs_.WaitAndPeek(send_req_id);
+        if (!send_reqs_.WaitAndPeek(send_req_id,
+                    std::chrono::milliseconds(kCommTimeoutMs))) {
+            return;
+        }
     }
     WorkRequest& send_req = WorkRequestManager::Get()->
                             GetWorkRequest(send_req_id);

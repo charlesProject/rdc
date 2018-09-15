@@ -7,6 +7,7 @@
 #include <mutex>
 #include <thread>
 
+#include "core/env.h"
 #include "dmlc/logging.h"
 class ThreadPool {
 
@@ -17,7 +18,7 @@ private:
     // where tasks are storage
     std::queue<std::function<void(void)> > queue_;
 
-    std::atomic_bool stop;
+    std::atomic_bool stop_;
     std::condition_variable wait_var_;
     std::mutex queue_mutex_;
     std::mutex worker_mutex_;
@@ -25,10 +26,13 @@ private:
     // The thread will run until deconstructor or `JoinAll` are called
     // and it fetch the top of the queue_ to find a task to exec.
     void Run() {
-        while (!stop) {
+        while (true) {
             std::function<void(void)> run;
             std::unique_lock<std::mutex> lock(queue_mutex_);
-            wait_var_.wait(lock, [this] {return !queue_.empty();});
+            wait_var_.wait(lock, [this] {return stop_ || !queue_.empty();});
+            if (stop_) {
+                return;
+            }
             run = queue_.front();
             queue_.pop();
             lock.unlock();
@@ -38,17 +42,16 @@ private:
     }
 
 public:
-    ThreadPool() : ThreadPool(4) {
-    }
+    ThreadPool() : ThreadPool(2 * Env::Get()->GetIntEnv("RDC_NUM_WORKERS")) {}
     // Constructor
     ThreadPool(uint32_t num_workers)
         : num_workers_(num_workers)
         , workers_(num_workers)
-        , stop(false) {
+        , stop_(false) {
         // create the workers_
         worker_mutex_.lock();
         for (std::thread& worker : workers_) {
-            worker = std::move(std::thread([this] { this->Run(); }));
+            worker = std::thread([this] { this->Run(); });
         }
         worker_mutex_.unlock();
     }
@@ -67,15 +70,14 @@ public:
         for (auto i = 0U; i < num_new_workers; i++) {
             workers_.emplace_back(std::thread([this] { this->Run(); }));
         }
-        LOG(INFO) << workers_.size();
         worker_mutex_.unlock();
     }
     // Add a task to queue
     // The function will add, at the end of the queue, a `void`
     // function only if no one is waiting for stop.
     void AddTask(std::function<void(void)> job) {
-        if (!stop) {
-            std::lock_guard<std::mutex> lock(queue_mutex_);
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        if (!stop_) {
             queue_.emplace(job);
             wait_var_.notify_one();
         }
@@ -85,10 +87,13 @@ public:
     // If the queue_ is not empty wait the end of all tasks inserted
     // and terminate the workers_.
     void JoinAll() {
-        std::unique_lock<std::mutex> lock(queue_mutex_);
-        wait_var_.wait(lock, [this] { return queue_.empty(); });
-        stop = true;
-        lock.unlock();
+//        std::unique_lock<std::mutex> lock(queue_mutex_);
+//        wait_var_.wait(lock, [this] { return queue_.empty(); });
+        queue_mutex_.lock();
+        stop_ = true;
+        wait_var_.notify_all();
+        queue_mutex_.unlock();
+//        lock.unlock();
         worker_mutex_.lock();
         for (std::thread& worker : workers_) {
             if (worker.joinable())

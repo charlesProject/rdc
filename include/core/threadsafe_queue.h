@@ -30,10 +30,16 @@ public:
         queue_.pop();
         mu_.unlock();
     }
-    void WaitAndPeek(T& value) {
+    template <typename Duration>
+    bool WaitAndPeek(T& value, const Duration& timeout_) {
         std::unique_lock<std::mutex> lk(mu_);
-        cond_.wait(lk, [this]{return !queue_.empty();});
+        auto ret = cond_.wait_for(lk, timeout_,
+                [this]{return !queue_.empty();});
+        if (ret == false) {
+            return false;
+        }
         value = queue_.front();
+        return true;
     }
     /**
      * \brief wait until pop an element from the beginning, threadsafe
