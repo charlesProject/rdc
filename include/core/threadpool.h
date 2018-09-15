@@ -7,7 +7,7 @@
 #include <mutex>
 #include <thread>
 
-
+#include "dmlc/logging.h"
 class ThreadPool {
 
 private:
@@ -38,7 +38,7 @@ private:
     }
 
 public:
-    ThreadPool() : ThreadPool(2 * std::atoi(getenv("RDC_NUM_WORKERS"))) {
+    ThreadPool() : ThreadPool(4) {
     }
     // Constructor
     ThreadPool(uint32_t num_workers)
@@ -61,12 +61,13 @@ public:
         static ThreadPool pool;
         return &pool;
     }
-    void AddWorker(uint32_t num_new_workers) {
+    void AddWorkers(uint32_t num_new_workers) {
         worker_mutex_.lock();
         num_workers_ += num_new_workers;
         for (auto i = 0U; i < num_new_workers; i++) {
             workers_.emplace_back(std::thread([this] { this->Run(); }));
         }
+        LOG(INFO) << workers_.size();
         worker_mutex_.unlock();
     }
     // Add a task to queue

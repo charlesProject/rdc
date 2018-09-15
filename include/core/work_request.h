@@ -29,11 +29,7 @@ struct WorkRequest {
             work_type_(work_type), done_(false),
             ptr_(const_cast<void*>(ptr)), size_in_bytes_(size), completed_bytes_(0) {
             }
-    //WorkRequest(const WorkRequest& other) = default;
-    ~WorkRequest() {
-        //delete done_lock_;
-        //delete done_cond_;
-    }
+    ~WorkRequest() = default;
 
     WorkRequest(const WorkRequest& other) {
         this->req_id_ = other.req_id_;
@@ -174,9 +170,10 @@ struct WorkRequestManager {
     void set_done(uint64_t req_id, bool done) {
         all_work_reqs[req_id].set_done(done);
     }
-    void set_finished(uint64_t req_id, bool done) {
+
+    void set_finished(uint64_t req_id) {
         cond_lock_->lock();
-        all_work_reqs[req_id].set_done(done);
+        all_work_reqs[req_id].set_done(true);
         cond_lock_->unlock();
         cond_->notify_all();
     }
@@ -191,9 +188,10 @@ struct WorkRequestManager {
     }
     uint64_t cur_req_id;
     std::unique_ptr<utils::SpinLock> store_lock;
+    std::unique_ptr<utils::SpinLock> id_lock;
+    // used when we do not want workrequest shutdown by themselves, deprecated
     std::unique_ptr<std::mutex> cond_lock_;
     std::unique_ptr<std::condition_variable> cond_;
-    std::unique_ptr<utils::SpinLock> id_lock;
 };
 
 

@@ -127,9 +127,7 @@ void Communicator::NewCommunicator(const std::string& name) {
 // register communicator to tracker
 void Communicator::Register() {
     if (tracker_uri_ == "NULL") return;
-    LOG(INFO) << name_;
     tracker_lock_->lock();
-    LOG(INFO) << name_;
     tracker_->SendStr(std::string("register"));
     tracker_->SendStr(name_);
     tracker_lock_->unlock();
@@ -338,7 +336,6 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
         LOG_F(INFO, "PEER %s %d", name_.c_str(), hrank);
         all_links_[hrank] = channel;
     }
-    LOG(INFO) << name_;
     // listen to incoming links
     for (int i = 0; i < num_accept; ++i) {
         TcpChannel* channel= TcpPoller::Get()->Accept();

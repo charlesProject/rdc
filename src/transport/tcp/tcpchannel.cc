@@ -6,6 +6,7 @@
 #include <string.h>
 #include <fcntl.h>
 
+#include <chrono>
 #include <cstring>
 
 #include "transport/channel.h"
@@ -48,28 +49,33 @@ TcpChannel::TcpChannel() {
     this->poller_ = nullptr;
     this->fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     this->type_ = kReadWrite;
+    this->spin_.store(false, std::memory_order_release);
 }
 TcpChannel::TcpChannel(int32_t fd) {
     this->poller_ = nullptr;
     this->fd_ = fd;
     this->type_ = kReadWrite;
+    this->spin_.store(false, std::memory_order_release);
 }
 TcpChannel::TcpChannel(ChannelType type) {
     this->poller_ = nullptr;
     this->fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     this->type_ = type;
+    this->spin_.store(false, std::memory_order_release);
 }
 
 TcpChannel::TcpChannel(int32_t fd, ChannelType type) {
     this->poller_ = nullptr;
     this->fd_ = fd;
     this->type_ = type;
+    this->spin_.store(false, std::memory_order_release);
 }
 TcpChannel::TcpChannel(TcpPoller* poller, ChannelType type) {
     this->poller_ = poller;
     this->fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     this->type_ = type;
     uint32_t flags = channel_type_to_epoll_event(type);
+    this->spin_.store(false, std::memory_order_release);
     this->poller_->AddChannel(this);
     epoll_event ev;
     std::memset(&ev, 0, sizeof(ev));
@@ -92,6 +98,7 @@ TcpChannel::TcpChannel(TcpPoller* poller, int32_t fd, ChannelType type) {
         flags |= EPOLLIN | EPOLLOUT;
     }
 
+    this->spin_.store(false, std::memory_order_release);
     this->poller_->AddChannel(this);
     epoll_event ev;
     std::memset(&ev, 0, sizeof(ev));
@@ -150,38 +157,38 @@ WorkCompletion TcpChannel::ISend(const void* data, size_t size) {
     uint64_t send_req_id = WorkRequestManager::Get()->
                            NewWorkRequest(kSend, data, size);
     WorkCompletion wc(send_req_id);
-    //mu_.lock();
-    //Modify(kReadWrite);
-    send_reqs_.Push(send_req_id);
-    //mu_.unlock();
+    if (spin_) {
+        send_reqs_.NoLockPush(send_req_id);
+    } else {
+        send_reqs_.Push(send_req_id);
+    }
     return wc;
 }
 WorkCompletion TcpChannel::IRecv(void* data, size_t size) {
     uint64_t recv_req_id = WorkRequestManager::Get()->
                            NewWorkRequest(kRecv, data, size);
     WorkCompletion wc(recv_req_id);
-    //mu_.lock();
-    //LOG_F(INFO, "%d", recv_req_id);
-    recv_reqs_.Push(recv_req_id);
-    //LOG_F(INFO, "%d", recv_reqs_.size());
-    //mu_.unlock();
+    if (spin_) {
+        recv_reqs_.NoLockPush(recv_req_id);
+    } else {
+        recv_reqs_.Push(recv_req_id);
+    }
     return wc;
 }
 void TcpChannel::ReadCallback() {
     uint64_t recv_req_id = -1;
-//    if (!recv_reqs_.TryPeek(recv_req_id)) {
-//        return;
-//    }
-    //LOG_F(INFO, "%d", recv_reqs_.size());
-    recv_reqs_.WaitAndPeek(recv_req_id);
-    //LOG_F(INFO, "%d", recv_req_id);
-    //LOG_F(INFO, "%d %d", GetRank(), send_req_id);
+    if (spin_) {
+        if (!recv_reqs_.TryPeek(recv_req_id)) {
+            return;
+        }
+    } else {
+        recv_reqs_.WaitAndPeek(recv_req_id);
+    }
     WorkRequest& recv_req = WorkRequestManager::Get()->
                             GetWorkRequest(recv_req_id);
     auto read_nbytes = read(fd_, recv_req.ptr_at<uint8_t>(
                             recv_req.completed_bytes()),
                             recv_req.remain_nbytes());
-    //LOG(INFO) << read_nbytes << '\t' << recv_req.nbytes();
     if (read_nbytes == 0) {
         int error = GetLastSocketError(fd_);
         LOG_F(ERROR, "Error during recieving : %s", strerror(errno));
@@ -189,17 +196,23 @@ void TcpChannel::ReadCallback() {
             recv_req.id(), static_cast<Status>(error));
     }
     if (recv_req.AddBytes(read_nbytes)) {
-        recv_reqs_.Pop();
+        if (spin_) {
+            recv_reqs_.NoLockPop();
+        } else {
+            recv_reqs_.Pop();
+        }
     }
     return;
 }
 void TcpChannel::WriteCallback() {
-    //LOG(INFO);
     uint64_t send_req_id;
-//    if (!send_reqs_.TryPeek(send_req_id)) {
-//        return;
-//    }
-    send_reqs_.WaitAndPeek(send_req_id);
+    if (spin_) {
+        if (!send_reqs_.TryPeek(send_req_id)) {
+            return;
+        }
+    } else {
+        send_reqs_.WaitAndPeek(send_req_id);
+    }
     WorkRequest& send_req = WorkRequestManager::Get()->
                             GetWorkRequest(send_req_id);
     auto write_nbytes = write(fd_, send_req.ptr_at<uint8_t>(
@@ -212,31 +225,18 @@ void TcpChannel::WriteCallback() {
             send_req.id(), static_cast<Status>(error));
     }
     if (send_req.AddBytes(write_nbytes)) {
-        send_reqs_.Pop();
+        if (spin_) {
+            send_reqs_.NoLockPop();
+        } else {
+            send_reqs_.Pop();
+        }
     }
     return;
 }
 
-void TcpChannel::PrepareForNext() {
-//    auto next_op = ChannelType::kRead;
-//    mu_.lock();
-//    if (send_reqs_.empty() && !recv_reqs_.empty()) {
-//        next_op = kRead;
-//    }
-//    if (!send_reqs_.empty() && recv_reqs_.empty()) {
-//        next_op = kReadWrite;
-//    }
-//    if (send_reqs_.empty() && recv_reqs_.empty()) {
-//        next_op = kReadWrite;
-//    }
-//    Modify(next_op);
-//    mu_.unlock();
-    LOG_F(INFO, channel_type_to_string(type_).c_str());
-}
 
 void TcpChannel::Delete(const ChannelType& type) {
     mu_.lock();
-    //LOG(INFO) << channel_type_to_string(type_);
     if (type == ChannelType::kRead) {
         if (type_ == ChannelType::kReadWrite) {
             type_ = ChannelType::kWrite;
@@ -260,7 +260,6 @@ void TcpChannel::Delete(const ChannelType& type) {
             LOG_F(ERROR, "cannot delete");
         }
     }
-    //LOG(INFO) << channel_type_to_string(type_);
     Modify(type_);
     mu_.unlock();
 }
@@ -289,7 +288,6 @@ void TcpChannel::Add(const ChannelType& type) {
             LOG_F(ERROR, "cannot add");
         }
     }
-    //LOG(INFO) << channel_type_to_string(type_);
     Modify(type_);
     mu_.unlock();
 }

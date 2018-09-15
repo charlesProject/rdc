@@ -4,6 +4,9 @@
 #include "core/status.h"
 #include "transport/adapter.h"
 namespace rdc {
+
+const uint32_t kCommTimeOut = 60;
+
 enum ChannelType : uint32_t {
     kRead,
     kWrite,

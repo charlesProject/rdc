@@ -59,5 +59,6 @@ private:
     TcpPoller* poller_;
     ChannelType type_;
     std::mutex mu_;
+    std::atomic<bool> spin_;
 };
 }

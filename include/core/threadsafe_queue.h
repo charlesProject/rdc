@@ -46,7 +46,7 @@ public:
         queue_.pop();
     }
 
-    void NonLockPush(T new_value) {
+    void NoLockPush(T new_value) {
         spin_.lock();
         queue_.push(std::move(new_value));
         spin_.unlock();
@@ -64,7 +64,7 @@ public:
         }
     }
 
-    void NonLockPop() {
+    void NoLockPop() {
         spin_.lock();
         queue_.pop();
         spin_.unlock();
