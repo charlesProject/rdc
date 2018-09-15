@@ -75,38 +75,25 @@ inline bool EndsWith(const std::string& str, const std::string& suffix) {
     }
     auto str_len = str.size();
     auto suf_len = suffix.size();
-    for (auto i = 0U; suf_i < len; i++) {
-        if (str[str_len - i - 1] != prefix[suf_len - i - 1]) {
+    for (auto i = 0U; i < suf_len; i++) {
+        if (str[str_len - i - 1] != suffix[suf_len - i - 1]) {
             return false;
         }
     }
     return true;
 }
-/* !brief parse a address before connecting, a valid address is represented as a
- * tuple (backend, host, port) and will be represented as a string like
- * "tcp:127.0.0.1:8000"*/
-std::tuple<string, string, int> ParseAddress(const std::string& addr_str) {
-    int colon_counter = 0;
-    int start = 0, end = -1;
-    string backend;
-    string host;
-    uint32_t port = 0U;
-    for (auto i = 0U; i < addr_str.size(); i++) {
-        if (addr_str[i] == ':') {
-            start = end + 1;
-            end = i;
-            auto substr = addr_str.substr(start, end);
-            if (colon_counter == 0) {
-                backend = substr;
-            } else if (colon_counter == 1) {
-                host = substr;
-            } else {
-                port = std::atoi(substr);
-            }
-            colon_counter++;
-        }
+
+inline std::vector<std::string> Split(const std::string& str,
+        const char& sep = ' ') {
+    std::string::size_type begin = 0;
+    std::vector<std::string> result;
+
+    while ((begin = str.find_first_not_of(sep, begin)) != std::string::npos) {
+        auto end = str.find_first_of(sep, begin);
+        result.push_back(str.substr(begin, end - begin));
+        begin = end;
     }
-    return std::make_tuple(backend, host, port);
+    return result;
 }
 } // namespace str_utils
 } // namesapce rdc

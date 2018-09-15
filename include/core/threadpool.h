@@ -7,7 +7,6 @@
 #include <mutex>
 #include <thread>
 
-const int kNumThreads = 64;
 
 class ThreadPool {
 
@@ -39,7 +38,7 @@ private:
     }
 
 public:
-    ThreadPool() : ThreadPool(2 * std::atoi(getenv("NUM_WORKERS"))) {
+    ThreadPool() : ThreadPool(2 * std::atoi(getenv("RDC_NUM_WORKERS"))) {
     }
     // Constructor
     ThreadPool(uint32_t num_workers)
@@ -47,11 +46,11 @@ public:
         , workers_(num_workers)
         , stop(false) {
         // create the workers_
-        //worker_mutex_.lock();
+        worker_mutex_.lock();
         for (std::thread& worker : workers_) {
             worker = std::move(std::thread([this] { this->Run(); }));
         }
-        //worker_mutex_.unlock();
+        worker_mutex_.unlock();
     }
 
     // Deconstructor
@@ -89,12 +88,12 @@ public:
         wait_var_.wait(lock, [this] { return queue_.empty(); });
         stop = true;
         lock.unlock();
-//        worker_mutex_.lock();
+        worker_mutex_.lock();
         for (std::thread& worker : workers_) {
             if (worker.joinable())
                 worker.join();
         }
-//        worker_mutex_.unlock();
+        worker_mutex_.unlock();
     }
 };
 

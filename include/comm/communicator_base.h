@@ -347,7 +347,7 @@ protected:
     std::mutex conn_lock_;
     std::condition_variable tracker_cond_;
     // addr of all peers
-    std::unordered_map<int, std::tuple<std::string, int>> peer_addrs_;
+    std::unordered_map<int, std::string> peer_addrs_;
     // call sequence counter, records how many calls we made so far
     // from last call to CheckPoint, LoadCheckPoint
     int seq_counter;

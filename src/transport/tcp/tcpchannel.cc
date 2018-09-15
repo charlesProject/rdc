@@ -118,7 +118,8 @@ void TcpChannel::Modify(const ChannelType& type) {
     epoll_ctl(this->poller_->epoll_fd(), EPOLL_CTL_MOD,
             this->fd_, &ev);
 }
-Status TcpChannel::Connect(const std::string& hostname, const int32_t& port) {
+Status TcpChannel::Connect(const std::string& hostname,
+        const uint32_t& port) {
     sockaddr_in peer_addr;
     std::memset(&peer_addr, 0, sizeof(peer_addr));
     peer_addr.sin_family = AF_INET;

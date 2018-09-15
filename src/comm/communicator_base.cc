@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include "utils/network_utils.h"
+#include "utils/string_utils.h"
 #include "core/logging.h"
 #include "comm/communicator_base.h"
 
@@ -39,9 +40,9 @@ Communicator::Communicator(const std::string& name) {
     env_vars_.push_back("rdc_reduce_buffer");
     env_vars_.push_back("rdc_reduce_ring_mincount");
     // also include dmlc support direct variables
-    env_vars_.push_back("DMLC_NUM_ATTEMPT");
-    env_vars_.push_back("TRACKER_URI");
-    env_vars_.push_back("TRACKER_PORT");
+    env_vars_.push_back("RDC_NUM_ATTEMPT");
+    env_vars_.push_back("RDC_TRACKER_URI");
+    env_vars_.push_back("RDC_TRACKER_PORT");
     env_vars_.push_back("WORKER_CONNECT_RETRY");
 }
 Communicator::Communicator() : Communicator(kWorldCommName) {}
@@ -177,13 +178,13 @@ inline size_t ParseUnit(const char *name, const char *val) {
     }
 }
 void Communicator::SetParam(const char *name, const char *val) {
-    if (!strcmp(name, "TRACKER_URI")) tracker_uri_ = val;
-    if (!strcmp(name, "TRACKER_PORT")) tracker_port_ = atoi(val);
-    if (!strcmp(name, "rdc_world_size_")) world_size_ = atoi(val);
+    if (!strcmp(name, "RDC_TRACKER_URI")) tracker_uri_ = val;
+    if (!strcmp(name, "RDC_TRACKER_PORT")) tracker_port_ = atoi(val);
+    if (!strcmp(name, "rdc_world_size")) world_size_ = atoi(val);
     if (!strcmp(name, "rdc_reduce_ring_mincount")) {
         reduce_ring_mincount_ = ParseUnit(name, val);
     }
-    if (!strcmp(name, "WORKER_CONNECT_RETRY")) {
+    if (!strcmp(name, "RDC_WORKER_CONNECT_RETRY")) {
         connect_retry_ = atoi(val);
     }
 }
@@ -233,13 +234,13 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
         CHECK_F(tracker_->RecvInt(rank_) == Status::kSuccess,
                "ReConnectLink fail to recv rank");
         LOG_F(INFO, "%d", rank_);
-        logging::add_file(utils::Printf("log/%d", rank_).c_str(),
+        logging::add_file(str_utils::SPrintf("log/%d", rank_).c_str(),
                           logging::Truncate, logging::Verbosity_MAX);
         // send back socket listening port to tracker
-        CHECK_F(tracker_->SendStr(host_uri_) == Status::kSuccess,
-               "ReConnectLink fail to send my uri");
-        CHECK_F(tracker_->SendInt(worker_port_) == Status::kSuccess,
-               "ReConnectLink fail to send my port");
+        auto host_addr = str_utils::SPrintf("%s:%s:%d",
+                "tcp", host_uri_.c_str(), worker_port_);
+        CHECK_F(tracker_->SendStr(host_addr) == Status::kSuccess,
+               "ReConnectLink fail to send my addr");
         // get new ranks
         CHECK_F(tracker_->RecvInt(parent_rank_) ==
                 Status::kSuccess, "ReConnectLink fail to recv parent rank");
@@ -283,23 +284,20 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
         // get number of to connect and number of to accept nodes from tracker
         CHECK_F(tracker_->RecvInt(num_conn_) == Status::kSuccess,
                "ReConnectLink fail to recv num conn");
-        
+
         LOG_F(INFO, "nc %d", num_conn_);
         CHECK_F(tracker_->RecvInt(num_accept_) ==  Status::kSuccess,
                 "ReConnectLink fail to recv num accept");
 
         LOG_F(INFO, "na %d", num_accept_);
         for (int i = 0; i < num_conn_; ++i) {
-            int hport, hrank;
-            std::string hname;
-            CHECK_F(tracker_->RecvStr(hname) == Status::kSuccess,
+            std::string haddr;
+            int hrank = -1;
+            CHECK_F(tracker_->RecvStr(haddr) == Status::kSuccess,
                     "ReConnectLink fail to recv peer hostname");
-            LOG_F(INFO, "hn %s", hname.c_str());
-            CHECK_F(tracker_->RecvInt(hport) == Status::kSuccess,
-                    "ReConnectLink fail to recv peer port");
             CHECK_F(tracker_->RecvInt(hrank) == Status::kSuccess,
                     "ReConnectLink fail to recv peer rank");
-            peer_addrs_[hrank] = std::make_tuple(hname, hport);
+            peer_addrs_[hrank] = haddr;
         }
     }
     tracker_lock_->unlock();
@@ -317,11 +315,9 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
     std::tie(num_conn, num_accept) = num_conn_accept;
     for (auto& peer_addr : peer_addrs_) {
         int hrank = peer_addr.first;
-        std::string hname;
-        int hport;
-        std::tie(hname, hport) = peer_addr.second;
+        auto haddr = peer_addr.second;
         std::shared_ptr<IChannel> channel = std::make_shared<TcpChannel>();
-        if (channel->Connect(hname.c_str(), hport) != Status::kSuccess) {
+        if (channel->Connect(haddr) != Status::kSuccess) {
             channel->Close();
             LOG_F(ERROR,"Error");
             continue;
@@ -366,24 +362,6 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
         }
         if (cur_rank == next_rank_) {
             ring_next_ = cur_link.get();
-        }
-    }
-    if (prev_rank_ != -1) {
-        std::string msg;
-        if(ring_prev_ == nullptr) {
-            msg += utils::Printf("RANK %s %d  %d :", name_.c_str(),rank_, prev_rank_);
-            for (auto& l : all_links_)
-                msg += utils::Printf("%d ", l.first);
-            LOG_F(INFO, msg.c_str());
-        }
-    }
-    if (next_rank_ != -1) {
-        std::string msg;
-        if(ring_next_ == nullptr) {
-            msg += utils::Printf("RANK %s %d  %d :",name_.c_str(), rank_, next_rank_);
-            for (auto& l : all_links_)
-                msg += std::to_string(l.first) + " ";
-            LOG_F(INFO, msg.c_str());
         }
     }
     CHECK_F(prev_rank_ == -1 || ring_prev_ != nullptr,

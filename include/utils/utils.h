@@ -6,35 +6,16 @@
  */
 #pragma once
 #include <cstdio>
-#include <string>
 #include <cstdlib>
 #include <vector>
 #include <cstdarg>
+#include <cstring>
+#include <string>
 #include <memory>
 namespace rdc {
 /*! \brief namespace for helper utils of the project */
 namespace utils {
 
-/*! \brief error message buffer length */
-const int kPrintBuffer = 1 << 12;
-
-// these function pointers are to be assigned
-inline std::string Printf(const char *fmt, ...) {
-    std::string msg(kPrintBuffer, '\0');
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(&msg[0], kPrintBuffer, fmt, args);
-    va_end(args);
-    return msg;
-}
-/*! \brief portable version of snprintf */
-inline int SPrintf(char *buf, size_t size, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    int ret = vsnprintf(buf, size, fmt, args);
-    va_end(args);
-    return ret;
-}
 // easy utils that can be directly accessed in xgboost
 /*! \brief get the beginning address of a vector */
 template<typename T>
@@ -70,6 +51,7 @@ inline const void* IncrConstVoidPtr(const void* ptr, size_t step) {
     return reinterpret_cast<const void*>(
             reinterpret_cast<int8_t*>(const_cast<void*>(ptr)) + step);
 }
+/*! divide a range approximately into equally parts */
 inline std::vector<std::pair<int, int>> Split(
         int begin, int end, int nparts) {
     std::vector<std::pair<int, int>> ranges(nparts);
@@ -83,25 +65,20 @@ inline std::vector<std::pair<int, int>> Split(
     }
     return ranges;
 }
-template <typename Container>
-std::string ConcatList(const Container& container) {
-    std::string str = "";
-    for (const auto& item : container) {
-        str += std::to_string(item);
-        str += '\t';
-    }
-    return str;
-}
+
+/*! brief alloc a chunk of memory*/
 inline void* AllocTemp(const size_t& nbytes) {
-    return malloc(nbytes);
+    void* buf = std::malloc(nbytes);
+    return buf;
 }
-
+/*! brief warpper of free functon from stdc */
 inline void Free(void* ptr) {
-    return free(ptr);
+    return std::free(ptr);
 }
 
+/*! brief zero a chunk of memory */
 inline void ZeroBuf(void* buf, size_t nbytes) {
-//    memset(buf, 0, nbytes);
+    std::memset(buf, 0, nbytes);
     return;
 }
 template<typename T, typename... Args>

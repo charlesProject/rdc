@@ -1,5 +1,5 @@
 /**
- *  Copyright (c) 2015 by Contributors
+ *  Copyright (c) 2018 by Contributors
  * @file   network_utils.h
  * @brief  network utilities
  */

@@ -34,7 +34,6 @@ void MixedLock::lock() noexcept(true) {
 
 void MixedLock::unlock() noexcept(true) {
     if (!spin_.test_and_set(std::memory_order_acquire)) {
-        
     }
 }
 } // namespace utils
