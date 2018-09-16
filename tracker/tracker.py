@@ -20,10 +20,6 @@ import threading
 from threading import Thread
 from threading import Lock
 from enum import Enum
-from twisted.internet.protocol import Protocol
-from twisted.internet.protocol import Factory
-from twisted.protocols.basic import LineReceiver
-from twisted.internet import reactor
 
 """
 Extension of socket to handle recv and send of special data
