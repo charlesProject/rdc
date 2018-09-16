@@ -18,7 +18,7 @@ endif
 
 DEBUG = 1
 WARNFLAGS= -Wall -Wextra -Wno-unused-parameter -Wno-unknown-pragmas 
-CFLAGS = -std=c++11 $(WARNFLAGS)
+CFLAGS = -std=c++14 $(WARNFLAGS)
 ifeq ($(DEBUG), 1)
 	CFLAGS += -ggdb
 else
@@ -76,14 +76,13 @@ ifeq ($(USE_RDMA), 1)
 endif
 
 CFLAGS += $(DEFS)
-DMLC=./
 
 SRCS = $(wildcard src/*/*/*.cc src/*/*.cc src/*.cc)
 SRC_DIRS = $(notdir $(SRCS))
 OBJS = $(patsubst %.cc, build/%.o, $(SRC_DIRS))
 DEPS = $(patsubst %.cc, build/%.d, $(SRC_DIRS))
 
-all : $(SLIB) test
+all : $(SLIB) test bench
 .PHONY: clean all install python lint doc doxygen
 
 build/%.o:src/*/*/%.cc
@@ -102,17 +101,19 @@ $(SLIB) : $(OBJS)
 	mkdir -p $(@D)
 	$(CXX) $(CFLAGS) -shared -o $@ $(filter %.cpp %.o %.c %.cc %.a, $^)
 #
-#lint:
-#	$(DMLC)/scripts/lint.py rdc $(LINT_LANG) src include
+lint:
+	scripts/lint.py rdc $(LINT_LANG) src include
 #
 #doc doxygen:
 #	cd include; doxygen ../doc/Doxyfile; cd -
 #
 -include build/*.d
-
+include tests/test.mk
+include benchs/bench.mk
+test: $(TESTS)
+bench: $(BENCHS)
 install:
 	cp $(SLIB) /usr/local/lib
-include tests/test.mk
-test: $(TESTS)
 clean:
 	$(RM) $(OBJS) $(DEPS) $(ALIB) $(SLIB) $(TESTS)
+

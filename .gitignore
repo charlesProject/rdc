@@ -44,5 +44,3 @@ tests/test_*
 # Jetbrain
 .idea
 cmake-build-debug/
-# core
-core*

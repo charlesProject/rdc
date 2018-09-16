@@ -14,7 +14,8 @@ int main(int argc, char *argv[]) {
     int nworkers = atoi(argv[3]);
     std::vector<std::thread> thrds;
     rdc::Init(argc, argv);
-    auto allreduce_func = [N, iter, argc, argv] (int idx) {
+    // idx is the thread index, from 1 to nworkers
+    auto allreduce_func = [N, iter] (int idx) {
         std::string comm_name = std::to_string(idx);
         if (idx != 0) {
             NewCommunicator(comm_name);
@@ -34,7 +35,6 @@ int main(int argc, char *argv[]) {
                   result_max[i] = std::max(result_max[i], j + N + k + i);
               }
           }
-          
           LOG_F(INFO, "@node[%d] before-allreduce: a={%d, %d, %d}\n",
                   rdc::GetRank(), a[0], a[1], a[2]);
           // allreduce take max of each elements in all processes
@@ -68,6 +68,7 @@ int main(int argc, char *argv[]) {
     }
     for (int i = 0; i < nworkers; ++i) {
         thrds[i].join();
+        LOG_F(INFO, "finished %d", i);
     }
     Finalize();
     return 0;
