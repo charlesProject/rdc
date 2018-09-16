@@ -42,6 +42,7 @@ public:
     virtual ICommunicator* GetCommunicator(const std::string& name) = 0;
     virtual void Send(void *sendbuf, size_t type_nbytes, int dest) = 0;
     virtual void Recv(void *recvbuf, size_t type_nbytes, int src) = 0;
+    virtual void Barrier() = 0;
     /*!
      * \brief performs in-place Allreduce, on sendrecvbuf
      *        this function is NOT thread-safe

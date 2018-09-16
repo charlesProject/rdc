@@ -48,6 +48,9 @@ inline void Send(void *send_data, size_t size, int dest) {
 inline void Recv(void *recv_data, size_t size, int src) {
     comm::GetCommunicator()->Recv(recv_data, size, src);
 }
+inline void Barrier() {
+    comm::GetCommunicator()->Barrier();
+}
 // broadcast data to all other nodes from root
 inline void Broadcast(void *sendrecv_data, size_t size, int root,
         const std::string& comm_name) {

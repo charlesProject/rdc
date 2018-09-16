@@ -26,35 +26,38 @@ void RdmaAdapter::ExitContext() {
     CHECK_EQ(ibv_destroy_cq(completion_queue_), 0);
     CHECK_EQ(ibv_dealloc_pd(protection_domain_), 0);
 }
+static const uint32_t kConcurrentOps = 4;
 void RdmaAdapter::PollForever() {
     while(!ready()) {}
     for (;;) {
-        ibv_wc wcs[2];
+        ibv_wc wcs[kConcurrentOps];
         int num_succeeded = 0;
         do {
             if (finished()) {
                 return;
             }
-            num_succeeded = ibv_poll_cq(completion_queue_, 2, wcs);
+            num_succeeded = ibv_poll_cq(completion_queue_, kConcurrentOps, wcs);
         } while(num_succeeded == 0);
         CHECK_GE_F(num_succeeded, 0, "poll CQ failed");
-        CHECK_EQ_F(wc.status, IBV_WC_SUCCESS,
-                   "%s", ibv_wc_status_str(wc.status));
-        auto& work_req = WorkRequestManager::Get()->
-                        GetWorkRequest(wc.wr_id);
-        size_t len = 0;
-        if (work_req.work_type() == kRecv) {
-            len = wc.byte_len;
-        } else {
-            len = work_req.nbytes();
-        }
-        LOG(INFO) << len;
-        if (work_req.AddBytes(len)) {
+        for (auto i = 0U; i < num_succeeded; i++) {
+            auto wc = wcs[i];
+            CHECK_EQ_F(wc.status, IBV_WC_SUCCESS,
+                       "%s %d", ibv_wc_status_str(wc.status),wc.status);
+            auto& work_req = WorkRequestManager::Get()->
+                            GetWorkRequest(wc.wr_id);
+            size_t len = 0;
             if (work_req.work_type() == kRecv) {
-                std::memcpy(work_req.ptr(), work_req.extra_data(),
-                    work_req.nbytes());
+                len = wc.byte_len;
+            } else {
+                len = work_req.nbytes();
             }
-            work_req.Notify();
+            if (work_req.AddBytes(len)) {
+                if (work_req.work_type() == kRecv) {
+                    std::memcpy(work_req.ptr(), work_req.extra_data(),
+                        work_req.nbytes());
+                }
+                work_req.Notify();
+            }
         }
     }
 }

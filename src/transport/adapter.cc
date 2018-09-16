@@ -19,7 +19,6 @@ IAdapter* GetAdapter() {
     }
 #ifdef RDC_USE_RDMA
     if (std::strncmp(backend, "RDMA", 4) == 0) {
-        LOG(INFO);
         static RdmaAdapter adapter;
         return &adapter;
     }

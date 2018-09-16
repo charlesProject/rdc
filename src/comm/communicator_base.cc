@@ -142,6 +142,7 @@ void Communicator::Register() {
 void Communicator::Shutdown() {
     if (tracker_uri_ == "NULL") return;
     // notify tracker rank i have shutdown
+    this->Barrier();
     tracker_lock_->lock();
     tracker_->SendStr(std::string("shutdown"));
     if (!tracker_closed_) {
@@ -163,10 +164,10 @@ void Communicator::TrackerPrint(const std::string &msg) {
 void Communicator::Barrier() {
     tracker_lock_->lock();
     tracker_->SendStr(std::string("barrier"));
-    tracker_->SendStr(name_.c_str());
+    tracker_->SendStr(name_);
     std::string barrier_token_;
     tracker_->RecvStr(barrier_token_);
-    CHECK_EQ_S(barrier_token_, "barrier_done");
+    //CHECK_EQ_S(barrier_token_, "barrier_done");
     tracker_lock_->unlock();
 }
 // util to parse data with unit suffix
@@ -402,19 +403,18 @@ void Communicator::TryReduceTree(void* sendrecvbuf_,
     int total_size = count * type_nbytes;
     char* reducebuf = reinterpret_cast<char*>(reducebuf_);
     char* sendrecvbuf = reinterpret_cast<char*>(sendrecvbuf_);
-
+    ChainWorkCompletion wc;
     for (const auto& recv_from_node : recv_from_nodes) {
-        auto wc = all_links_[recv_from_node]->IRecv(reducebuf_, total_size);
-        wc.Wait();
+        wc << all_links_[recv_from_node]->IRecv(reducebuf_, total_size);
         reducer(reducebuf, sendrecvbuf,
                 count, MPI::Datatype(type_nbytes));
     }
 
 
     if (send_to_node != -1) {
-        auto wc = all_links_[send_to_node]->ISend(sendrecvbuf_, total_size);
-        wc.Wait();
+        wc << all_links_[send_to_node]->ISend(sendrecvbuf_, total_size);
     }
+        wc.Wait();
 
     return;
 }
@@ -431,15 +431,14 @@ void Communicator::TryBroadcast(void *sendrecvbuf_, size_t total_size, int root)
             recv_from_node = neighbor;
         }
     }
-
+    ChainWorkCompletion wc;
     if (recv_from_node != -1) {
-        auto wc = all_links_[recv_from_node]->IRecv(sendrecvbuf_, total_size);
-        wc.Wait();
+        wc << all_links_[recv_from_node]->IRecv(sendrecvbuf_, total_size);
     }
     for (const auto& send_to_node : send_to_nodes) {
-        auto wc = all_links_[send_to_node]->ISend(sendrecvbuf_, total_size);
-        wc.Wait();
+        wc << all_links_[send_to_node]->ISend(sendrecvbuf_, total_size);
     }
+        wc.Wait();
     return;
 }
 

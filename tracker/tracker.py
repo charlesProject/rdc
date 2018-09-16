@@ -238,15 +238,17 @@ class TrackerHandler:
 
     def handle_barrier(self):
         name = self.recvstr()
-        self.tracker.name_to_barrier_counts += 1
-        if self.tracker.name_to_barrier_counts == \
-                len(self.self.tracker.name_to_ranks):
+        self.tracker.name_to_barrier_conds[name].acquire()
+        self.tracker.name_to_barrier_counts[name] += 1
+        if self.tracker.name_to_barrier_counts[name] != \
+                self.tracker.nworker:
             self.tracker.name_to_barrier_conds[name].wait()
             self.sendstr("barrier_done")
         else:
-            self.tracker.name_to_barrier_counts = 0
-            self.trakcer.name_to_barrier_conds[name].notify()
+            self.tracker.name_to_barrier_counts[name] = 0
+            self.tracker.name_to_barrier_conds[name].notify_all()
             self.sendstr("barrier_done")
+        self.tracker.name_to_barrier_conds[name].release()
     def handle_register(self):
         name = self.recvstr()
         if name not in self.tracker.names:
@@ -255,6 +257,8 @@ class TrackerHandler:
             self.tracker.name_to_barrier_counts[name] = 0
             self.tracker.name_to_barrier_conds[name] = \
                     threading.Condition()
+            self.tracker.name_to_barrier_locks[name] = \
+                    threading.Lock()
         self.tracker.name_to_ranks[name].add(self.rank)
 
     def recvint(self):
@@ -291,6 +295,7 @@ class Tracker:
         # barrier related
         self.name_to_barrier_counts = dict()
         self.name_to_barrier_conds = dict()
+        self.name_to_barrier_locks = dict()
         # construct initial tree map
         self.topohelper = TopoHelper()
         self.tree_map, self.parent_map, self.ring_map = \
@@ -363,7 +368,7 @@ def submit(nworker, fun_submit, hostIP = 'auto', pscmd = None):
     port = s.getsockname()[1]
     envs = {'RDC_NUM_WORKERS' : nworker,
             'RDC_BACKEND' : 'RDMA',
-            'RDC_RDMA_BUFSIZE' : 1 << 18}
+            'RDC_RDMA_BUFSIZE' : 1 << 12}
 
     # start the root
     tracker = Tracker(hostIP=hostIP, port=port, nworker=nworker)

@@ -179,7 +179,7 @@ WorkCompletion RdmaChannel::ISend(const void* sendbuf_, size_t size) {
     send_wr.wr_id       = req_id;
     send_wr.sg_list     = &sge_list;
     send_wr.num_sge     = 1;
-    send_wr.opcode      = IBV_WR_RDMA_WRITE_WITH_IMM;
+    send_wr.opcode      = IBV_WR_SEND;
     send_wr.send_flags  = IBV_SEND_SIGNALED;
     send_wr.next        = NULL;
 
