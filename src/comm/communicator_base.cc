@@ -164,7 +164,7 @@ void Communicator::Barrier() {
     tracker_->SendStr(name_.c_str());
     std::string barrier_token_;
     tracker_->RecvStr(barrier_token_);
-    CHECK_EQ(barrier_token_, "barrier_done");
+    CHECK_EQ_S(barrier_token_, "barrier_done");
     tracker_lock_->unlock();
 }
 // util to parse data with unit suffix
@@ -250,7 +250,6 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
                           logging::Truncate, logging::Verbosity_MAX);
         // send back socket listening port to tracker
         auto backend_str = GetAdapter()->backend_str();
-        LOG(INFO) << backend_str;
         auto host_addr = str_utils::SPrintf("%s:%s:%d",
                 backend_str.c_str(), host_uri_.c_str(), worker_port_);
         CHECK_F(tracker_->SendStr(host_addr) == Status::kSuccess,
@@ -331,11 +330,15 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
         int hrank = peer_addr.first;
         auto haddr = peer_addr.second;
         std::shared_ptr<IChannel> channel;
+#ifdef RDC_USE_RDMA
         if (GetAdapter()->backend() == kRdma) {
             channel.reset(new RdmaChannel);
         } else {
             channel.reset(new TcpChannel);
         }
+#else
+            channel.reset(new TcpChannel);
+#endif
         if (channel->Connect(haddr) != Status::kSuccess) {
             channel->Close();
             LOG_F(ERROR,"Error");

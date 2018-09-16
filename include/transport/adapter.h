@@ -3,7 +3,6 @@
 #include <string>
 #include "utils/string_utils.h"
 #include "core/logging.h"
-#include "dmlc/logging.h"
 namespace rdc {
 
 
@@ -54,7 +53,6 @@ inline std::string GetBackendString(const Backend& backend) {
     } else if (backend == kIpc) {
         backend_str = "ipc";
     } else {
-    LOG(INFO);
         backend_str = "tcp";
     }
     return backend_str;

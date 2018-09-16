@@ -1,5 +1,5 @@
 /*!
- *  Copyright (c) 2015 by Contributors
+ *  Copyright (c) 2018 by Contributors
  * \file serializer.h
  * \brief serializer template class that helps serialization.
  */
@@ -12,14 +12,12 @@
 #include <list>
 #include <deque>
 #include <utility>
-
-#include "./base.h"
-#include "./io.h"
-#include "./logging.h"
-#include "./type_traits.h"
 #include <unordered_map>
 #include <unordered_set>
-
+#include "core/base.h"
+#include "core/logging.h"
+#include "core/type_traits.h"
+#include "io/io.h"
 namespace rdc {
 /*! \brief internal namespace for serializers */
 namespace serializer {
@@ -43,43 +41,43 @@ struct IfThenElse;
 
 template<typename Then, typename Else, typename T>
 struct IfThenElse<true, Then, Else, T> {
-  inline static void Write(Stream *strm, const T &data) {
-    Then::Write(strm, data);
-  }
-  inline static bool Read(Stream *strm, T *data) {
-    return Then::Read(strm, data);
-  }
+    inline static void Write(Stream *strm, const T &data) {
+        Then::Write(strm, data);
+    }
+    inline static bool Read(Stream *strm, T *data) {
+        return Then::Read(strm, data);
+    }
 };
 template<typename Then, typename Else, typename T>
 struct IfThenElse<false, Then, Else, T> {
-  inline static void Write(Stream *strm, const T &data) {
-    Else::Write(strm, data);
-  }
-  inline static bool Read(Stream *strm, T *data) {
-    return Else::Read(strm, data);
-  }
+    inline static void Write(Stream *strm, const T &data) {
+        Else::Write(strm, data);
+    }
+    inline static bool Read(Stream *strm, T *data) {
+        return Else::Read(strm, data);
+    }
 };
 
 /*! \brief Serializer for POD(plain-old-data) data */
 template<typename T>
 struct PODHandler {
-  inline static void Write(Stream *strm, const T &data) {
-    strm->Write(&data, sizeof(T));
-  }
-  inline static bool Read(Stream *strm, T *dptr) {
-    return strm->Read((void*)dptr, sizeof(T)) == sizeof(T);  // NOLINT(*)
-  }
+    inline static void Write(Stream *strm, const T &data) {
+        strm->Write(&data, sizeof(T));
+    }
+    inline static bool Read(Stream *strm, T *dptr) {
+        return strm->Read((void*)dptr, sizeof(T)) == sizeof(T);  // NOLINT(*)
+    }
 };
 
 // serializer for class that have save/load function
 template<typename T>
 struct SaveLoadClassHandler {
-  inline static void Write(Stream *strm, const T &data) {
-    data.Save(strm);
-  }
-  inline static bool Read(Stream *strm, T *data) {
-    return data->Load(strm);
-  }
+    inline static void Write(Stream *strm, const T &data) {
+        data.Save(strm);
+    }
+    inline static bool Read(Stream *strm, T *data) {
+        return data->Load(strm);
+    }
 };
 
 /*!
@@ -242,7 +240,7 @@ struct Handler {
    * \param data the data obeject to be serialized
    */
   inline static void Write(Stream *strm, const T &data) {
-    IfThenElse<rdc::is_pod<T>::value,
+    IfThenElse<std::is_pod<T>::value,
                PODHandler<T>,
                IfThenElse<rdc::has_saveload<T>::value,
                           SaveLoadClassHandler<T>,
@@ -257,7 +255,7 @@ struct Handler {
    * \return whether the read is successful
    */
   inline static bool Read(Stream *strm, T *data) {
-    return IfThenElse<rdc::is_pod<T>::value,
+    return IfThenElse<std::is_pod<T>::value,
                       PODHandler<T>,
                       IfThenElse<rdc::has_saveload<T>::value,
                                  SaveLoadClassHandler<T>,
@@ -271,13 +269,13 @@ struct Handler {
 template<typename T>
 struct Handler<std::vector<T> > {
   inline static void Write(Stream *strm, const std::vector<T> &data) {
-    IfThenElse<rdc::is_pod<T>::value,
+    IfThenElse<std::is_pod<T>::value,
                PODVectorHandler<T>,
                ComposeVectorHandler<T>, std::vector<T> >
     ::Write(strm, data);
   }
   inline static bool Read(Stream *strm, std::vector<T> *data) {
-    return IfThenElse<rdc::is_pod<T>::value,
+    return IfThenElse<std::is_pod<T>::value,
                       PODVectorHandler<T>,
                       ComposeVectorHandler<T>,
                       std::vector<T> >
@@ -288,14 +286,14 @@ struct Handler<std::vector<T> > {
 template<typename T>
 struct Handler<std::basic_string<T> > {
   inline static void Write(Stream *strm, const std::basic_string<T> &data) {
-    IfThenElse<rdc::is_pod<T>::value,
+    IfThenElse<std::is_pod<T>::value,
                PODStringHandler<T>,
                UndefinedSerializerFor<T>,
                std::basic_string<T> >
     ::Write(strm, data);
   }
   inline static bool Read(Stream *strm, std::basic_string<T> *data) {
-    return IfThenElse<rdc::is_pod<T>::value,
+    return IfThenElse<std::is_pod<T>::value,
                       PODStringHandler<T>,
                       UndefinedSerializerFor<T>,
                       std::basic_string<T> >
@@ -306,14 +304,14 @@ struct Handler<std::basic_string<T> > {
 template<typename TA, typename TB>
 struct Handler<std::pair<TA, TB> > {
   inline static void Write(Stream *strm, const std::pair<TA, TB> &data) {
-    IfThenElse<rdc::is_pod<TA>::value && rdc::is_pod<TB>::value,
+    IfThenElse<std::is_pod<TA>::value && std::is_pod<TB>::value,
                PODHandler<std::pair<TA, TB> >,
                PairHandler<TA, TB>,
                std::pair<TA, TB> >
     ::Write(strm, data);
   }
   inline static bool Read(Stream *strm, std::pair<TA, TB> *data) {
-    return IfThenElse<rdc::is_pod<TA>::value && rdc::is_pod<TB>::value,
+    return IfThenElse<std::is_pod<TA>::value && std::is_pod<TB>::value,
                       PODHandler<std::pair<TA, TB> >,
                       PairHandler<TA, TB>,
                       std::pair<TA, TB> >
@@ -373,4 +371,3 @@ struct Handler<std::unordered_multiset<T> >
 //! \endcond
 }  // namespace serializer
 }  // namespace rdc
-#endif  // DMLC_SERIALIZER_H_

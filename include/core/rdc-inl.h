@@ -9,10 +9,10 @@
 // use comm for implementation
 #include <vector>
 #include <string>
-#include "core/io.h"
+#include "rdc.h"
 #include "utils/utils.h"
 #include "core/mpi.h"
-#include "rdc.h"
+#include "io/io.h"
 
 namespace rdc {
 // intialize the rdc comm
@@ -179,7 +179,7 @@ struct SerializeReduceClosure {
     inline void Run(void) {
         if (prepare_fun != NULL) prepare_fun(prepare_arg);
         for (size_t i = 0; i < count; ++i) {
-            utils::MemoryFixSizeBuffer fs(utils::BeginPtr(*p_buffer) + i * max_nbyte, max_nbyte);
+            MemoryFixSizeBuffer fs(utils::BeginPtr(*p_buffer) + i * max_nbyte, max_nbyte);
             sendrecvobj[i].Save(fs);
         }
     }

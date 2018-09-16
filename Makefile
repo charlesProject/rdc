@@ -43,7 +43,7 @@ ifeq ($(USE_SSE), 1)
 endif
 
 ifndef USE_RDMA
-	USE_RDMA = 1
+	USE_RDMA = 0
 endif
 
 ifeq ($(USE_RDMA), 1)
@@ -69,7 +69,7 @@ BUILD_DIR = ./build
 # objectives that makes up rdc library
 SLIB = lib/librdc.so
 ALIB = lib/librdc.a
-DEFS += -DLOGGING_WITH_STREAMS=1 -DRDC_USE_BASE
+DEFS += -DLOGGING_WITH_STREAMS=1 -DLOGGING_REPLACE_GLOG -DRDC_USE_BASE
 
 ifeq ($(USE_RDMA), 1)
 	DEFS += -DRDC_USE_RDMA

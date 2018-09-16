@@ -8,9 +8,8 @@
 #include <thread>
 
 #include "core/env.h"
-#include "dmlc/logging.h"
-class ThreadPool {
 
+class ThreadPool {
 private:
     // number of thread
     uint32_t num_workers_;

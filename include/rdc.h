@@ -22,16 +22,6 @@
 #include "core/work_request.h"
 /*! \brief rdc namespace */
 namespace rdc {
-/*!
- * \brief defines stream used in rdc
- * see definition of Stream in dmlc/io.h
- */
-typedef dmlc::Stream Stream;
-/*!
- * \brief defines serializable objects used in rdc
- * see definition of Serializable in dmlc/io.h
- */
-typedef dmlc::Serializable Serializable;
 
 /*!
  * \brief reduction operators namespace

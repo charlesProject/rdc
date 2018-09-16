@@ -6,7 +6,8 @@
  */
 #pragma once
 #include <string>
-#include "core/serializable.h"
+#include <memory>
+#include "io/io.h"
 
 namespace MPI {
 /*! \brief MPI data type just to be compatible with MPI reduce function*/
