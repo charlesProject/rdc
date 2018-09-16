@@ -109,8 +109,10 @@ void Communicator::Init(int argc, char* argv[]) {
 
 void Communicator::NewCommunicator(const std::string& name) {
     // increase volumn of threadpool
-    ThreadPool::Get()->AddWorkers(2 *
-            Env::Get()->GetEnv("RDC_NUM_WORKERS", 0));
+    if (GetAdapter()->backend() == kTcp) {
+        ThreadPool::Get()->AddWorkers(2 *
+                Env::Get()->GetEnv("RDC_NUM_WORKERS", 0));
+    }
     comm_lock_.lock();
     if (name == kWorldCommName) return;
     if (sub_comms_.count(name)) return;
@@ -208,11 +210,10 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
     // get information from tracker
     tracker_lock_->lock();
     if (!tracker_connected_) {
-        tracker_ = std::make_shared<TcpChannel>();
+        tracker_ = std::make_shared<TcpSocket>();
         int retry = 0;
         do {
-            if (tracker_->Connect(tracker_uri_.c_str(), tracker_port_)
-                    != Status::kSuccess) {
+            if (!tracker_->Connect(tracker_uri_.c_str(), tracker_port_)) {
                 if (++retry >= connect_retry_) {
                     LOG_F(ERROR, "connect to (failed): [%s]\n",
                           tracker_uri_.c_str());
@@ -240,11 +241,9 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
         // start listener at very begining
         GetAdapter()->Listen(worker_port_);
         tracker_->SendStr(std::string(cmd));
-        CHECK_F(tracker_->RecvInt(world_size_) == Status::kSuccess,
-                "ReConnectLink fail to recv world size");
+        tracker_->RecvInt(world_size_) ,
         LOG_F(INFO, "%d", world_size_);
-        CHECK_F(tracker_->RecvInt(rank_) == Status::kSuccess,
-               "ReConnectLink fail to recv rank");
+        tracker_->RecvInt(rank_);
         LOG_F(INFO, "%d", rank_);
         logging::add_file(str_utils::SPrintf("log/%d", rank_).c_str(),
                           logging::Truncate, logging::Verbosity_MAX);
@@ -252,27 +251,21 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
         auto backend_str = GetAdapter()->backend_str();
         auto host_addr = str_utils::SPrintf("%s:%s:%d",
                 backend_str.c_str(), host_uri_.c_str(), worker_port_);
-        CHECK_F(tracker_->SendStr(host_addr) == Status::kSuccess,
-               "ReConnectLink fail to send my addr");
+        tracker_->SendStr(host_addr);
         // get new ranks
-        CHECK_F(tracker_->RecvInt(parent_rank_) ==
-                Status::kSuccess, "ReConnectLink fail to recv parent rank");
+        tracker_->RecvInt(parent_rank_);
         LOG_F(INFO, "%d", parent_rank_);
-        CHECK_F(tracker_->RecvInt(num_neighbors_) == Status::kSuccess,
-                "ReConnectLink fail to recv num neighbors");
+        tracker_->RecvInt(num_neighbors_);
         LOG_F(INFO, "%d", num_neighbors_);
         for (int i = 0; i < num_neighbors_; ++i) {
               int nrank;
-              CHECK_F(tracker_->RecvInt(nrank) == Status::kSuccess,
-                      "ReConnectLink fail to recv neighbor rank");
+              tracker_->RecvInt(nrank);
               LOG_F(INFO, "%d", nrank);
               tree_neighbors_[nrank] = 1;
         }
-        CHECK_F(tracker_->RecvInt(prev_rank_) == Status::kSuccess,
-               "ReConnectLink fail to recv prev rank");
+        tracker_->RecvInt(prev_rank_);
         LOG_F(INFO, "pr %d", prev_rank_);
-        CHECK_F(tracker_->RecvInt(next_rank_) == Status::kSuccess,
-               "ReConnectLink fail to recv next rank");
+        tracker_->RecvInt(next_rank_);
 
         LOG_F(INFO, "nr %d", next_rank_);
         // get the global tree map
@@ -280,36 +273,29 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
         std::vector<std::pair<int, int>> edges;
         for (int i = 0; i < this->world_size_; i++) {
             int from = 0;
-            CHECK_F(tracker_->RecvInt(from) == Status::kSuccess,
-                    "ReConnectLink fail to recv from rank");
+            tracker_->RecvInt(from);
             nodes[i] = from;
             int num_neighbors = 0;
-            CHECK_F(tracker_->RecvInt(num_neighbors) == Status::kSuccess,
-                    "ReConnectLink fail to recv num neighbors");
+            tracker_->RecvInt(num_neighbors);
             for (int j = 0; j < num_neighbors; j++) {
                 int to = 0;
-                CHECK_F(tracker_->RecvInt(to) == Status::kSuccess,
-                    "   ReConnectLink fail to recv to rank");
+                tracker_->RecvInt(to);
                 edges.emplace_back(std::make_pair(from, to));
             }
         }
         tree_map_.Create(nodes, edges);
         // get number of to connect and number of to accept nodes from tracker
-        CHECK_F(tracker_->RecvInt(num_conn_) == Status::kSuccess,
-               "ReConnectLink fail to recv num conn");
+        tracker_->RecvInt(num_conn_);
 
         LOG_F(INFO, "nc %d", num_conn_);
-        CHECK_F(tracker_->RecvInt(num_accept_) ==  Status::kSuccess,
-                "ReConnectLink fail to recv num accept");
+        tracker_->RecvInt(num_accept_);
 
         LOG_F(INFO, "na %d", num_accept_);
         for (int i = 0; i < num_conn_; ++i) {
             std::string haddr;
             int hrank = -1;
-            CHECK_F(tracker_->RecvStr(haddr) == Status::kSuccess,
-                    "ReConnectLink fail to recv peer hostname");
-            CHECK_F(tracker_->RecvInt(hrank) == Status::kSuccess,
-                    "ReConnectLink fail to recv peer rank");
+            tracker_->RecvStr(haddr);
+            tracker_->RecvInt(hrank);
             peer_addrs_[hrank] = haddr;
         }
     }
@@ -489,20 +475,21 @@ void Communicator::TryAllgatherRing(void** sendrecvbufs_, size_t type_nbytes,
             finished = false;
         }
         if (finished) break;
+        ChainWorkCompletion wc;
         if (write_idx < read_idx && write_idx != stop_write_idx) {
             size_t start = write_idx % count_bufs;
-            auto wc = prev->ISend(*(sendrecvbufs_ + start),
+            wc << prev->ISend(*(sendrecvbufs_ + start),
                                   counts[start] * type_nbytes);
-            wc.Wait();
             write_idx++;
         }
         if (read_idx != stop_read_idx) {
             size_t start = read_idx % count_bufs;
-            auto wc = next->IRecv(*(sendrecvbufs_ + start),
+            wc << next->IRecv(*(sendrecvbufs_ + start),
                                   counts[start] * type_nbytes);
-            wc.Wait();
+//            wc.Wait();
             read_idx++;
         }
+        wc.Wait();
 
     }
 }
@@ -545,14 +532,14 @@ void Communicator::TryReduceScatterRing(void *sendrecvbuf_,
             finished = false;
         }
         if (finished) break;
+        ChainWorkCompletion wc;
         if (write_idx < reduce_idx && write_idx != stop_write_idx) {
             size_t write_pos = write_idx % n;
             size_t write_size = (ranges[write_pos].second -
                                  ranges[write_pos].first) * type_nbytes;
             size_t write_start = ranges[write_pos].first * type_nbytes;
-            auto wc = prev->ISend(sendrecvbuf + write_start,
+            wc << prev->ISend(sendrecvbuf + write_start,
                                           write_size);
-            wc.Wait();
             write_idx ++;
         }
         if (read_idx != stop_read_idx) {
@@ -560,7 +547,7 @@ void Communicator::TryReduceScatterRing(void *sendrecvbuf_,
             size_t read_start = ranges[read_pos].first * type_nbytes;
             size_t read_size = (ranges[read_pos].second -
                                 ranges[read_pos].first) * type_nbytes;
-            auto wc = next->IRecv(reducebuf + read_start, read_size);
+            wc << next->IRecv(reducebuf + read_start, read_size);
             wc.Wait();
             CHECK_F(read_idx <= stop_read_idx,"[%d] read_ptr boundary check",
                      rank_);

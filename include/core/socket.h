@@ -83,7 +83,7 @@ struct SockAddr {
 };
 
 /*!
-* \brief base class containing common operations of TCP and UDP sockets
+* \brief base class containing common operations of Tcp and Udp sockets
 */
 class Socket {
 public:
@@ -274,21 +274,21 @@ protected:
     };
 
 /*!
-* \brief a wrapper of TCP socket that hopefully be cross platform
+* \brief a wrapper of Tcp socket that hopefully be cross platform
 */
-class TCPSocket : public Socket {
+class TcpSocket : public Socket {
 public:
     // constructor
-    TCPSocket(bool create = true) : Socket(INVALID_SOCKET) {
+    TcpSocket(bool create = true) : Socket(INVALID_SOCKET) {
         if(create)
             Create();
     }
-    explicit TCPSocket(SOCKET sockfd,bool create = true) : Socket(sockfd) {
+    explicit TcpSocket(SOCKET sockfd,bool create = true) : Socket(sockfd) {
         if(create)
             Create();
     }
     /*!
-    * \brief enable/disable TCP keepalive
+    * \brief enable/disable Tcp keepalive
     * \param keepalive whether to set the keep alive option on
     */
     inline void SetKeepAlive(bool keepalive) {
@@ -299,7 +299,7 @@ public:
         }
     }
     /*!
-    * \brief enable/disable TCP addr_reuse
+    * \brief enable/disable Tcp addr_reuse
     * \param reuse whether to set the address reuse option on
     */
     inline void SetReuseAddr(bool reuse) {
@@ -337,12 +337,12 @@ public:
         listen(sockfd, backlog);
     }
     /*! \brief get a new connection */
-    TCPSocket Accept(void) {
+    TcpSocket Accept(void) {
         SOCKET newfd = accept(sockfd, NULL, NULL);
         if (newfd == INVALID_SOCKET) {
             LOGERROR("Accept");
         }
-        return TCPSocket(newfd,false);
+        return TcpSocket(newfd,false);
     }
     /*!
     * \brief decide whether the socket is at OOB mark
@@ -467,13 +467,13 @@ public:
      * \brief recv a string from network
      * \param out_str the string to receive
      */
-    inline void RecvStr(std::string *out_str) {
+    inline void RecvStr(std::string& out_str) {
       int len;
       CHECK_F(this->RecvAll(&len, sizeof(len)) == sizeof(len),
                     "error during send RecvStr");
-      out_str->resize(len);
+      out_str.resize(len);
       if (len != 0) {
-          CHECK_F(this->RecvAll(&(*out_str)[0], len) == out_str->length(),
+          CHECK_F(this->RecvAll(&(out_str)[0], len) == out_str.length(),
                       "error during send SendStr");
       }
     }
@@ -489,7 +489,7 @@ public:
      * \brief recv a int from network
      * \param out_val the integer to receive
      */
-    inline void RecvStr(int32_t& out_val) {
+    inline void RecvInt(int32_t& out_val) {
         int len;
         CHECK_F(this->RecvAll(&out_val, sizeof(out_val)) == sizeof(out_val),
                       "error during send RecvInt");

@@ -81,9 +81,9 @@ void RdmaChannel::CreateQueuePair() {
     qp_init_attr.send_cq = adapter_->completion_queue();
     qp_init_attr.recv_cq = adapter_->completion_queue();
     qp_init_attr.qp_type = IBV_QPT_RC;
-    qp_init_attr.cap.max_send_wr = Env::Get("RDC_RDMA_MAX_WR",
+    qp_init_attr.cap.max_send_wr = Env::Get()->GetEnv("RDC_RDMA_MAX_WR",
                                     kNumCompQueueEntries);
-    qp_init_attr.cap.max_recv_wr = Env::Get("RDC_RDMA_MAX_WR",
+    qp_init_attr.cap.max_recv_wr = Env::Get()->GetEnv("RDC_RDMA_MAX_WR",
                                     kNumCompQueueEntries);
     qp_init_attr.cap.max_send_sge = 1;
     qp_init_attr.cap.max_recv_sge = 1;
@@ -179,7 +179,7 @@ WorkCompletion RdmaChannel::ISend(const void* sendbuf_, size_t size) {
     send_wr.wr_id       = req_id;
     send_wr.sg_list     = &sge_list;
     send_wr.num_sge     = 1;
-    send_wr.opcode      = IBV_WR_SEND;
+    send_wr.opcode      = IBV_WR_RDMA_WRITE_WITH_IMM;
     send_wr.send_flags  = IBV_SEND_SIGNALED;
     send_wr.next        = NULL;
 

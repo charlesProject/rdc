@@ -29,16 +29,17 @@ void RdmaAdapter::ExitContext() {
 void RdmaAdapter::PollForever() {
     while(!ready()) {}
     for (;;) {
-        ibv_wc wc;
+        ibv_wc wcs[2];
         int num_succeeded = 0;
         do {
             if (finished()) {
                 return;
             }
-            num_succeeded = ibv_poll_cq(completion_queue_, 1, &wc);
+            num_succeeded = ibv_poll_cq(completion_queue_, 2, wcs);
         } while(num_succeeded == 0);
-        CHECK_GE(num_succeeded, 0) << "poll CQ failed";
-        CHECK_EQ(wc.status,IBV_WC_SUCCESS) << ibv_wc_status_str(wc.status);
+        CHECK_GE_F(num_succeeded, 0, "poll CQ failed");
+        CHECK_EQ_F(wc.status, IBV_WC_SUCCESS,
+                   "%s", ibv_wc_status_str(wc.status));
         auto& work_req = WorkRequestManager::Get()->
                         GetWorkRequest(wc.wr_id);
         size_t len = 0;
@@ -47,6 +48,7 @@ void RdmaAdapter::PollForever() {
         } else {
             len = work_req.nbytes();
         }
+        LOG(INFO) << len;
         if (work_req.AddBytes(len)) {
             if (work_req.work_type() == kRecv) {
                 std::memcpy(work_req.ptr(), work_req.extra_data(),

@@ -330,10 +330,10 @@ protected:
                                 size_t type_nbytes,
                                 size_t count,
                                 ReduceFunction reducer);
-    std::shared_ptr<TcpChannel> get_trakcer() const {
+    std::shared_ptr<TcpSocket> get_trakcer() const {
         return this->tracker_;
     }
-    void set_tracker(const std::shared_ptr<TcpChannel>& tracker) {
+    void set_tracker(const std::shared_ptr<TcpSocket>& tracker) {
         this->tracker_ = tracker;
     }
     void set_worker_port(const int& worker_port) {
@@ -346,7 +346,7 @@ protected:
     // my name
     std::string name_;
     // channel for communication with tracker_
-    std::shared_ptr<TcpChannel> tracker_;
+    std::shared_ptr<TcpSocket> tracker_;
     bool tracker_connected_;
     bool tracker_closed_;
     std::shared_ptr<std::mutex> tracker_lock_;
