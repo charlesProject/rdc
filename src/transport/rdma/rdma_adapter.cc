@@ -65,15 +65,15 @@ int RdmaAdapter::Listen(const uint32_t& tcp_port) {
     owned_addr.sin_port = htons(tcp_port);
     if(bind(this->listen_fd_, (struct sockaddr *) &owned_addr,
             sizeof(owned_addr)) != 0) {
-        LOG(ERROR) << "Fail to bind on port " << tcp_port
-                     << " :" << strerror(errno);
+        LOG_F(ERROR, "Fail to listen on port %d : %s " ,
+            tcp_port , strerror(errno));
     };
     int32_t opt = 0;
     setsockopt(this->listen_fd_, SOL_SOCKET, SO_REUSEPORT,
                &opt, sizeof(opt));
     if (listen(this->listen_fd_, kNumBacklogs) != 0) {
-        LOG(ERROR) << "Fail to listen on port " << tcp_port
-                     << " :" << strerror(errno);
+        LOG_F(ERROR, "Fail to listen on port %d : %s " ,
+            tcp_port , strerror(errno));
     }
     return 0;
 }
@@ -92,9 +92,9 @@ IChannel* RdmaAdapter::Accept() {
     auto channel = new RdmaChannel(this);
 
     RdmaAddr peer_addr;
-    CHECK_EQ(recv(accepted_fd , (char*)&peer_addr,
-             sizeof(peer_addr), 0), sizeof(peer_addr))
-             << "Could not receive local address to peer";
+    CHECK_EQ_F(recv(accepted_fd , (char*)&peer_addr,
+              sizeof(peer_addr), 0), sizeof(peer_addr),
+              "Could not receive local address to peer");
     channel->set_peer_addr(peer_addr);
     auto owned_addr = channel->addr();
     CHECK_EQ(send(accepted_fd , (char*)&owned_addr,

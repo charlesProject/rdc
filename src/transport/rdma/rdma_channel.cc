@@ -5,6 +5,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+
+#include "core/env.h"
 #include "core/logging.h"
 #include "transport/rdma/rdma_channel.h"
 #include "transport/rdma/rdma_adapter.h"
@@ -15,7 +17,8 @@ RdmaChannel::RdmaChannel():RdmaChannel(RdmaAdapter::Get()) {
 }
 
 RdmaChannel::RdmaChannel(RdmaAdapter* adapter) :
-            RdmaChannel(adapter, kBufSize) {
+            RdmaChannel(adapter, Env::Get()->GetEnv(
+            "RDC_RDMA_BUFSIZE", kBufSize)) {
 }
 RdmaChannel::RdmaChannel(RdmaAdapter* adapter, uint64_t buf_size)
                 : adapter_(adapter), buf_size_(buf_size) {
@@ -29,9 +32,11 @@ RdmaChannel::RdmaChannel(RdmaAdapter* adapter, uint64_t buf_size)
 void RdmaChannel::InitRdmaContext() {
     CHECK_NOTNULL(adapter_->protection_domain());
     CHECK_NOTNULL(send_memory_region_ = ibv_reg_mr(adapter_->protection_domain(),
-                  send_buf_, buf_size_, IBV_ACCESS_LOCAL_WRITE|IBV_ACCESS_REMOTE_WRITE));
+                  send_buf_, buf_size_, IBV_ACCESS_LOCAL_WRITE|
+                  IBV_ACCESS_REMOTE_WRITE));
     CHECK_NOTNULL(recv_memory_region_ = ibv_reg_mr(adapter_->protection_domain(),
-                  recv_buf_, buf_size_, IBV_ACCESS_LOCAL_WRITE|IBV_ACCESS_REMOTE_WRITE));
+                  recv_buf_, buf_size_, IBV_ACCESS_LOCAL_WRITE|
+                  IBV_ACCESS_REMOTE_WRITE));
     CreateQueuePair();
     CreateLocalAddr();
 }
@@ -76,8 +81,10 @@ void RdmaChannel::CreateQueuePair() {
     qp_init_attr.send_cq = adapter_->completion_queue();
     qp_init_attr.recv_cq = adapter_->completion_queue();
     qp_init_attr.qp_type = IBV_QPT_RC;
-    qp_init_attr.cap.max_send_wr = 100;
-    qp_init_attr.cap.max_recv_wr = 100;
+    qp_init_attr.cap.max_send_wr = Env::Get("RDC_RDMA_MAX_WR",
+                                    kNumCompQueueEntries);
+    qp_init_attr.cap.max_recv_wr = Env::Get("RDC_RDMA_MAX_WR",
+                                    kNumCompQueueEntries);
     qp_init_attr.cap.max_send_sge = 1;
     qp_init_attr.cap.max_recv_sge = 1;
     qp_init_attr.cap.max_inline_data = 0;

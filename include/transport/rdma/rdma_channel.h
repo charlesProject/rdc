@@ -13,8 +13,8 @@
 #include "utils/utils.h"
 
 namespace rdc {
+const uint64_t kBufSize = 1U << 12;
 const int kNumCompQueueEntries = 100;
-const uint64_t kBufSize = 1 << 10U;
 
 struct __attribute__ ((packed)) RdmaAddr {
     uint32_t lid;

@@ -8,6 +8,7 @@ namespace rdc {
 class RdmaAdapter : public IAdapter {
 public:
     RdmaAdapter() {
+        this->set_backend(kRdma);
         InitContext();
         this->listen_fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         this->set_ready(false);

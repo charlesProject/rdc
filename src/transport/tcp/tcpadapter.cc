@@ -45,6 +45,7 @@ static inline bool IsError(uint32_t events) {
             || events & EPOLLRDHUP);
 }
 TcpAdapter::TcpAdapter() {
+    this->set_backend(kTcp);
     this->listen_fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     this->shutdown_called_ = false;
     this->timeout_ = -1;

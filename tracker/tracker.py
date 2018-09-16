@@ -361,7 +361,9 @@ def submit(nworker, fun_submit, hostIP = 'auto', pscmd = None):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.bind((hostIP, 0))
     port = s.getsockname()[1]
-    envs = {'RDC_NUM_WORKERS' : nworker}
+    envs = {'RDC_NUM_WORKERS' : nworker,
+            'RDC_BACKEND' : 'RDMA',
+            'RDC_RDMA_BUFSIZE' : 1 << 20}
 
     # start the root
     tracker = Tracker(hostIP=hostIP, port=port, nworker=nworker)

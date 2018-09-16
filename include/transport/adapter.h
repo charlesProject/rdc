@@ -3,7 +3,7 @@
 #include <string>
 #include "utils/string_utils.h"
 #include "core/logging.h"
-
+#include "dmlc/logging.h"
 namespace rdc {
 
 
@@ -44,11 +44,38 @@ inline std::tuple<Backend, std::string, uint32_t> ParseAddr(
     }
     return std::make_tuple(backend, host, port);
 }
+
+inline std::string GetBackendString(const Backend& backend) {
+    std::string backend_str;
+    if (backend == kTcp) {
+        backend_str = "tcp";
+    } else if (backend == kRdma) {
+        backend_str = "rdma";
+    } else if (backend == kIpc) {
+        backend_str = "ipc";
+    } else {
+    LOG(INFO);
+        backend_str = "tcp";
+    }
+    return backend_str;
+}
+
 class IChannel;
 class IAdapter {
 public:
     virtual IChannel* Accept() = 0;
     virtual int Listen(const uint32_t& port) = 0;
+    void set_backend(const Backend& backend) {
+        backend_ = backend;
+    }
+    Backend backend() const {
+        return backend_;
+    }
+    std::string backend_str() const {
+        return GetBackendString(backend_);
+    }
+private:
+    Backend backend_;
 };
 
 IAdapter* GetAdapter();

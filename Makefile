@@ -99,7 +99,7 @@ build/%.o:src/*/%.cc
 #
 $(SLIB) : $(OBJS)
 	mkdir -p $(@D)
-	$(CXX) $(CFLAGS) -shared -o $@ $(filter %.cpp %.o %.c %.cc %.a, $^)
+	$(CXX) $(CFLAGS) -shared -o $@ $(filter %.cpp %.o %.c %.cc %.a, $^) -libverbs
 #
 lint:
 	scripts/lint.py rdc $(LINT_LANG) src include

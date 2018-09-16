@@ -15,7 +15,9 @@
 #include "core/env.h"
 #include "transport/channel.h"
 #include "comm/communicator_base.h"
-
+#ifdef RDC_USE_RDMA
+#include "transport/rdma/rdma_channel.h"
+#endif
 namespace rdc {
 namespace comm {
 // constructor
@@ -247,8 +249,10 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
         logging::add_file(str_utils::SPrintf("log/%d", rank_).c_str(),
                           logging::Truncate, logging::Verbosity_MAX);
         // send back socket listening port to tracker
+        auto backend_str = GetAdapter()->backend_str();
+        LOG(INFO) << backend_str;
         auto host_addr = str_utils::SPrintf("%s:%s:%d",
-                "tcp", host_uri_.c_str(), worker_port_);
+                backend_str.c_str(), host_uri_.c_str(), worker_port_);
         CHECK_F(tracker_->SendStr(host_addr) == Status::kSuccess,
                "ReConnectLink fail to send my addr");
         // get new ranks
@@ -326,7 +330,12 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
     for (auto& peer_addr : peer_addrs_) {
         int hrank = peer_addr.first;
         auto haddr = peer_addr.second;
-        std::shared_ptr<IChannel> channel = std::make_shared<TcpChannel>();
+        std::shared_ptr<IChannel> channel;
+        if (GetAdapter()->backend() == kRdma) {
+            channel.reset(new RdmaChannel);
+        } else {
+            channel.reset(new TcpChannel);
+        }
         if (channel->Connect(haddr) != Status::kSuccess) {
             channel->Close();
             LOG_F(ERROR,"Error");
