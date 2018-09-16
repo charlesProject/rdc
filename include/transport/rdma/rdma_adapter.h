@@ -1,13 +1,13 @@
 #pragma once
 
 #include <atomic>
-#include "./rdma_channel.h"
+#include "transport/adapter.h"
+#include "transport/rdma/rdma_channel.h"
 
-
-class RdmaPoller
-{
+namespace rdc {
+class RdmaAdapter : public IAdapter {
 public:
-    RdmaPoller() {
+    RdmaAdapter() {
         InitContext();
         this->listen_fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         this->set_ready(false);
@@ -15,11 +15,11 @@ public:
         poll_thread = utils::make_unique<std::thread>(
                       [this] { PollForever(); });
     }
-    static RdmaPoller* Get() {
-        static RdmaPoller poller;
+    static RdmaAdapter* Get() {
+        static RdmaAdapter poller;
         return &poller;
     }
-    ~RdmaPoller() {
+    ~RdmaAdapter() {
         this->set_finished(true);
         close(this->listen_fd_);
         poll_thread->join();
@@ -27,8 +27,8 @@ public:
 
     void PollForever();
 
-    int Listen(int32_t tcp_port, const size_t& backlog = 32);
-    RdmaChannel* Accept();
+    int Listen(const uint32_t& tcp_port);
+    IChannel* Accept();
     int ib_port() const {
         return ib_port_;
     }
@@ -93,4 +93,4 @@ private:
     uint32_t snp_;
     uint64_t iid_;
 };
-
+}  // namespace rdc

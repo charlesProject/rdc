@@ -57,7 +57,7 @@ void RdmaAdapter::PollForever() {
     }
 }
 
-int RdmaAdapter::Listen(int32_t tcp_port, const size_t& backlog) {
+int RdmaAdapter::Listen(const uint32_t& tcp_port) {
     struct sockaddr_in owned_addr;
     std::memset(&owned_addr, 0 , sizeof(owned_addr));
     owned_addr.sin_family = AF_INET;
@@ -71,7 +71,7 @@ int RdmaAdapter::Listen(int32_t tcp_port, const size_t& backlog) {
     int32_t opt = 0;
     setsockopt(this->listen_fd_, SOL_SOCKET, SO_REUSEPORT,
                &opt, sizeof(opt));
-    if (listen(this->listen_fd_, backlog) != 0) {
+    if (listen(this->listen_fd_, kNumBacklogs) != 0) {
         LOG(ERROR) << "Fail to listen on port " << tcp_port
                      << " :" << strerror(errno);
     }
@@ -79,7 +79,7 @@ int RdmaAdapter::Listen(int32_t tcp_port, const size_t& backlog) {
 }
 
 
-RdmaChannel* RdmaAdapter::Accept() {
+IChannel* RdmaAdapter::Accept() {
     // accept the connection$
     sockaddr_in incoming_addr;
     socklen_t incoming_addr_len = sizeof(incoming_addr);

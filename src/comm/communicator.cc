@@ -52,13 +52,13 @@ void Finalize() {
 }
 
 /*! \brief singleton method to get comm */
-ICommunicator *GetCommunicator(const std::string& name) {
-    // un-initialized default manager.
-    static Communicator default_manager;
+ICommunicator* GetCommunicator(const std::string& name) {
+    // un-initialized default communicator.
+    static Communicator default_comm;
     ThreadLocalEntry* e = ThreadLocalCommunicator::Get();
     ICommunicator* ptr = e->comm->GetCommunicator(name);
     if (ptr == nullptr) {
-        return &default_manager;
+        return &default_comm;
     } else {
         return ptr;
     }

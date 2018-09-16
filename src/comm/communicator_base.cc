@@ -13,6 +13,7 @@
 #include "core/threadpool.h"
 #include "core/logging.h"
 #include "core/env.h"
+#include "transport/channel.h"
 #include "comm/communicator_base.h"
 
 namespace rdc {
@@ -143,7 +144,7 @@ void Communicator::Shutdown() {
         tracker_->Close();
     }
     tracker_lock_->unlock();
-    TcpAdapter::Get()->Shutdown();
+//    TcpAdapter::Get()->Shutdown();
 }
 void Communicator::TrackerPrint(const std::string &msg) {
     if (tracker_uri_ == "NULL") {
@@ -235,7 +236,7 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
             return std::make_tuple(-1, -1);
         }
         // start listener at very begining
-        TcpAdapter::Get()->Listen(worker_port_);
+        GetAdapter()->Listen(worker_port_);
         tracker_->SendStr(std::string(cmd));
         CHECK_F(tracker_->RecvInt(world_size_) == Status::kSuccess,
                 "ReConnectLink fail to recv world size");
@@ -340,7 +341,7 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
     }
     // listen to incoming links
     for (int i = 0; i < num_accept; ++i) {
-        TcpChannel* channel= TcpAdapter::Get()->Accept();
+        IChannel* channel= GetAdapter()->Accept();
         std::shared_ptr<IChannel> schannel(channel);
         int hrank = 0;
         channel->SendInt(rank_);

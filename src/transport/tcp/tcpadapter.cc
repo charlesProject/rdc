@@ -19,7 +19,6 @@
 #include "core/status.h"
 
 static const uint32_t kNumMaxEvents = 32;
-static const uint32_t kNumBacklogs = 32;
 
 namespace rdc {
 
@@ -167,7 +166,7 @@ bool TcpAdapter::Poll() {
     }
     return false;
 }
-int TcpAdapter::Listen(const int32_t& port) {
+int TcpAdapter::Listen(const uint32_t& port) {
     struct sockaddr_in own_addr;
     std::memset(&own_addr, 0 , sizeof(own_addr));
     own_addr.sin_family = AF_INET;

@@ -1,9 +1,14 @@
 #pragma once
+#include <tuple>
 #include <string>
 #include "utils/string_utils.h"
 #include "core/logging.h"
 
 namespace rdc {
+
+
+const uint32_t kNumBacklogs = 32;
+
 enum Backend {
     kTcp = 0,
     kRdma = 2,
@@ -41,7 +46,10 @@ inline std::tuple<Backend, std::string, uint32_t> ParseAddr(
 }
 class IChannel;
 class IAdapter {
+public:
     virtual IChannel* Accept() = 0;
+    virtual int Listen(const uint32_t& port) = 0;
 };
 
+IAdapter* GetAdapter();
 } // namespace rdc

@@ -202,6 +202,7 @@ void TcpChannel::ReadCallback() {
         if (spin_) {
             recv_reqs_.NoLockPop();
         } else {
+            recv_req.Notify();
             recv_reqs_.Pop();
         }
     }
@@ -234,6 +235,7 @@ void TcpChannel::WriteCallback() {
         if (spin_) {
             send_reqs_.NoLockPop();
         } else {
+            send_req.Notify();
             send_reqs_.Pop();
         }
     }

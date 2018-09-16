@@ -12,7 +12,8 @@
 #include <arpa/inet.h>
 
 #include "core/logging.h"
-"
+
+namespace rdc {
 inline void GetAvaliableDeviceAndPort(ibv_device*& dev,int& ib_port) {
     ibv_context *ctx;
     ibv_device** dev_list;
@@ -112,4 +113,4 @@ inline int GetGid(const int& ib_port, ibv_context* context) {
     return gid_index;
 }
 }
-
+}  // namespace rdc

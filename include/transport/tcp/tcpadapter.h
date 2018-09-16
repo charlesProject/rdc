@@ -14,7 +14,7 @@ namespace rdc {
  * @class TcpAdapter
  * @brief tcpadapther which will govern all tcp connections
  */
-class TcpAdapter {
+class TcpAdapter: public IAdapter {
 public:
     TcpAdapter();
     static TcpAdapter* Get() {
@@ -38,7 +38,7 @@ public:
     std::unique_ptr<std::thread> listen_thrd;
     void PollForever();
     bool Poll();
-    int Listen(const int32_t& port);
+    int Listen(const uint32_t& port);
     TcpChannel* Accept();
     int32_t shutdown_fd_;
     int32_t listen_fd_;

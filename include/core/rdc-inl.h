@@ -84,7 +84,7 @@ inline void Allgather(std::vector<std::vector<DType>>& sendrecv_data,
                       const std::string& comm_name) {
     std::vector<void*> sendrecv_ptrs(sendrecv_data.size());
     std::vector<size_t> sizes(sendrecv_data.size());
-    for (int i = 0; i < sendrecv_data.size(); ++i) {
+    for (auto i = 0U; i < sendrecv_data.size(); ++i) {
         sendrecv_ptrs[i] = reinterpret_cast<void*>(
                            utils::BeginPtr(sendrecv_data[i]));
         sizes[i] = sendrecv_data[i].size();
@@ -142,8 +142,7 @@ inline std::unique_ptr<comm::ICommunicator> CreateGroup(
 // Code to handle customized Reduce
 // ---------------------------------
 // function to perform reduction for Reducer
-template<typename DType, std::function<
-         void(DType &dst, const DType &src)> freduce>
+template<typename DType, void (*freduce)(DType &dst, const DType &src)>
 inline void ReducerSafe_(const void *src_, void *dst_,
                          int len_, const MPI::Datatype &dtype) {
     const size_t kUnit = sizeof(DType);
@@ -159,8 +158,7 @@ inline void ReducerSafe_(const void *src_, void *dst_,
     }
 }
 // function to perform reduction for Reducer
-template<typename DType, std::function<
-         void(DType &dst, const DType &src)> freduce> // NOLINT(*)
+template<typename DType, void (*freduce)(DType &dst, const DType &src)> // NOLINT(*)
 inline void ReducerAlign_(const void *src_, void *dst_,
                           int len_, const MPI::Datatype &dtype) {
     const DType *psrc = reinterpret_cast<const DType*>(src_);
@@ -189,8 +187,7 @@ struct SerializeReduceClosure {
         static_cast<SerializeReduceClosure<DType>*>(c)->Run();
     }
 };
-template<typename DType, std::function<
-         void(DType &dst, const DType &src)> freduce>  // NOLINT(*)
+template<typename DType, void (*freduce)(DType &dst, const DType &src)>  // NOLINT(*)
 inline void Reducer<DType, freduce>::Allreduce(
         DType *sendrecvbuf, size_t count) {
     this->Allreduce(sendrecvbuf, count);

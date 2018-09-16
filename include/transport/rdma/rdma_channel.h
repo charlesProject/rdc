@@ -7,7 +7,12 @@
 #include <unistd.h>
 #include <errno.h>
 #include <netdb.h>
-#include "work_request.h"
+#include "core/work_request.h"
+#include "transport/channel.h"
+#include "core/status.h"
+#include "utils/utils.h"
+
+namespace rdc {
 const int kNumCompQueueEntries = 100;
 const uint64_t kBufSize = 1 << 10U;
 
@@ -21,27 +26,31 @@ struct __attribute__ ((packed)) RdmaAddr {
     uint64_t raddr;
 };
 
-inline void PrintAddr(RdmaAddr addr) {
+inline std::string PrintAddr(RdmaAddr addr) {
     std::string addr_str;
     addr_str += std::to_string(addr.lid);
     addr_str += "\t" + std::to_string(addr.qpn);
     addr_str += "\t" + std::to_string(addr.psn);
     addr_str += "\t" + std::to_string(addr.snp);
     addr_str += "\t" + std::to_string(addr.iid);
-    LOG(INFO) << addr_str;
+    return addr_str;
 }
 
-class RdmaPoller;
-struct RdmaChannel {
+class RdmaAdapter;
+struct RdmaChannel : IChannel {
     RdmaChannel();
-    RdmaChannel(RdmaPoller* poller, uint64_t buf_size);
-    RdmaChannel(RdmaPoller* poller);
+    RdmaChannel(RdmaAdapter* adapter, uint64_t buf_size);
+    RdmaChannel(RdmaAdapter* adapter);
     ~RdmaChannel() {
         delete[] send_buf_;
         delete[] recv_buf_;
     }
-    WorkCompletion ISend(const void* msg, size_t size);
-    WorkCompletion IRecv(void* msg, size_t size);
+    WorkCompletion ISend(const void* sendbuf, size_t size) override;
+    WorkCompletion IRecv(void* recvbuf, size_t size) override;
+    Status Connect(const std::string& hostname, const uint32_t& port) override;
+    void Close() override {
+        return this->ExitRdmaContext();
+    }
     void set_peer_addr(const RdmaAddr& peer_addr) {
         peer_addr_ = peer_addr;
     }
@@ -52,7 +61,6 @@ struct RdmaChannel {
     RdmaAddr peer_addr() const {
         return peer_addr_;
     }
-    int Connect(const std::string& hostname, const int32_t& port);
     void AfterConnection();
 protected:
     void InitRdmaContext();
@@ -70,9 +78,9 @@ protected:
     ibv_qp* queue_pair_;
     ibv_mr* send_memory_region_;
     ibv_mr* recv_memory_region_;
-    RdmaPoller* poller_;
+    RdmaAdapter* adapter_;
     int sgid_idx_;
     int gid_idx_;
     int num_comp_queue_entries_;
 };
-
+} // namespace rdc

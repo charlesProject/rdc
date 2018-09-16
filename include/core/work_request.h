@@ -20,15 +20,16 @@ enum WorkType : uint32_t {
 struct WorkRequest {
     WorkRequest(): done_(false), completed_bytes_(0) {};
     WorkRequest(const uint64_t& req_id, const WorkType& work_type,
-        void* ptr, const size_t& size) : req_id_(req_id),
-            work_type_(work_type), done_(false),
-            ptr_(ptr), size_in_bytes_(size), completed_bytes_(0) {
-            }
+        void* ptr, const size_t& size, void* extra_data) :
+            req_id_(req_id), work_type_(work_type), done_(false),
+            ptr_(ptr), size_in_bytes_(size), completed_bytes_(0),
+            extra_data_(extra_data) {}
     WorkRequest(const uint64_t& req_id, const WorkType& work_type,
-        const void* ptr, const size_t& size) : req_id_(req_id),
-            work_type_(work_type), done_(false),
-            ptr_(const_cast<void*>(ptr)), size_in_bytes_(size), completed_bytes_(0) {
-            }
+        const void* ptr, const size_t& size, void* extra_data) :
+            req_id_(req_id), work_type_(work_type), done_(false),
+            ptr_(const_cast<void*>(ptr)), size_in_bytes_(size),
+            completed_bytes_(0), extra_data_(extra_data) {}
+
     ~WorkRequest() = default;
 
     WorkRequest(const WorkRequest& other) {
@@ -38,14 +39,16 @@ struct WorkRequest {
         this->work_type_ = other.work_type_;
         this->completed_bytes_ = other.completed_bytes_;
         this->done_ = other.done_;
+        this->extra_data_ = other.extra_data_;
     }
-    WorkRequest operator=(const WorkRequest& other) {
+    WorkRequest& operator=(const WorkRequest& other) {
         this->req_id_ = other.req_id_;
         this->ptr_ = other.ptr_;
         this->size_in_bytes_ = other.size_in_bytes_;
         this->work_type_ = other.work_type_;
         this->completed_bytes_ = other.completed_bytes_;
         this->done_ = other.done_;
+        this->extra_data_ = other.extra_data_;
         return *this;
     }
 
@@ -77,6 +80,12 @@ struct WorkRequest {
     }
     uint64_t id() const {
         return req_id_;
+    }
+    WorkType work_type() const {
+        return work_type_;
+    }
+    void* extra_data() {
+        return extra_data_;
     }
     void* ptr() {
       return ptr_;
@@ -127,19 +136,19 @@ struct WorkRequestManager {
         store_lock->unlock();
     }
     uint64_t NewWorkRequest(const WorkType& work_type, void* ptr,
-            const size_t& size) {
+            const size_t& size, void* extra_data = nullptr) {
         id_lock->lock();
         cur_req_id++;
-        WorkRequest work_req(cur_req_id, work_type, ptr, size);
+        WorkRequest work_req(cur_req_id, work_type, ptr, size, extra_data);
         id_lock->unlock();
         AddWorkRequest(work_req);
         return work_req.id();
     }
     uint64_t NewWorkRequest(const WorkType& work_type, const void* ptr,
-            const size_t& size) {
+            const size_t& size, void* extra_data = nullptr) {
         id_lock->lock();
         cur_req_id++;
-        WorkRequest work_req(cur_req_id, work_type, ptr, size);
+        WorkRequest work_req(cur_req_id, work_type, ptr, size, extra_data);
         id_lock->unlock();
         AddWorkRequest(work_req);
         return work_req.id();
