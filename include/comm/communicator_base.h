@@ -18,6 +18,7 @@
 #include "utils/graph.h"
 #include "core/status.h"
 #include "core/logging.h"
+#include "core/socket.h"
 #include "comm/communicator.h"
 #include "transport/channel.h"
 #include "transport/adapter.h"

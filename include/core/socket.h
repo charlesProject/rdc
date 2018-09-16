@@ -482,7 +482,6 @@ public:
      * \param val the integer to be sent
      */
     inline void SendInt(const int32_t& val) {
-        int len = static_cast<int>(str.length());
         CHECK_F(this->SendAll(&val, sizeof(val)) == sizeof(val),
                       "error during send SendInt");
     }
@@ -492,7 +491,7 @@ public:
      */
     inline void RecvStr(int32_t& out_val) {
         int len;
-        CHECK_F(this->RecvAll(&val, sizeof(val)) == sizeof(val),
+        CHECK_F(this->RecvAll(&out_val, sizeof(out_val)) == sizeof(out_val),
                       "error during send RecvInt");
     }
 };
