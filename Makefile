@@ -42,9 +42,18 @@ ifeq ($(USE_SSE), 1)
 	CFLAGS += -msse2
 endif
 
+ifndef USE_RDMA
+	USE_RDMA = 1
+endif
+
+ifeq ($(USE_RDMA), 1)
+	LDFLAGS += -libverbs
+endif
+
 ifndef WITH_FPIC
 	WITH_FPIC = 1
 endif
+
 ifeq ($(WITH_FPIC), 1)
 	CFLAGS += -fPIC
 endif
@@ -60,7 +69,12 @@ BUILD_DIR = ./build
 # objectives that makes up rdc library
 SLIB = lib/librdc.so
 ALIB = lib/librdc.a
-DEFS += -DLOGGING_WITH_STREAMS=1 -DRABIT_USE_BASE
+DEFS += -DLOGGING_WITH_STREAMS=1 -DRDC_USE_BASE
+
+ifeq ($(USE_RDMA), 1)
+	DEFS += -DRDC_USE_RDMA
+endif
+
 CFLAGS += $(DEFS)
 DMLC=./
 
@@ -85,6 +99,7 @@ build/%.o:src/*/%.cc
 #	ar cr $@ $(filter %.o, $^)
 #
 $(SLIB) : $(OBJS)
+	mkdir -p $(@D)
 	$(CXX) $(CFLAGS) -shared -o $@ $(filter %.cpp %.o %.c %.cc %.a, $^)
 #
 #lint:
