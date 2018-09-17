@@ -61,7 +61,7 @@ inline void PrintStats(const char *name, double tdiff, int n, int nrep, size_t s
     if (rdc::GetRank() == 0) {
         std::string msg = std::string(name) + ": " +
                           "mean=" + std::to_string(tavg) + ": " +
-                          "std=" + std::to_string(tstd) + " sec";
+                          "std=" + std::to_string(tstd) + " millisec";
         rdc::TrackerPrint(msg);
         double ndata = n;
         ndata *= nrep * size;
@@ -85,20 +85,20 @@ int main(int argc, char *argv[]) {
     CHECK_F(nrep >= 1, "need to at least repeat running once");
     rdc::Init(argc, argv);
     //int rank = rdc::GetRank();
-    int nproc = rdc::GetWorldSize();
     std::string name = rdc::GetProcessorName();
     max_tdiff = sum_tdiff = bcast_tdiff = 0;
-    double tstart = utils::GetTime();
+    rdc::Barrier();
+    double tstart = utils::GetTimeMs();
     for (int i = 0; i < nrep; ++i) {
       TestMax(n);
       TestSum(n);
-      TestBcast(n, rand() % nproc);
+    //  TestBcast(n, rand() % nproc);
     }
-    tot_tdiff = utils::GetTime() - tstart;
+    tot_tdiff = utils::GetTimeMs() - tstart;
     // use allreduce to get the sum and std of time
     PrintStats("max_tdiff", max_tdiff, n, nrep, sizeof(float));
     PrintStats("sum_tdiff", sum_tdiff, n, nrep, sizeof(float));
-    PrintStats("bcast_tdiff", bcast_tdiff, n, nrep, sizeof(char));
+    //PrintStats("bcast_tdiff", bcast_tdiff, n, nrep, sizeof(char));
     PrintStats("tot_tdiff", tot_tdiff, 0, nrep, sizeof(float));
     rdc::Finalize();
     return 0;

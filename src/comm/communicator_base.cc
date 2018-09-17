@@ -35,7 +35,7 @@ Communicator::Communicator(const std::string& name) {
     connect_retry_ = 5;
     version_number = 0;
     // 32 K items
-    reduce_ring_mincount_ = 32 << 10;
+    reduce_ring_mincount_ = 1;//32 << 10;
     //reduce_ring_mincount_ = 32;
     // tracker URL
     err_link = nullptr;

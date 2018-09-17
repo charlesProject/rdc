@@ -32,7 +32,7 @@
     LOG_F(ERROR, "Socket %s Error:WSAError-code=%d", msg, WSAGetLastError();
 #else
 #define LOGERROR(msg)                                                          \
-    LOG_F(ERROR, "Socket %s Error: %d", msg, strerror(errno));
+    LOG_F(ERROR, "Socket %s Error: %s", msg, strerror(errno));
 #endif
 
 #if defined(_MSC_VER) && _MSC_VER < 1900

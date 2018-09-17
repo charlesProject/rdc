@@ -10,40 +10,21 @@ public:
     /*!
      * \brief Acquire lock.
      */
-    void lock() noexcept(true);
+    inline void lock() noexcept(true) {
+        while (lock_.test_and_set(std::memory_order_acquire)) {
+        }
+    }
     /*!
      * \brief Release lock.
      */
-    void unlock() noexcept(true);
+    inline void unlock() noexcept(true) {
+        lock_.clear(std::memory_order_release);
+    }
 private:
     std::atomic_flag lock_;
     SpinLock(const SpinLock&) = delete;
 };
-class MixedLock {
-public:
-    MixedLock();
-    MixedLock(const uint64_t& spin_timeout);
-    ~MixedLock() = default;
-    inline void lock() noexcept(true);
-    inline void unlock() noexcept(true);
-private:
-    std::atomic_flag spin_;
-    std::mutex mu_;
-    uint64_t spin_timeout_;
-    uint64_t spin_timer_;
-    MixedLock(const MixedLock&) = delete;
-};
-template <class Lock>
-class LockGuard {
-public:
-    LockGuard(Lock& lock) : lock_(lock) {
-        lock_.lock();
-    }
-    ~LockGuard() {
-        lock_.unlock();
-    }
-    Lock& lock_;
-};
+
 } // namespace utils
 } // namespace rdc
 

@@ -11,6 +11,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include "core/env.h"
 #include "core/logging.h"
 
 namespace rdc {
@@ -41,6 +42,48 @@ inline void GetAvaliableDeviceAndPort(ibv_device*& dev,int& ib_port) {
     return;
 }
 
+inline enum ibv_mtu set_mtu(uint8_t port_num, ibv_context* context) {
+  ibv_port_attr port_attr;
+  enum ibv_mtu mtu = IBV_MTU_512;
+  std::string mtu_s;
+  int rc, mtu_i;
+
+  rc = ibv_query_port(context, port_num, &port_attr);
+  CHECK(!rc) << "Failed to query the port" << port_num;
+
+  mtu_s = Env::Get()->Find("RDC_RDMA_MTU");
+
+  if (!mtu_s.empty()) {
+    mtu_i = std::stoi(mtu_s);
+    switch (mtu_i) {
+      case 256:
+        mtu = IBV_MTU_256;
+        break;
+      case 512:
+        mtu = IBV_MTU_512;
+        break;
+      case 1024:
+        mtu = IBV_MTU_1024;
+        break;
+      case 2048:
+        mtu = IBV_MTU_2048;
+        break;
+      case 4096:
+        mtu = IBV_MTU_4096;
+        break;
+      default:
+        CHECK(0) << "Error: MTU input value must be one of the following: 256, "
+                    "512, 1024, 2048, 4096. MTU "
+                 << mtu << " is invalid\n";
+        break;
+    }
+    CHECK(mtu < port_attr.active_mtu)
+        << "MTU configuration for the QPs is larger than active MTU";
+  } else {
+    mtu = port_attr.active_mtu;
+  }
+  return mtu;
+}
 namespace roce {
 #define RoCE_V2 "RoCE v2"
 inline int ReadSysfsFile(const char* dir, const char* file,

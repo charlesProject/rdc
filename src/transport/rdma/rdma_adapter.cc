@@ -1,16 +1,18 @@
 #ifdef RDC_USE_RDMA
 #include "transport/rdma/rdma_adapter.h"
 #include "transport/rdma/rdma_utils.h"
+#include "core/threadpool.h"
 #include "core/logging.h"
 
 namespace rdc {
+
+static const uint32_t kConcurrentOps = 4;
+
 void RdmaAdapter::InitContext() {
     GetAvaliableDeviceAndPort(dev_, ib_port_);
     CHECK_NOTNULL(context_ = ibv_open_device(dev_));
     CHECK_NOTNULL(protection_domain_ = ibv_alloc_pd(context_));
 
-
-    ibv_device_attr dev_attr;
     auto ret = ibv_query_device(context_, &dev_attr_);
     
     CHECK_NOTNULL(completion_queue_ = ibv_create_cq(context_,
@@ -26,7 +28,6 @@ void RdmaAdapter::ExitContext() {
     CHECK_EQ(ibv_destroy_cq(completion_queue_), 0);
     CHECK_EQ(ibv_dealloc_pd(protection_domain_), 0);
 }
-static const uint32_t kConcurrentOps = 4;
 void RdmaAdapter::PollForever() {
     while(!ready()) {}
     for (;;) {

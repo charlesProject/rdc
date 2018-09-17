@@ -41,13 +41,16 @@ namespace comm {
 /*! \brief implementation of basic Allreduce comm */
 class Communicator : public ICommunicator {
 public:
-    // constant one byte out of band message to indicate error happening
-    Communicator(const std::string& name);
     Communicator();
+    Communicator(const std::string& name);
     Communicator(const Communicator& other);
     virtual ~Communicator() {}
     // initialize the manager
     virtual void Init(int argc, char* argv[]);
+    /*!
+     * \brief Create a new communicator which takes its own channels
+     * \param name communicator name
+    */
     virtual void NewCommunicator(const std::string& name);
     // shutdown the comm
     virtual void Shutdown();
@@ -63,8 +66,8 @@ public:
      *    the user who monitors the tracker_
      * \param msg message to be printed in the tracker_
      */
-    virtual void TrackerPrint(const std::string &msg);
-    virtual ICommunicator* GetCommunicator(const std::string& name) {
+    virtual void TrackerPrint(const std::string &msg) override;
+    virtual ICommunicator* GetCommunicator(const std::string& name) override {
         if (name == kWorldCommName) {
             return this;
         } else {
@@ -74,25 +77,39 @@ public:
     }
 
     /*! \brief get rank */
-    virtual int GetRank(void) const {
+    virtual int GetRank() const override {
         return rank_;
     }
     /*! \brief get rank */
-    virtual int GetWorldSize(void) const {
+    virtual int GetWorldSize() const override {
         if (world_size_ == -1) return 1;
         return world_size_;
     }
     /*! \brief whether is distributed or not */
-    virtual bool IsDistributed(void) const {
+    virtual bool IsDistributed() const override {
         return tracker_uri_ != "NULL";
     }
     /*! \brief get rank */
-    virtual std::string GetHost(void) const {
+    virtual std::string GetHost(void) const override {
         return host_uri_;
     }
-    void Send(void* sendbuf_, size_t type_nbytes, int dest) override;
+    /*!
+     *   \brief blocking send
+     *  \param sendbuf_ buffer need to  send
+     *  \param nbytes buffer size in bytes
+     *  \param dest destination rank
+    */
+    void Send(void* sendbuf_, size_t nbytes, int dest) override;
+    /*!
+     *   \brief blocking send
+     *  \param sendbuf_ buffer need to  send
+     *  \param nbytes buffer size in bytes
+     *  \param dest destination rank
+    */
     void Recv(void* recvbuf_, size_t type_nbytes, int src) override;
-    void Barrier();
+    /*! \brief barrier all nodes*/
+    void Barrier() override;
+    /*! \brief register this communicator to tracker */
     void Register();
     /*!
      * \brief perform in-place allreduce, on sendrecvbuf
@@ -149,7 +166,7 @@ public:
      * \sa CheckPoint, VersionNumber
      */
     virtual int LoadCheckPoint(Serializable *global_model,
-                               Serializable *local_model = nullptr) {
+                               Serializable *local_model = nullptr) override {
         return 0;
     }
     /*!
@@ -161,15 +178,9 @@ public:
      *   is the same in all nodes
      * \param local_model pointer to local model, that is specific to current node/rank
      *   this can be NULL when no local state is needed
-     *
-     * NOTE: local_model requires explicit replication of the model for fault-tolerance, which will
-     *       bring replication cost in CheckPoint function. global_model do not need explicit replication.
-     *       So only CheckPoint with global_model if possible
-     *
-     * \sa LoadCheckPoint, VersionNumber
      */
     virtual void CheckPoint(const Serializable *global_model,
-                            const Serializable *local_model = NULL) {
+                            const Serializable *local_model = NULL) override {
         version_number += 1;
     }
     /*!
@@ -192,7 +203,7 @@ public:
      *   is the same in all nodes
      * \sa LoadCheckPoint, CheckPoint, VersionNumber
      */
-    virtual void LazyCheckPoint(const Serializable *global_model) {
+    virtual void LazyCheckPoint(const Serializable *global_model) override {
         version_number += 1;
     }
     /*!
@@ -200,7 +211,7 @@ public:
      *         which means how many calls to CheckPoint we made so far
      * \sa LoadCheckPoint, CheckPoint
      */
-    virtual int VersionNumber(void) const {
+    virtual int VersionNumber(void) const override{
         return version_number;
     }
     /*!
@@ -208,7 +219,7 @@ public:
      *    call this function when ICommunicator throw an exception out,
      *    this function is only used for test purpose
      */
-    virtual void InitAfterException() {
+    virtual void InitAfterException() override {
         LOG_F(ERROR, "InitAfterException: not implemented");
     }
     std::unique_ptr<ICommunicator> CreateGroup(
@@ -239,7 +250,6 @@ protected:
      * \param count number of elements to be reduced
      * \param reducer reduce function
      * \return this function can return Status::kSuccess, kSockError, kGetExcept, see void for details
-     * \sa void
      */
     void TryAllreduce(void* sendrecvbuf_,
                             size_t type_nbytes,

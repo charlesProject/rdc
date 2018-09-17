@@ -115,7 +115,7 @@ void RdmaChannel::EnableQueuePairForRecv() {
     memset(attr, 0, sizeof(*attr));
 
     attr->qp_state              = IBV_QPS_RTR;
-    attr->path_mtu              = IBV_MTU_2048;
+    attr->path_mtu              = IBV_MTU_4096;
     attr->dest_qp_num           = peer_addr_.qpn;
     attr->rq_psn                = peer_addr_.psn;
     attr->max_dest_rd_atomic    = 1;
@@ -164,6 +164,8 @@ void RdmaChannel::CreateLocalAddr() {
     this->sgid_idx_ = this->adapter_->sgid_idx();
     self_addr_.snp = adapter_->snp();
     self_addr_.iid = adapter_->iid();
+    self_addr_.rkey = recv_memory_region_->rkey;
+    self_addr_.raddr = (uint64_t)recv_buf_;
 }
 
 WorkCompletion RdmaChannel::ISend(const void* sendbuf_, size_t size) {
@@ -179,9 +181,13 @@ WorkCompletion RdmaChannel::ISend(const void* sendbuf_, size_t size) {
     send_wr.wr_id       = req_id;
     send_wr.sg_list     = &sge_list;
     send_wr.num_sge     = 1;
-    send_wr.opcode      = IBV_WR_SEND;
+    send_wr.opcode      = IBV_WR_RDMA_WRITE_WITH_IMM;
     send_wr.send_flags  = IBV_SEND_SIGNALED;
     send_wr.next        = NULL;
+
+    send_wr.wr.rdma.rkey = peer_addr_.rkey;
+    send_wr.wr.rdma.remote_addr = peer_addr_.raddr;
+    send_wr.imm_data = 0;
 
     ibv_send_wr *bad_wr;
     CHECK_EQ(ibv_post_send(queue_pair_, &send_wr, &bad_wr), 0)
