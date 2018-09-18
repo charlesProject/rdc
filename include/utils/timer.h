@@ -18,6 +18,10 @@ inline uint64_t GetTimeInUs() {
 	return duration_cast<microseconds>(high_resolution_clock::now()
 									   .time_since_epoch()).count();
 }
+inline double GetTimeInMs() {
+	return static_cast<double>(GetTimeInUs()) / 1e3;
+}
+
 inline double GetTime() {
 	return static_cast<double>(GetTimeInUs()) / 1e6;
 }

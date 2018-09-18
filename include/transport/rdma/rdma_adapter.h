@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include "core/env.h"
 #include "transport/adapter.h"
 #include "transport/rdma/rdma_channel.h"
 
@@ -30,6 +31,10 @@ public:
 
     int Listen(const uint32_t& tcp_port);
     IChannel* Accept();
+    bool use_srq() {
+        return Env::Get()->GetEnv("RDC_USE_SRQ", 0);
+    }
+    
     int ib_port() const {
         return ib_port_;
     }
@@ -69,6 +74,9 @@ public:
     uint64_t max_num_queue_entries() {
         return dev_attr_.max_cqe;
     }
+    ibv_srq* shared_receive_queue() {
+        return shared_receive_queue_;
+    }
 protected:
     void InitContext();
     void ExitContext();
@@ -81,6 +89,7 @@ private:
     ibv_context* context_;
     ibv_cq* completion_queue_;
     ibv_pd* protection_domain_;
+    ibv_srq* shared_receive_queue_;
     ibv_comp_channel* comp_channel_;
     ibv_device* dev_;
     ibv_device_attr dev_attr_;

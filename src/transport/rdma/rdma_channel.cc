@@ -80,6 +80,7 @@ void RdmaChannel::CreateQueuePair() {
     memset(&qp_init_attr, 0, sizeof(qp_init_attr));
     qp_init_attr.send_cq = adapter_->completion_queue();
     qp_init_attr.recv_cq = adapter_->completion_queue();
+    qp_init_attr.srq = adapter_->shared_receive_queue();
     qp_init_attr.qp_type = IBV_QPT_RC;
     qp_init_attr.cap.max_send_wr = Env::Get()->GetEnv("RDC_RDMA_MAX_WR",
                                     kNumCompQueueEntries);
@@ -87,7 +88,7 @@ void RdmaChannel::CreateQueuePair() {
                                     kNumCompQueueEntries);
     qp_init_attr.cap.max_send_sge = 1;
     qp_init_attr.cap.max_recv_sge = 1;
-    qp_init_attr.cap.max_inline_data = 0;
+    qp_init_attr.cap.max_inline_data = 1U << 6;
     queue_pair_ = ibv_create_qp(adapter_->protection_domain(),
                                 &qp_init_attr);
     CHECK_NOTNULL(queue_pair_);
@@ -115,7 +116,7 @@ void RdmaChannel::EnableQueuePairForRecv() {
     memset(attr, 0, sizeof(*attr));
 
     attr->qp_state              = IBV_QPS_RTR;
-    attr->path_mtu              = IBV_MTU_4096;
+    attr->path_mtu              = IBV_MTU_2048;
     attr->dest_qp_num           = peer_addr_.qpn;
     attr->rq_psn                = peer_addr_.psn;
     attr->max_dest_rd_atomic    = 1;
@@ -211,8 +212,10 @@ WorkCompletion RdmaChannel::IRecv(void* recvbuf_, size_t size) {
     recv_wr.next        = NULL;
 
     ibv_recv_wr* bad_wr;
-    CHECK_EQ(ibv_post_recv(queue_pair_, &recv_wr, &bad_wr),0)
+    CHECK_EQ(ibv_post_srq_recv(adapter_->shared_receive_queue(), &recv_wr, &bad_wr),0)
              << "ibv_post_send failed.This is bad mkey";
+    //CHECK_EQ(ibv_post_recv(queue_pair_, &recv_wr, &bad_wr),0)
+    //         << "ibv_post_send failed.This is bad mkey";
     WorkCompletion wc(req_id);
     return wc;
 }

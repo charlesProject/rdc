@@ -17,6 +17,15 @@ void RdmaAdapter::InitContext() {
     
     CHECK_NOTNULL(completion_queue_ = ibv_create_cq(context_,
         dev_attr_.max_cqe, context_, nullptr, 0));
+
+    ibv_srq_init_attr sia;
+    std::memset(&sia, 0, sizeof(ibv_srq_init_attr));
+    sia.srq_context = this->context_;
+    sia.attr.max_wr = Env::Get()->GetEnv("RDC_RDMA_MAX_WR",
+                                    kNumCompQueueEntries);
+    sia.attr.max_sge = 1;
+    this->shared_receive_queue_ = ibv_create_srq(this->protection_domain_, &sia);
+
     sgid_idx_ = roce::GetGid(ib_port_, context_);
     int rc = ibv_query_gid(context_, ib_port_, gid_idx_, &gid_);
     snp_ = gid_.global.subnet_prefix;
@@ -24,9 +33,9 @@ void RdmaAdapter::InitContext() {
     srand(time(0));
 }
 void RdmaAdapter::ExitContext() {
-    CHECK_EQ(ibv_close_device(context_), 0);
     CHECK_EQ(ibv_destroy_cq(completion_queue_), 0);
     CHECK_EQ(ibv_dealloc_pd(protection_domain_), 0);
+    CHECK_EQ(ibv_close_device(context_), 0);
 }
 void RdmaAdapter::PollForever() {
     while(!ready()) {}
@@ -53,7 +62,7 @@ void RdmaAdapter::PollForever() {
                 len = work_req.nbytes();
             }
             if (work_req.AddBytes(len)) {
-                if (work_req.work_type() == kRecv) {
+                if (work_req.work_type() == kRecv && len <= 32) {
                     std::memcpy(work_req.ptr(), work_req.extra_data(),
                         work_req.nbytes());
                 }
