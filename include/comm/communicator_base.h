@@ -19,6 +19,7 @@
 #include "core/status.h"
 #include "core/logging.h"
 #include "core/socket.h"
+#include "core/work_request.h"
 #include "comm/communicator.h"
 #include "transport/channel.h"
 #include "transport/adapter.h"
@@ -107,6 +108,8 @@ public:
      *  \param dest destination rank
     */
     void Recv(void* recvbuf_, size_t type_nbytes, int src) override;
+    WorkCompletion ISend(void* sendbuf_, size_t nbytes, int dest) override;
+    WorkCompletion IRecv(void* recvbuf_, size_t type_nbytes, int src) override;
     /*! \brief barrier all nodes*/
     void Barrier() override;
     /*! \brief register this communicator to tracker */

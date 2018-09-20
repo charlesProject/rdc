@@ -18,8 +18,8 @@
 // comminicator definition of rdc, defines internal implementation
 // to use rdc interface, there is no need to read engine.h
 // rdc.h and serializable.h are enough to use the interface
-#include "comm/communicator.h"
 #include "core/work_request.h"
+#include "comm/communicator.h"
 /*! \brief rdc namespace */
 namespace rdc {
 

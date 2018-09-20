@@ -8,7 +8,6 @@
 #include <string>
 #include <memory>
 #include "io/io.h"
-
 namespace MPI {
 /*! \brief MPI data type just to be compatible with MPI reduce function*/
 class Datatype;
@@ -17,6 +16,7 @@ class Datatype;
 /*! \brief namespace of rdc */
 namespace rdc {
 const std::string kWorldCommName = "main";
+class WorkCompletion;
 /*! \brief core interface of the comm */
 namespace comm {
 /*! \brief interface of core Allreduce comm */
@@ -42,6 +42,8 @@ public:
     virtual ICommunicator* GetCommunicator(const std::string& name) = 0;
     virtual void Send(void *sendbuf, size_t type_nbytes, int dest) = 0;
     virtual void Recv(void *recvbuf, size_t type_nbytes, int src) = 0;
+    virtual WorkCompletion ISend(void *sendbuf, size_t type_nbytes, int dest) = 0;
+    virtual WorkCompletion IRecv(void *recvbuf, size_t type_nbytes, int src) = 0;
     virtual void Barrier() = 0;
     /*!
      * \brief performs in-place Allreduce, on sendrecvbuf

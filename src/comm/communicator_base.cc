@@ -603,5 +603,12 @@ void Communicator::Recv(void* recvbuf_, size_t nbytes, int src)  {
     wc.Wait();
     //return wc.status();
 }
+WorkCompletion Communicator::ISend(void* sendbuf_, size_t nbytes, int dest) {
+    return all_links_[dest]->ISend(sendbuf_, nbytes);
+}
+WorkCompletion Communicator::IRecv(void* recvbuf_, size_t nbytes, int src)  {
+    return all_links_[src]->IRecv(recvbuf_, nbytes);
+}
+
 }  // namespace comm
 }  // namespace rdc
