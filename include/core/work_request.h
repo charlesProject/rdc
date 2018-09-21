@@ -204,7 +204,8 @@ struct WorkRequestManager {
 };
 
 
-struct WorkCompletion {
+class WorkCompletion {
+public:
     WorkCompletion(const uint64_t& id) : id_(id), done_(false),
         completed_bytes_(0) {}
     WorkCompletion(const WorkCompletion& other) = default;

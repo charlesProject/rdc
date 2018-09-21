@@ -16,6 +16,7 @@ enum ChannelType : uint32_t {
 
 class IChannel {
 public:
+    virtual ~IChannel() = 0;
     virtual WorkCompletion ISend(const void* sendbuf, size_t sendbytes) = 0;
     virtual WorkCompletion IRecv(void* recvbuf, size_t recvbytes) = 0;
     virtual void Close() = 0;

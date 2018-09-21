@@ -116,7 +116,7 @@ bool TcpAdapter::Poll() {
     epoll_event events[kNumMaxEvents];
     int fds = epoll_wait(this->epoll_fd_, events,
                             kNumMaxEvents, this->timeout_);
-    for (size_t i = 0; i < fds; i++) {
+    for (int i = 0; i < fds; i++) {
         TcpChannel* channel = nullptr;
         lock_.lock();
         channel = this->channels_[events[i].data.fd];

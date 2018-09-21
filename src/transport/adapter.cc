@@ -23,5 +23,6 @@ IAdapter* GetAdapter() {
         return &adapter;
     }
 #endif
+    return nullptr;
 }
 }

@@ -52,7 +52,7 @@ public:
      * \brief Create a new communicator which takes its own channels
      * \param name communicator name
     */
-    virtual void NewCommunicator(const std::string& name);
+    virtual void NewCommunicator(const std::string& name) override;
     // shutdown the comm
     virtual void Shutdown();
     /*!

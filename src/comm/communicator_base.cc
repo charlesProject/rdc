@@ -389,7 +389,7 @@ void Communicator::TryReduceTree(void* sendrecvbuf_,
                                 ReduceFunction reducer,
                                 int root) {
     auto dists_from_root = tree_map_.ShortestDist(root);
-    int dist_from_root = dists_from_root[rank_];
+    auto dist_from_root = dists_from_root[rank_];
     auto neighbors = tree_map_.GetNeighbors(rank_);
     std::unordered_set<int> recv_from_nodes;
     int send_to_node = -1;
@@ -420,7 +420,7 @@ void Communicator::TryReduceTree(void* sendrecvbuf_,
 }
 void Communicator::TryBroadcast(void *sendrecvbuf_, size_t total_size, int root) {
     auto dists_from_root = tree_map_.ShortestDist(root);
-    int dist_from_root = dists_from_root[rank_];
+    auto dist_from_root = dists_from_root[rank_];
     auto neighbors = tree_map_.GetNeighbors(rank_);
     std::unordered_set<int> send_to_nodes;
     int recv_from_node = -1;
@@ -503,8 +503,6 @@ void Communicator::TryReduceScatterRing(void *sendrecvbuf_,
     CHECK_F(next_rank_ == (rank_ + 1) % world_size_ &&
            rank_ == (prev_rank_ + 1) % world_size_,
            "need to assume rank structure");
-    // total size of message
-    const size_t total_size = type_nbytes * count;
     size_t n = static_cast<size_t>(world_size_);
     const auto& ranges = utils::Split(0, count, n);
     size_t write_idx = next_rank_;
@@ -577,7 +575,7 @@ void Communicator::TryAllreduceRing(void *sendrecvbuf_,
     // get rank of previous
     std::vector<void*> sendrecv_bufs(n);
     std::vector<size_t> sizes(n);
-    for (int i = 0; i < n; i++) {
+    for (auto i = 0U; i < n; i++) {
         size_t begin = ranges[i].first;
         size_t end = ranges[i].second;
         size_t size = end - begin;

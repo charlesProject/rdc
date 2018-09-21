@@ -17,7 +17,8 @@ LDFLAGS := -Llib -Wl,-rpath=/usr/local/lib/gcc6
 endif
 
 DEBUG = 1
-WARNFLAGS= -Wall -Wextra -Wno-unused-parameter -Wno-unknown-pragmas 
+WARNFLAGS= -Wall -Wextra -Wno-unused-parameter -Wno-unknown-pragmas \
+		   -Wno-unused-function -Wno-braced-scalar-init
 CFLAGS = -std=c++14 $(WARNFLAGS)
 ifeq ($(DEBUG), 1)
 	CFLAGS += -ggdb
@@ -82,7 +83,7 @@ SRC_DIRS = $(notdir $(SRCS))
 OBJS = $(patsubst %.cc, build/%.o, $(SRC_DIRS))
 DEPS = $(patsubst %.cc, build/%.d, $(SRC_DIRS))
 
-all : $(SLIB) test bench
+all : $(SLIB) test perf
 .PHONY: clean all install python lint doc doxygen
 
 build/%.o:src/*/*/%.cc
@@ -94,24 +95,24 @@ build/%.o:src/*/%.cc
 	$(CXX) -c $(CFLAGS) $(INCFLAGS) $< -o $@
 	$(CXX) -std=c++11 -c $(CFLAGS) $(INCFLAGS) -MMD -c $< -o $@
 
-#$(ALIB):
-#	ar cr $@ $(filter %.o, $^)
-#
+$(ALIB):
+	ar cr $@ $(filter %.o, $^)
+
 $(SLIB) : $(OBJS)
 	mkdir -p $(@D)
-	$(CXX) $(CFLAGS) -shared -o $@ $(filter %.cpp %.o %.c %.cc %.a, $^) -libverbs
-#
+	$(CXX) $(CFLAGS) -shared -o $@ $(filter %.cpp %.o %.c %.cc %.a, $^)
+
 lint:
 	scripts/lint.py rdc $(LINT_LANG) src include
-#
-#doc doxygen:
-#	cd include; doxygen ../doc/Doxyfile; cd -
-#
+
+doc doxygen:
+	cd include; doxygen ../doc/Doxyfile; cd -
+
 -include build/*.d
-include tests/test.mk
-include benchs/bench.mk
+include test/test.mk
+include perf/perf.mk
 test: $(TESTS)
-bench: $(BENCHS)
+perf: $(PERFS)
 install:
 	cp $(SLIB) /usr/local/lib
 clean:

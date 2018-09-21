@@ -258,12 +258,11 @@ public:
     }
     // report an socket error
     inline static void Error(const char *msg) {
-        int errsv = GetLastError();
 #ifdef _WIN32
         LOG_F(ERROR, "Socket %s Error:WSAError-code=%d",
                 msg, WSAGetLastError());
 #else
-        LOG_F(ERROR, "Socket %s Error: %d", msg, strerror(errno));
+        LOG_F(ERROR, "Socket %s Error: %s", msg, strerror(errno));
 #endif
 
     }
@@ -326,7 +325,7 @@ public:
     */
     inline void Bind(const SockAddr &addr,bool reuse = true) {
         SetReuseAddr(reuse);
-        Bind(addr);
+        Socket::Bind(addr);
     }
 
     /*!
@@ -490,7 +489,6 @@ public:
      * \param out_val the integer to receive
      */
     inline void RecvInt(int32_t& out_val) {
-        int len;
         CHECK_F(this->RecvAll(&out_val, sizeof(out_val)) == sizeof(out_val),
                       "error during send RecvInt");
     }
