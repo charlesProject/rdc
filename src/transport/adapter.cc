@@ -10,17 +10,14 @@ namespace rdc {
 IAdapter* GetAdapter() {
     const char* backend = Env::Get()->Find("RDC_BACKEND");
     if (backend == nullptr) {
-        static TcpAdapter adapter;
-        return &adapter;
+        return TcpAdapter::Get();
     }
     if (std::strncmp(backend, "TCP", 3) == 0) {
-        static TcpAdapter adapter;
-        return &adapter;
+        return TcpAdapter::Get();
     }
 #ifdef RDC_USE_RDMA
     if (std::strncmp(backend, "RDMA", 4) == 0) {
-        static RdmaAdapter adapter;
-        return &adapter;
+        return RdmaAdapter::Get();
     }
 #endif
     return nullptr;
