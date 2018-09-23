@@ -1,6 +1,5 @@
 #include <rdc.h>
 using namespace rdc;
-const int N = 3;
 int main(int argc, char *argv[]) {
     rdc::Init(argc, argv);
     std::string s;

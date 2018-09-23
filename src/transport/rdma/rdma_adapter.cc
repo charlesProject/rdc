@@ -6,7 +6,7 @@
 
 namespace rdc {
 
-static const uint32_t kConcurrentOps = 4;
+static const uint32_t kConcurrentOps = 16;
 
 void RdmaAdapter::InitContext() {
     GetAvaliableDeviceAndPort(dev_, ib_port_);
@@ -16,7 +16,7 @@ void RdmaAdapter::InitContext() {
     auto ret = ibv_query_device(context_, &dev_attr_);
     
     CHECK_NOTNULL(completion_queue_ = ibv_create_cq(context_,
-        dev_attr_.max_cqe, context_, nullptr, 0));
+        kNumCompQueueEntries, context_, nullptr, 0));
 
     ibv_srq_init_attr sia;
     std::memset(&sia, 0, sizeof(ibv_srq_init_attr));
@@ -56,18 +56,18 @@ void RdmaAdapter::PollForever() {
             auto& work_req = WorkRequestManager::Get()->
                             GetWorkRequest(wc.wr_id);
             size_t len = 0;
-            if (work_req.work_type() == kRecv) {
-                len = wc.byte_len;
-            } else {
-                len = work_req.nbytes();
-            }
-            if (work_req.AddBytes(len)) {
-                if (work_req.work_type() == kRecv && len <= 32) {
-                    std::memcpy(work_req.ptr(), work_req.extra_data(),
-                        work_req.nbytes());
-                }
+//            if (work_req.work_type() == kRecv) {
+//                len = wc.byte_len;
+//            } else {
+//                len = work_req.nbytes();
+//            }
+//            if (work_req.AddBytes(len)) {
+//                if (work_req.work_type() == kRecv && len <= 32) {
+//                    std::memcpy(work_req.ptr(), work_req.extra_data(),
+//                        work_req.nbytes());
+//                }
                 work_req.Notify();
-            }
+//            }
         }
     }
 }

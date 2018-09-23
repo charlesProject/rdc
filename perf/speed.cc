@@ -16,9 +16,9 @@ inline void TestMax(size_t n) {
     for (size_t i = 0; i < ndata.size(); ++i) {
       ndata[i] = (i * (rank+1)) % 111;
     }
-    double tstart = utils::GetTime();
+    double tstart = utils::GetTimeInMs();
     rdc::Allreduce<op::Max>(&ndata[0], ndata.size());
-    max_tdiff += utils::GetTime() - tstart;
+    max_tdiff += utils::GetTimeInMs() - tstart;
 }
 
 inline void TestSum(size_t n) {
@@ -28,9 +28,9 @@ inline void TestSum(size_t n) {
     for (size_t i = 0; i < ndata.size(); ++i) {
       ndata[i] = (i * (rank+1)) % z;
     }
-    double tstart = utils::GetTime();
+    double tstart = utils::GetTimeInMs();
     rdc::Allreduce<op::Sum>(&ndata[0], ndata.size());
-    sum_tdiff += utils::GetTime() - tstart;
+    sum_tdiff += utils::GetTimeInMs() - tstart;
 }
 
 inline void TestBcast(size_t n, int root) {
@@ -44,9 +44,9 @@ inline void TestBcast(size_t n, int root) {
     if (root == rank) {
       res = s;
     }
-    double tstart = utils::GetTime();
+    double tstart = utils::GetTimeInMs();
     rdc::Broadcast(&res[0], res.length(), root);
-    bcast_tdiff += utils::GetTime() - tstart;
+    bcast_tdiff += utils::GetTimeInMs() - tstart;
 }
 
 inline void PrintStats(const char *name, double tdiff, int n, int nrep, size_t size) {
@@ -67,7 +67,7 @@ inline void PrintStats(const char *name, double tdiff, int n, int nrep, size_t s
         ndata *= nrep * size;
         if (n != 0) {
             std::string msg = std::string(name) + "-speed: " +
-                              std::to_string((ndata/ tavg) / 1024 / 1024) +
+                              std::to_string((ndata/ tavg) / 1024 / 1024 * 1000) +
                               " MB/sec";
             rdc::TrackerPrint(msg);
       }
@@ -88,13 +88,13 @@ int main(int argc, char *argv[]) {
     std::string name = rdc::GetProcessorName();
     max_tdiff = sum_tdiff = bcast_tdiff = 0;
     rdc::Barrier();
-    double tstart = utils::GetTimeMs();
+    double tstart = utils::GetTimeInMs();
     for (int i = 0; i < nrep; ++i) {
       TestMax(n);
       TestSum(n);
     //  TestBcast(n, rand() % nproc);
     }
-    tot_tdiff = utils::GetTimeMs() - tstart;
+    tot_tdiff = utils::GetTimeInMs() - tstart;
     // use allreduce to get the sum and std of time
     PrintStats("max_tdiff", max_tdiff, n, nrep, sizeof(float));
     PrintStats("sum_tdiff", sum_tdiff, n, nrep, sizeof(float));

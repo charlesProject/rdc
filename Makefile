@@ -17,9 +17,11 @@ LDFLAGS := -Llib -Wl,-rpath=/usr/local/lib/gcc6
 endif
 
 DEBUG = 1
+
 WARNFLAGS= -Wall -Wextra -Wno-unused-parameter -Wno-unknown-pragmas \
 		   -Wno-unused-function -Wno-braced-scalar-init
-CFLAGS = -std=c++14 $(WARNFLAGS)
+CFLAGS = -std=c++11 $(WARNFLAGS)
+
 ifeq ($(DEBUG), 1)
 	CFLAGS += -ggdb
 else
@@ -44,7 +46,7 @@ ifeq ($(USE_SSE), 1)
 endif
 
 ifndef USE_RDMA
-	USE_RDMA = 0
+	USE_RDMA = 1
 endif
 
 ifeq ($(USE_RDMA), 1)
@@ -100,7 +102,7 @@ $(ALIB):
 
 $(SLIB) : $(OBJS)
 	mkdir -p $(@D)
-	$(CXX) $(CFLAGS) -shared -o $@ $(filter %.cpp %.o %.c %.cc %.a, $^)
+	$(CXX) $(CFLAGS) -shared -o $@ $(filter %.cpp %.o %.c %.cc %.a, $^) -libverbs
 
 lint:
 	scripts/lint.py rdc $(LINT_LANG) src include
@@ -109,7 +111,7 @@ doc doxygen:
 	cd include; doxygen ../doc/Doxyfile; cd -
 
 -include build/*.d
-include test/test.mk
+#include test/test.mk
 include perf/perf.mk
 test: $(TESTS)
 perf: $(PERFS)

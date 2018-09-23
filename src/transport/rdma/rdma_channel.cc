@@ -30,13 +30,20 @@ RdmaChannel::RdmaChannel(RdmaAdapter* adapter, uint64_t buf_size)
 
 
 void RdmaChannel::InitRdmaContext() {
-    CHECK_NOTNULL(adapter_->protection_domain());
-    CHECK_NOTNULL(send_memory_region_ = ibv_reg_mr(adapter_->protection_domain(),
+    send_memory_region_ = ibv_reg_mr(adapter_->protection_domain(),
                   send_buf_, buf_size_, IBV_ACCESS_LOCAL_WRITE|
-                  IBV_ACCESS_REMOTE_WRITE));
-    CHECK_NOTNULL(recv_memory_region_ = ibv_reg_mr(adapter_->protection_domain(),
+                  IBV_ACCESS_REMOTE_WRITE);
+    if (send_memory_region_ == nullptr) {
+        LOG_F(ERROR, "Fail to create sending memory region : %s",
+            std::strerror(errno));
+    }
+    recv_memory_region_ = ibv_reg_mr(adapter_->protection_domain(),
                   recv_buf_, buf_size_, IBV_ACCESS_LOCAL_WRITE|
-                  IBV_ACCESS_REMOTE_WRITE));
+                  IBV_ACCESS_REMOTE_WRITE);
+    if (recv_memory_region_ == nullptr) {
+        LOG_F(ERROR, "Fail to create receiving memory region : %s",
+            std::strerror(errno));
+    }
     CreateQueuePair();
     CreateLocalAddr();
 }
@@ -116,7 +123,7 @@ void RdmaChannel::EnableQueuePairForRecv() {
     memset(attr, 0, sizeof(*attr));
 
     attr->qp_state              = IBV_QPS_RTR;
-    attr->path_mtu              = IBV_MTU_2048;
+    attr->path_mtu              = IBV_MTU_4096;
     attr->dest_qp_num           = peer_addr_.qpn;
     attr->rq_psn                = peer_addr_.psn;
     attr->max_dest_rd_atomic    = 1;
@@ -182,17 +189,19 @@ WorkCompletion RdmaChannel::ISend(const void* sendbuf_, size_t size) {
     send_wr.wr_id       = req_id;
     send_wr.sg_list     = &sge_list;
     send_wr.num_sge     = 1;
-    send_wr.opcode      = IBV_WR_RDMA_WRITE_WITH_IMM;
+    send_wr.opcode      = IBV_WR_SEND;
     send_wr.send_flags  = IBV_SEND_SIGNALED;
     send_wr.next        = NULL;
 
-    send_wr.wr.rdma.rkey = peer_addr_.rkey;
-    send_wr.wr.rdma.remote_addr = peer_addr_.raddr;
-    send_wr.imm_data = 0;
+//    send_wr.wr.rdma.rkey = peer_addr_.rkey;
+//    send_wr.wr.rdma.remote_addr = peer_addr_.raddr;
+//    send_wr.imm_data = 0;
 
     ibv_send_wr *bad_wr;
-    CHECK_EQ(ibv_post_send(queue_pair_, &send_wr, &bad_wr), 0)
-             << "ibv_post_send failed.This is bad mkey";
+    auto rc = ibv_post_send(queue_pair_, &send_wr, &bad_wr);
+    if (rc != 0) {
+        LOG_F(ERROR, "ibv_post_send failed: %s.", std::strerror(errno));
+    }
     WorkCompletion wc(req_id);
     return wc;
 }
@@ -212,8 +221,10 @@ WorkCompletion RdmaChannel::IRecv(void* recvbuf_, size_t size) {
     recv_wr.next        = NULL;
 
     ibv_recv_wr* bad_wr;
-    CHECK_EQ(ibv_post_srq_recv(adapter_->shared_receive_queue(), &recv_wr, &bad_wr),0)
-             << "ibv_post_send failed.This is bad mkey";
+    auto rc = ibv_post_srq_recv(adapter_->shared_receive_queue(), &recv_wr, &bad_wr);
+    if (rc != 0) {
+        LOG_F(ERROR, "ibv_post_srq_recv failed: %s.", std::strerror(errno));
+    }
     //CHECK_EQ(ibv_post_recv(queue_pair_, &recv_wr, &bad_wr),0)
     //         << "ibv_post_send failed.This is bad mkey";
     WorkCompletion wc(req_id);

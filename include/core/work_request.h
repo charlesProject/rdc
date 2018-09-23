@@ -68,7 +68,14 @@ struct WorkRequest {
         status_ = status;
         return;
     }
-    bool AddBytes(const size_t nbytes);
+    bool AddBytes(const size_t nbytes) {
+        completed_bytes_ += nbytes;
+        if (completed_bytes_ == size_in_bytes_) {
+            status_ = Status::kSuccess;
+            return true;
+        }
+        return false;
+    }
     size_t nbytes() const {
         return size_in_bytes_;
     }
