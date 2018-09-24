@@ -92,9 +92,9 @@ Status TcpChannel::Connect(const std::string& hostname,
     return Status::kSuccess;
 }
 
-WorkCompletion TcpChannel::ISend(const void* data, size_t size) {
+WorkCompletion TcpChannel::ISend(const Buffer& sendbuf) {
     uint64_t send_req_id = WorkRequestManager::Get()->
-                           NewWorkRequest(kSend, data, size);
+        NewWorkRequest(kSend, sendbuf.addr(), sendbuf.size_in_bytes());
     WorkCompletion wc(send_req_id);
     if (spin_) {
         send_reqs_.NoLockPush(send_req_id);
@@ -103,9 +103,9 @@ WorkCompletion TcpChannel::ISend(const void* data, size_t size) {
     }
     return wc;
 }
-WorkCompletion TcpChannel::IRecv(void* data, size_t size) {
+WorkCompletion TcpChannel::IRecv(Buffer& recvbuf) {
     uint64_t recv_req_id = WorkRequestManager::Get()->
-                           NewWorkRequest(kRecv, data, size);
+        NewWorkRequest(kRecv, recvbuf.addr(), recvbuf.size_in_bytes());
     WorkCompletion wc(recv_req_id);
     if (spin_) {
         recv_reqs_.NoLockPush(recv_req_id);
@@ -116,21 +116,20 @@ WorkCompletion TcpChannel::IRecv(void* data, size_t size) {
 }
 void TcpChannel::ReadCallback() {
     uint64_t recv_req_id = -1;
-    if (spin_) {
+    if (this->spin()) {
         if (!recv_reqs_.TryPeek(recv_req_id)) {
             return;
         }
     } else {
         if (!recv_reqs_.WaitAndPeek(recv_req_id,
-                    std::chrono::milliseconds(kCommTimeoutMs))) {
+                std::chrono::milliseconds(kCommTimeoutMs))) {
             return;
         }
     }
     WorkRequest& recv_req = WorkRequestManager::Get()->
-                            GetWorkRequest(recv_req_id);
+        GetWorkRequest(recv_req_id);
     auto read_nbytes = read(fd_, recv_req.ptr_at<uint8_t>(
-                            recv_req.completed_bytes()),
-                            recv_req.remain_nbytes());
+                recv_req.completed_bytes()), recv_req.remain_nbytes());
     if (read_nbytes == 0) {
         int error = GetLastSocketError(fd_);
         LOG_F(ERROR, "Error during recieving : %s", strerror(errno));
@@ -149,7 +148,7 @@ void TcpChannel::ReadCallback() {
 }
 void TcpChannel::WriteCallback() {
     uint64_t send_req_id;
-    if (spin_) {
+    if (this->spin()) {
         if (!send_reqs_.TryPeek(send_req_id)) {
             return;
         }
@@ -160,10 +159,9 @@ void TcpChannel::WriteCallback() {
         }
     }
     WorkRequest& send_req = WorkRequestManager::Get()->
-                            GetWorkRequest(send_req_id);
+        GetWorkRequest(send_req_id);
     auto write_nbytes = write(fd_, send_req.ptr_at<uint8_t>(
-                            send_req.completed_bytes()),
-                            send_req.remain_nbytes());
+                send_req.completed_bytes()), send_req.remain_nbytes());
     if (write_nbytes == 0) {
         int error = GetLastSocketError(fd_);
         LOG_F(ERROR, "Error during sending : %s", strerror(error));
@@ -182,7 +180,7 @@ void TcpChannel::WriteCallback() {
 }
 
 
-void TcpChannel::Delete(const ChannelType& type) {
+void TcpChannel::DeleteCarefulEvent(const ChannelType& type) {
     mu_.lock();
     if (type == ChannelType::kRead) {
         if (this->type() == ChannelType::kReadWrite) {
@@ -210,7 +208,7 @@ void TcpChannel::Delete(const ChannelType& type) {
     ModifyType(this->type());
     mu_.unlock();
 }
-void TcpChannel::Add(const ChannelType& type) {
+void TcpChannel::AddCarefulEvent(const ChannelType& type) {
     mu_.lock();
     if (type == ChannelType::kRead) {
         if (this->type() == ChannelType::kNone) {

@@ -19,7 +19,7 @@ public:
     TcpChannel(int32_t fd, ChannelType type);
     TcpChannel(TcpAdapter* poller, ChannelType type);
     TcpChannel(TcpAdapter* poller, int32_t fd, ChannelType type);
-    ~TcpChannel();
+    virtual ~TcpChannel() override;
     /**
       * Function to add this channel to the poller obeject
       * @note if add is performed on an fd already in Reactor,
@@ -28,8 +28,8 @@ public:
       * @param flags events flags from epoll
     */
     Status Connect(const std::string& hostname, const uint32_t& port) override;
-    WorkCompletion ISend(const void* data, size_t size) override;
-    WorkCompletion IRecv(void* data, size_t size) override;
+    WorkCompletion ISend(const Buffer& sendbuf) override;
+    WorkCompletion IRecv(Buffer& recvbuf) override;
 
     void Close() override {
         CloseSocket(fd_);
@@ -40,9 +40,9 @@ public:
 
 
     void PrepareForNext();
-    void Add(const ChannelType& type);
+    void AddCarefulEvent(const ChannelType& type);
+    void DeleteCarefulEvent(const ChannelType& type);
     void ModifyType(const ChannelType& type);
-    void Delete(const ChannelType& type);
     bool IsClosed() const {
         return fd_ == kInvalidSocket;
     }

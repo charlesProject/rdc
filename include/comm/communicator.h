@@ -8,6 +8,8 @@
 #include <string>
 #include <memory>
 #include "io/io.h"
+#include "core/work_request.h"
+#include "transport/buffer.h"
 namespace MPI {
 /*! \brief MPI data type just to be compatible with MPI reduce function*/
 class Datatype;
@@ -16,7 +18,6 @@ class Datatype;
 /*! \brief namespace of rdc */
 namespace rdc {
 const std::string kWorldCommName = "main";
-class WorkCompletion;
 /*! \brief core interface of the comm */
 namespace comm {
 /*! \brief interface of core Allreduce comm */
@@ -42,11 +43,24 @@ public:
     virtual ICommunicator* GetCommunicator(const std::string& name) = 0;
     virtual void Send(const Buffer& sendbuf, int dest) = 0;
     virtual void Recv(Buffer& recvbuf, int src) = 0;
-    void Send(void* sendbuf, size_t size, int dest) {
+    void Send(void* sendaddr, uint64_t size_in_bytes, int dest) {
+        Buffer sendbuf(sendaddr, size_in_bytes);
+        return this->Send(sendbuf, dest);
     }
-    virtual void Recv(void* recvbuf, size_t size, int src) = 0;
-    virtual WorkCompletion ISend(void *sendbuf, size_t type_nbytes, int dest) = 0;
-    virtual WorkCompletion IRecv(void *recvbuf, size_t type_nbytes, int src) = 0;
+    void Recv(void* recvaddr, uint64_t size_in_bytes, int src) {
+        Buffer recvbuf(recvaddr, size_in_bytes);
+        return this->Recv(recvbuf, src);
+    }
+    virtual WorkCompletion ISend(const Buffer& sendbuf, int dest) = 0;
+    virtual WorkCompletion IRecv(Buffer& recvbuf, int src) = 0;
+    WorkCompletion ISend(void *sendaddr, uint64_t size_in_bytes, int dest) {
+        Buffer sendbuf(sendaddr, size_in_bytes);
+        return this->ISend(sendbuf, dest);
+    }
+    WorkCompletion IRecv(void *recvaddr, uint64_t size_in_bytes, int src) {
+        Buffer recvbuf(recvaddr, size_in_bytes);
+        return this->IRecv(recvbuf, src);
+    }
     virtual void Barrier() = 0;
     /*!
      * \brief performs in-place Allreduce, on sendrecvbuf

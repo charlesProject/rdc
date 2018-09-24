@@ -104,7 +104,7 @@ TcpAdapter::~TcpAdapter() {
 void TcpAdapter::AddChannel(int32_t fd, TcpChannel* channel) {
     lock_.lock();
     channels_[fd] = channel;
-    LOG_S(INFO) << "Added new channel with fd :" << fd;
+    LOG_S(INFO) << "Add new channel with fd :" << fd;
     uint32_t flags = channel_type_to_epoll_event(channel->type());
     epoll_event ev;
     std::memset(&ev, 0, sizeof(ev));
@@ -177,12 +177,12 @@ bool TcpAdapter::Poll() {
                         }
                     }
                 }
-                channel->Delete(ChannelType::kRead);
+                channel->DeleteCarefulEvent(ChannelType::kRead);
                 ThreadPool::Get()->AddTask([channel, this] {
                     channel->ReadCallback();
                     this->shutdown_lock_.lock();
                     if (!this->shutdown_called_) {
-                        channel->Add(ChannelType::kRead);
+                        channel->AddCarefulEvent(ChannelType::kRead);
                     }
                     this->shutdown_lock_.unlock();
                 });
@@ -190,12 +190,12 @@ bool TcpAdapter::Poll() {
 
             // when write possible
             if (IsWrite(events[i].events)) {
-                channel->Delete(ChannelType::kWrite);
+                channel->DeleteCarefulEvent(ChannelType::kWrite);
                 ThreadPool::Get()->AddTask([channel, this] {
                     channel->WriteCallback();
                     this->shutdown_lock_.lock();
                     if (!this->shutdown_called_) {
-                        channel->Add(ChannelType::kWrite);
+                        channel->AddCarefulEvent(ChannelType::kWrite);
                     }
                     this->shutdown_lock_.unlock();
                 });

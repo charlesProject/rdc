@@ -9,6 +9,7 @@
 #include <netdb.h>
 #include "core/work_request.h"
 #include "transport/channel.h"
+#include "transport/buffer.h"
 #include "core/status.h"
 #include "utils/utils.h"
 
@@ -45,7 +46,7 @@ struct RdmaChannelInfo {
 };
 
 class RdmaAdapter;
-class RdmaChannel : IChannel {
+class RdmaChannel : public IChannel {
 public:
     RdmaChannel();
     RdmaChannel(RdmaAdapter* adapter, uint64_t buf_size);

@@ -2,6 +2,7 @@
 #include <string>
 #include "rdc.h"
 #include "core/status.h"
+#include "transport/buffer.h"
 #include "transport/adapter.h"
 
 namespace rdc {
@@ -18,17 +19,9 @@ class IChannel {
 public:
     IChannel() = default;
     IChannel(const ChannelType& type) : type_(type) {}
-    virtual ~IChannel() = 0;
+    virtual ~IChannel() = default;
     virtual WorkCompletion ISend(const Buffer& sendbuf) = 0;
     virtual WorkCompletion IRecv(Buffer& recvbuf) = 0;
-    WorkCompletion ISend(const void* sendaddr, size_t sendbytes) {
-        Buffer sendbuf(sendaddr, sendbytes);
-        return this->ISend(sendbuf);
-    }
-    WorkCompletion IRecv(void* recvaddr, size_t recvbytes) {
-        Buffer recvbuf(recvaddr, recvbytes);
-        return this->IRecv(recvbuf);
-    }
     virtual void Close() = 0;
     virtual Status Connect(const std::string& host, const uint32_t& port) = 0;
     Status Connect(const std::string& addr_str) {
@@ -38,6 +31,15 @@ public:
         std::tie(backend, host, port) = ParseAddr(addr_str);
         return Connect(host, port);
     }
+    WorkCompletion ISend(const void* sendaddr, size_t sendbytes) {
+        Buffer sendbuf(sendaddr, sendbytes);
+        return this->ISend(sendbuf);
+    }
+    WorkCompletion IRecv(void* recvaddr, size_t recvbytes) {
+        Buffer recvbuf(recvaddr, recvbytes);
+        return this->IRecv(recvbuf);
+    }
+
     inline Status SendInt(int32_t val) {
         auto wc = this->ISend(&val, sizeof(int32_t));
         wc.Wait();

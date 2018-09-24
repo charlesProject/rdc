@@ -7,9 +7,9 @@
 #include <mutex>
 #include <unordered_map>
 #include <condition_variable>
-#include "rdc.h"
 #include "utils/utils.h"
 #include "utils/lock_utils.h"
+#include "core/any.h"
 #include "core/status.h"
 #include "core/logging.h"
 namespace rdc {
@@ -90,9 +90,6 @@ struct WorkRequest {
     WorkType work_type() const {
         return work_type_;
     }
-    void* extra_data() {
-        return extra_data_;
-    }
     void* ptr() {
       return ptr_;
     }
@@ -149,6 +146,25 @@ struct WorkRequestManager {
         all_work_reqs[req.id()] = req;
         store_lock_->unlock();
     }
+    uint64_t NewWorkRequest(const WorkType& work_type, void* ptr,
+            const size_t& size) {
+        id_lock_->lock();
+        cur_req_id_++;
+        WorkRequest work_req(cur_req_id_, work_type, ptr, size);
+        id_lock_->unlock();
+        AddWorkRequest(work_req);
+        return work_req.id();
+    }
+    uint64_t NewWorkRequest(const WorkType& work_type, const void* ptr,
+            const size_t& size) {
+        id_lock_->lock();
+        cur_req_id_++;
+        WorkRequest work_req(cur_req_id_, work_type, ptr, size);
+        id_lock_->unlock();
+        AddWorkRequest(work_req);
+        return work_req.id();
+    }
+
     template <typename T>
     uint64_t NewWorkRequest(const WorkType& work_type, void* ptr,
             const size_t& size, const T& extra_data) {
@@ -227,7 +243,7 @@ public:
     WorkCompletion(const uint64_t& id) : id_(id), done_(false),
         completed_bytes_(0) {}
     WorkCompletion(const WorkCompletion& other) = default;
-
+//    WorkCompletion(WorkCompletion&& other) = default;
     uint64_t id_;
     bool done_;
     size_t completed_bytes_;

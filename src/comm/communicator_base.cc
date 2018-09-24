@@ -590,21 +590,23 @@ std::unique_ptr<ICommunicator> Communicator::CreateGroup(
         const std::string& name) {
     return utils::make_unique<Communicator>();
 }
-void Communicator::Send(void* sendbuf_, size_t nbytes, int dest) {
-    auto wc = all_links_[dest]->ISend(sendbuf_, nbytes);
+void Communicator::Send(const Buffer& sendbuf, int dest) {
+    auto wc = all_links_[dest]->ISend(sendbuf);
     wc.Wait();
-    //return wc.status();
+    return;
 }
-void Communicator::Recv(void* recvbuf_, size_t nbytes, int src)  {
-    auto wc= all_links_[src]->IRecv(recvbuf_, nbytes);
+void Communicator::Recv(Buffer& recvbuf, int src)  {
+    auto wc= all_links_[src]->IRecv(recvbuf);
     wc.Wait();
-    //return wc.status();
+    return;
 }
-WorkCompletion Communicator::ISend(void* sendbuf_, size_t nbytes, int dest) {
-    return all_links_[dest]->ISend(sendbuf_, nbytes);
+
+WorkCompletion Communicator::ISend(const Buffer& sendbuf, int dest) {
+    return all_links_[dest]->ISend(sendbuf);
 }
-WorkCompletion Communicator::IRecv(void* recvbuf_, size_t nbytes, int src)  {
-    return all_links_[src]->IRecv(recvbuf_, nbytes);
+
+WorkCompletion Communicator::IRecv(Buffer& recvbuf, int src)  {
+    return all_links_[src]->IRecv(recvbuf);
 }
 
 }  // namespace comm
