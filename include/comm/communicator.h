@@ -40,8 +40,11 @@ public:
     virtual ~ICommunicator() {}
     virtual void NewCommunicator(const std::string& name) = 0;
     virtual ICommunicator* GetCommunicator(const std::string& name) = 0;
-    virtual void Send(void *sendbuf, size_t type_nbytes, int dest) = 0;
-    virtual void Recv(void *recvbuf, size_t type_nbytes, int src) = 0;
+    virtual void Send(const Buffer& sendbuf, int dest) = 0;
+    virtual void Recv(Buffer& recvbuf, int src) = 0;
+    void Send(void* sendbuf, size_t size, int dest) {
+    }
+    virtual void Recv(void* recvbuf, size_t size, int src) = 0;
     virtual WorkCompletion ISend(void *sendbuf, size_t type_nbytes, int dest) = 0;
     virtual WorkCompletion IRecv(void *recvbuf, size_t type_nbytes, int src) = 0;
     virtual void Barrier() = 0;

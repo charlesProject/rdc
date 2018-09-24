@@ -454,7 +454,7 @@ public:
      * \param str the string to be sent
      */
     inline void SendStr(const std::string &str) {
-      int len = static_cast<int>(str.length());
+      int32_t len = static_cast<int32_t>(str.length());
       CHECK_F(this->SendAll(&len, sizeof(len)) == sizeof(len),
                     "error during send SendStr");
       if (len != 0) {
@@ -467,7 +467,7 @@ public:
      * \param out_str the string to receive
      */
     inline void RecvStr(std::string& out_str) {
-      int len;
+      int32_t len;
       CHECK_F(this->RecvAll(&len, sizeof(len)) == sizeof(len),
                     "error during send RecvStr");
       out_str.resize(len);

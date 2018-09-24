@@ -15,115 +15,59 @@
 #include "core/status.h"
 
 namespace rdc {
-static inline uint32_t channel_type_to_epoll_event(
-        const ChannelType& channel_type) {
-    switch(channel_type) {
-        case kRead:
-            return EPOLLIN;
-        case kWrite:
-            return EPOLLOUT;
-        case kReadWrite:
-            return EPOLLIN | EPOLLOUT;
-        case kNone:
-            return 0;
-        default:
-            return 0;
-    }
-}
-
-static inline std::string channel_type_to_string(ChannelType channel_type) {
-    switch(channel_type) {
-        case kRead:
-            return "read";
-        case kWrite:
-            return "write";
-        case kReadWrite:
-            return "readwrite";
-        case kNone:
-            return "none";
-        default:
-            return "none";
-    }
-}
 TcpChannel::TcpChannel() {
-    this->poller_ = nullptr;
+    this->adapter_ = nullptr;
     this->fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    this->type_ = kReadWrite;
-    this->spin_.store(false, std::memory_order_release);
+    this->set_type(kReadWrite);
+    this->set_spin(false);
 }
 TcpChannel::TcpChannel(int32_t fd) {
-    this->poller_ = nullptr;
+    this->adapter_ = nullptr;
     this->fd_ = fd;
-    this->type_ = kReadWrite;
-    this->spin_.store(false, std::memory_order_release);
+    this->set_type(kReadWrite);
+    this->set_spin(false);
 }
 TcpChannel::TcpChannel(ChannelType type) {
-    this->poller_ = nullptr;
+    this->adapter_ = nullptr;
     this->fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    this->type_ = type;
-    this->spin_.store(false, std::memory_order_release);
+    this->set_type(type);
+    this->set_spin(false);
 }
 
 TcpChannel::TcpChannel(int32_t fd, ChannelType type) {
-    this->poller_ = nullptr;
+    this->adapter_ = nullptr;
     this->fd_ = fd;
-    this->type_ = type;
-    this->spin_.store(false, std::memory_order_release);
+    this->set_type(type);
+    this->set_spin(false);
 }
-TcpChannel::TcpChannel(TcpAdapter* poller, ChannelType type) {
-    this->poller_ = poller;
+TcpChannel::TcpChannel(TcpAdapter* adapter, ChannelType type) {
+    this->adapter_ = adapter;
     this->fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    this->type_ = type;
-    uint32_t flags = channel_type_to_epoll_event(type);
-    this->spin_.store(false, std::memory_order_release);
-    this->poller_->AddChannel(this);
-    epoll_event ev;
-    std::memset(&ev, 0, sizeof(ev));
-    ev.data.fd = fd_;
-    ev.events |= flags;
-    epoll_ctl(this->poller_->epoll_fd(), EPOLL_CTL_ADD, this->fd_, &ev);
+    this->set_type(type);
+    this->set_spin(false);
+    this->adapter_->AddChannel(this);
 }
 
 
-TcpChannel::TcpChannel(TcpAdapter* poller, int32_t fd, ChannelType type) {
-    this->poller_ = poller;
+TcpChannel::TcpChannel(TcpAdapter* adapter, int32_t fd, ChannelType type) {
+    this->adapter_ = adapter;
     this->fd_ = fd;
-    this->type_ = type;
-    uint32_t flags = 0;
-    if (this->type_ == kRead) {
-        flags |= EPOLLIN;
-    } else if (this->type_ == kWrite) {
-        flags |= EPOLLOUT;
-    } else {
-        flags |= EPOLLIN | EPOLLOUT;
-    }
-
+    this->set_type(type);
     this->spin_.store(false, std::memory_order_release);
-    this->poller_->AddChannel(this);
-    epoll_event ev;
-    std::memset(&ev, 0, sizeof(ev));
-    ev.data.fd = fd_;
-    ev.events |= flags;
-    epoll_ctl(this->poller_->epoll_fd(), EPOLL_CTL_ADD, 
-            this->fd_, &ev);
+    this->adapter_->AddChannel(this);
 }
 
 TcpChannel::~TcpChannel() {
-    if (this->poller_) {
-        epoll_ctl(this->poller_->epoll_fd(), EPOLL_CTL_DEL,
-                  this->fd_, nullptr);
+    if (this->adapter_) {
+        adapter_->RemoveChannel(this);
     }
     this->Close();
 }
-void TcpChannel::Modify(const ChannelType& type) {
-    type_ = type;
-    epoll_event ev;
-    std::memset(&ev, 0, sizeof(ev));
-    ev.data.fd = fd_;
-    uint32_t flags = channel_type_to_epoll_event(type);
-    ev.events |= flags;
-    epoll_ctl(this->poller_->epoll_fd(), EPOLL_CTL_MOD,
-            this->fd_, &ev);
+void TcpChannel::ModifyType(const ChannelType& type) {
+    this->set_type(type);
+    if (this->adapter_) {
+        adapter_->ModifyChannel(this, type);
+    }
 }
 Status TcpChannel::Connect(const std::string& hostname,
         const uint32_t& port) {
@@ -141,14 +85,9 @@ Status TcpChannel::Connect(const std::string& hostname,
         return static_cast<Status>(errno);
     }
     fcntl(this->fd_, F_SETFL, O_NONBLOCK);
-    if (this->poller_ == nullptr) {
-        this->poller_ = TcpAdapter::Get();
-        this->poller_->AddChannel(this);
-        epoll_event ev;
-        std::memset(&ev, 0, sizeof(ev));
-        ev.data.fd = fd_;
-        ev.events |= EPOLLIN | EPOLLOUT;
-        epoll_ctl(this->poller_->epoll_fd(), EPOLL_CTL_ADD, this->fd_, &ev);
+    if (this->adapter_ == nullptr) {
+        this->adapter_ = TcpAdapter::Get();
+        this->adapter_->AddChannel(this);
     }
     return Status::kSuccess;
 }
@@ -246,57 +185,57 @@ void TcpChannel::WriteCallback() {
 void TcpChannel::Delete(const ChannelType& type) {
     mu_.lock();
     if (type == ChannelType::kRead) {
-        if (type_ == ChannelType::kReadWrite) {
-            type_ = ChannelType::kWrite;
-        } else if (type_ == ChannelType::kRead) {
-            type_ = ChannelType::kNone;
+        if (this->type() == ChannelType::kReadWrite) {
+            this->set_type(ChannelType::kWrite);
+        } else if (this->type() == ChannelType::kRead) {
+            this->set_type(ChannelType::kNone);
         } else {
             LOG_F(ERROR, "cannot delete");
         }
     } else if (type == ChannelType::kWrite) {
-        if (type_ == ChannelType::kReadWrite) {
-            type_ = ChannelType::kRead;
-        } else if (type_ == ChannelType::kWrite) {
-            type_ = ChannelType::kNone;
+        if (this->type() == ChannelType::kReadWrite) {
+            this->set_type(ChannelType::kRead);
+        } else if (this->type() == ChannelType::kWrite) {
+            this->set_type(ChannelType::kNone);
         } else {
             LOG_F(ERROR, "cannot delete");
         }
     } else if (type == ChannelType::kReadWrite) {
-        if (type_ == ChannelType::kReadWrite) {
-            type_ = ChannelType::kNone;
+        if (this->type() == ChannelType::kReadWrite) {
+            this->set_type(ChannelType::kNone);
         } else {
             LOG_F(ERROR, "cannot delete");
         }
     }
-    Modify(type_);
+    ModifyType(this->type());
     mu_.unlock();
 }
 void TcpChannel::Add(const ChannelType& type) {
     mu_.lock();
     if (type == ChannelType::kRead) {
-        if (type_ == ChannelType::kNone) {
-            type_ = kRead;
-        } else if (type_ == ChannelType::kWrite) {
-            type_ = kReadWrite;
+        if (this->type() == ChannelType::kNone) {
+            this->set_type(kRead);
+        } else if (this->type() == ChannelType::kWrite) {
+            this->set_type(kReadWrite);
         } else {
             LOG_F(ERROR, "cannot add");
         }
     } else if (type == ChannelType::kWrite) {
-        if (type_ == ChannelType::kNone) {
-            type_ = kWrite;
-        } else if (type_ == ChannelType::kRead) {
-            type_ = kReadWrite;
+        if (this->type() == ChannelType::kNone) {
+            this->set_type(kWrite);
+        } else if (this->type() == ChannelType::kRead) {
+            this->set_type(kReadWrite);
         } else {
             LOG_F(ERROR, "cannot add");
         }
     } else if (type == ChannelType::kReadWrite) {
-        if (type_ == ChannelType::kNone) {
-            type_ = kReadWrite;
+        if (this->type() == ChannelType::kNone) {
+            this->set_type(kReadWrite);
         } else {
             LOG_F(ERROR, "cannot add");
         }
     }
-    Modify(type_);
+    ModifyType(this->type());
     mu_.unlock();
 }
 }

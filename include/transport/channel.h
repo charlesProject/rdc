@@ -16,9 +16,19 @@ enum ChannelType : uint32_t {
 
 class IChannel {
 public:
+    IChannel() = default;
+    IChannel(const ChannelType& type) : type_(type) {}
     virtual ~IChannel() = 0;
-    virtual WorkCompletion ISend(const void* sendbuf, size_t sendbytes) = 0;
-    virtual WorkCompletion IRecv(void* recvbuf, size_t recvbytes) = 0;
+    virtual WorkCompletion ISend(const Buffer& sendbuf) = 0;
+    virtual WorkCompletion IRecv(Buffer& recvbuf) = 0;
+    WorkCompletion ISend(const void* sendaddr, size_t sendbytes) {
+        Buffer sendbuf(sendaddr, sendbytes);
+        return this->ISend(sendbuf);
+    }
+    WorkCompletion IRecv(void* recvaddr, size_t recvbytes) {
+        Buffer recvbuf(recvaddr, recvbytes);
+        return this->IRecv(recvbuf);
+    }
     virtual void Close() = 0;
     virtual Status Connect(const std::string& host, const uint32_t& port) = 0;
     Status Connect(const std::string& addr_str) {
@@ -55,5 +65,23 @@ public:
         wc.Wait();
         return wc.status();
     }
+    inline bool CheckError() const {
+        return error_detected_.load(std::memory_order_acquire);
+    }
+    inline void set_error_detected(const bool& error_detected) {
+        error_detected_.store(error_detected, std::memory_order_release);
+    }
+    inline bool error_detected() const {
+        return error_detected_.load(std::memory_order_acquire);
+    }
+    inline ChannelType type() const {
+        return type_;
+    }
+    inline void set_type(const ChannelType& type) {
+        type_ = type;
+    }
+private:
+    std::atomic<bool> error_detected_;
+    ChannelType type_;
 };
 }

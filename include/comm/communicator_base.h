@@ -100,16 +100,16 @@ public:
      *  \param nbytes buffer size in bytes
      *  \param dest destination rank
     */
-    void Send(void* sendbuf_, size_t nbytes, int dest) override;
+    void Send(const Buffer& sendbuf_, int dest) override;
     /*!
      *   \brief blocking send
      *  \param sendbuf_ buffer need to  send
      *  \param nbytes buffer size in bytes
      *  \param dest destination rank
     */
-    void Recv(void* recvbuf_, size_t type_nbytes, int src) override;
-    WorkCompletion ISend(void* sendbuf_, size_t nbytes, int dest) override;
-    WorkCompletion IRecv(void* recvbuf_, size_t type_nbytes, int src) override;
+    void Recv(Buffer& recvbuf_, int src) override;
+    WorkCompletion ISend(const Buffer& sendbuf_, int dest) override;
+    WorkCompletion IRecv(Buffer& recvbuf_, int src) override;
     /*! \brief barrier all nodes*/
     void Barrier() override;
     /*! \brief register this communicator to tracker */

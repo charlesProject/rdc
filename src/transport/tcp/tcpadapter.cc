@@ -21,6 +21,37 @@
 static const uint32_t kNumMaxEvents = 32;
 
 namespace rdc {
+static inline uint32_t channel_type_to_epoll_event(
+        const ChannelType& channel_type) {
+    switch(channel_type) {
+        case kRead:
+            return EPOLLIN;
+        case kWrite:
+            return EPOLLOUT;
+        case kReadWrite:
+            return EPOLLIN | EPOLLOUT;
+        case kNone:
+            return 0;
+        default:
+            return 0;
+    }
+}
+
+static inline std::string channel_type_to_string(ChannelType channel_type) {
+    switch(channel_type) {
+        case kRead:
+            return "read";
+        case kWrite:
+            return "write";
+        case kReadWrite:
+            return "readwrite";
+        case kNone:
+            return "none";
+        default:
+            return "none";
+    }
+}
+
 
 static inline bool IsRead(uint32_t events) {
     return (events & EPOLLIN || events & EPOLLPRI);
@@ -74,19 +105,34 @@ void TcpAdapter::AddChannel(int32_t fd, TcpChannel* channel) {
     lock_.lock();
     channels_[fd] = channel;
     LOG_S(INFO) << "Added new channel with fd :" << fd;
+    uint32_t flags = channel_type_to_epoll_event(channel->type());
+    epoll_event ev;
+    std::memset(&ev, 0, sizeof(ev));
+    ev.data.fd = fd;
+    ev.events |= flags;
+    epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, fd, &ev);
     lock_.unlock();
 }
+
 void TcpAdapter::AddChannel(TcpChannel* channel) {
-    lock_.lock();
-    channels_[channel->fd()] = channel;
-    LOG_S(INFO) << "Added new channel with fd :" << channel->fd();
-    lock_.unlock();
+    this->AddChannel(channel->fd(), channel);
 }
 
 void TcpAdapter::RemoveChannel(TcpChannel* channel) {
     lock_.lock();
     channels_.erase(channel->fd());
+    epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, channel->fd(), nullptr);
     lock_.unlock();
+}
+
+void TcpAdapter::ModifyChannel(TcpChannel* channel,
+        const ChannelType& target_type) {
+    epoll_event ev;
+    std::memset(&ev, 0, sizeof(ev));
+    ev.data.fd = channel->fd();
+    uint32_t flags = channel_type_to_epoll_event(target_type);
+    ev.events |= flags;
+    epoll_ctl(epoll_fd_, EPOLL_CTL_MOD, channel->fd(), &ev);
 }
 
 void TcpAdapter::Shutdown() {
@@ -157,6 +203,7 @@ bool TcpAdapter::Poll() {
             // shutdown or error
             if (IsError(events[i].events)) {
                 int32_t error = GetLastSocketError(events[i].data.fd);
+                channel->set_error_detected(true);
                 LOG_F(ERROR, "%s", strerror(error));
                 return true;
             }

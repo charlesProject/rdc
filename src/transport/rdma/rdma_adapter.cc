@@ -98,13 +98,16 @@ void RdmaAdapter::PollForever() {
             size_t len = 0;
             if (work_req.work_type() == kRecv) {
                 len = wc.byte_len;
-                LOG(INFO) << wc.byte_len;
             } else {
                 len = work_req.nbytes();
             }
             if (work_req.AddBytes(len)) {
-                RdmaMemoryMgr::Get()->RemoveMemoryRegion(work_req.ptr(),
-                    work_req.nbytes());
+                auto channel_info = work_req.template
+                    extra_data<RdmaChannelInfo>();
+                if (channel_info.buf_pinned) {
+                    RdmaMemoryMgr::Get()->RemoveMemoryRegion(work_req.ptr(),
+                        work_req.nbytes());
+                }
                 work_req.Notify();
             }
         }

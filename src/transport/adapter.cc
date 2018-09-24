@@ -1,5 +1,5 @@
 #include <cstring>
-#include "transport/tcp/tcpadapter.h"
+#include "transport/tcp/tcp_adapter.h"
 #ifdef RDC_USE_RDMA
 #include "transport/rdma/rdma_adapter.h"
 #endif

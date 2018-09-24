@@ -19,6 +19,7 @@
 // to use rdc interface, there is no need to read engine.h
 // rdc.h and serializable.h are enough to use the interface
 #include "core/work_request.h"
+#include "transport/buffer.h"
 #include "comm/communicator.h"
 /*! \brief rdc namespace */
 namespace rdc {
@@ -77,6 +78,8 @@ inline std::string GetProcessorName();
 inline void TrackerPrint(const std::string &msg);
 inline void Send(void *send_data, size_t size, int dest);
 inline void Recv(void *recv_data, size_t size, int src);
+inline void Send(const Buffer& send_buf, size_t size, int dest);
+inline void Recv(Buffer& recv_buf, size_t size, int src);
 inline void Barrier();
 /*!
  * \brief broadcasts a memory region to every node from the root
@@ -86,7 +89,9 @@ inline void Barrier();
  * \param size the data size
  * \param root the process root
  */
-inline void Broadcast(void *sendrecv_data, size_t size, int root,
+inline void Broadcast(void* sendrecv_data, size_t size, int root,
+        const std::string& comm_name = kWorldCommName);
+inline void Broadcast(Buffer& buf, int root,
         const std::string& comm_name = kWorldCommName);
 /*!
  * \brief broadcasts an std::vector<DType> to every node from root

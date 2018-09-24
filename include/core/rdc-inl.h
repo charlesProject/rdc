@@ -42,6 +42,12 @@ inline bool IsDistributed(void) {
 inline std::string GetProcessorName(void) {
     return comm::GetCommunicator()->GetHost();
 }
+inline void Send(const Buffer& sendbuf, int dest) {
+    comm::GetCommunicator()->Send(sendbuf, dest);
+}
+inline void Recv(Buffer& recvbuf, int src) {
+    comm::GetCommunicator()->Recv(recvbuf, src);
+}
 inline void Send(void *send_data, size_t size, int dest) {
     comm::GetCommunicator()->Send(send_data, size, dest);
 }

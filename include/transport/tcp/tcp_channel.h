@@ -41,14 +41,21 @@ public:
 
     void PrepareForNext();
     void Add(const ChannelType& type);
-    void Modify(const ChannelType& type);
+    void ModifyType(const ChannelType& type);
     void Delete(const ChannelType& type);
     bool IsClosed() const {
         return fd_ == kInvalidSocket;
     }
-
     int32_t fd() const {
         return fd_;
+    }
+
+    inline void set_spin(const bool spin) {
+        spin_.store(spin, std::memory_order_release);
+    }
+
+    inline bool spin() const {
+        return spin_.load(std::memory_order_acquire);
     }
 private:
     int32_t fd_;
@@ -56,7 +63,7 @@ private:
     ThreadsafeQueue<uint64_t> send_reqs_;
     ThreadsafeQueue<uint64_t> recv_reqs_;
     /** only used to enable accept and listen callbacks */
-    TcpAdapter* poller_;
+    TcpAdapter* adapter_;
     ChannelType type_;
     std::mutex mu_;
     std::atomic<bool> spin_;

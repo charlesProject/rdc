@@ -40,14 +40,19 @@ struct RdmaAddr {
 };
 
 
+struct RdmaChannelInfo {
+    bool buf_pinned;
+};
+
 class RdmaAdapter;
-struct RdmaChannel : IChannel {
+class RdmaChannel : IChannel {
+public:
     RdmaChannel();
     RdmaChannel(RdmaAdapter* adapter, uint64_t buf_size);
     RdmaChannel(RdmaAdapter* adapter);
     ~RdmaChannel();
-    WorkCompletion ISend(const void* sendbuf, size_t size) override;
-    WorkCompletion IRecv(void* recvbuf, size_t size) override;
+    WorkCompletion ISend(const Buffer& sendbuf) override;
+    WorkCompletion IRecv(Buffer& recvbuf) override;
     Status Connect(const std::string& hostname, const uint32_t& port) override;
     void SetQueuePairForReady();
     void Close() override {

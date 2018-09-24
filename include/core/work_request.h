@@ -20,15 +20,14 @@ enum WorkType : uint32_t {
 struct WorkRequest {
     WorkRequest(): done_(false), completed_bytes_(0) {};
     WorkRequest(const uint64_t& req_id, const WorkType& work_type,
-        void* ptr, const size_t& size, void* extra_data) :
+        void* ptr, const size_t& size) :
             req_id_(req_id), work_type_(work_type), done_(false),
-            ptr_(ptr), size_in_bytes_(size), completed_bytes_(0),
-            extra_data_(extra_data) {}
+            ptr_(ptr), size_in_bytes_(size), completed_bytes_(0) {}
     WorkRequest(const uint64_t& req_id, const WorkType& work_type,
-        const void* ptr, const size_t& size, void* extra_data) :
+        const void* ptr, const size_t& size) :
             req_id_(req_id), work_type_(work_type), done_(false),
             ptr_(const_cast<void*>(ptr)), size_in_bytes_(size),
-            completed_bytes_(0), extra_data_(extra_data) {}
+            completed_bytes_(0) {}
 
     ~WorkRequest() = default;
 
@@ -111,6 +110,14 @@ struct WorkRequest {
         done_lock_.unlock();
         done_cond_.notify_one();
     }
+    template <typename T>
+    void set_extra_data(const T& extra_data) {
+        extra_data_ = extra_data;
+    }
+    template <typename T>
+    void extra_data() const {
+        return any_cast<T>(extra_data_);
+    }
 private:
     uint64_t req_id_;
     WorkType work_type_;
@@ -119,7 +126,7 @@ private:
     size_t size_in_bytes_;
     size_t completed_bytes_;
     Status status_;
-    void* extra_data_;
+    any extra_data_;
     std::mutex done_lock_;
     std::condition_variable done_cond_;
     std::function<void()> done_callback_;
@@ -142,20 +149,24 @@ struct WorkRequestManager {
         all_work_reqs[req.id()] = req;
         store_lock_->unlock();
     }
+    template <typename T>
     uint64_t NewWorkRequest(const WorkType& work_type, void* ptr,
-            const size_t& size, void* extra_data = nullptr) {
+            const size_t& size, const T& extra_data) {
         id_lock_->lock();
         cur_req_id_++;
-        WorkRequest work_req(cur_req_id_, work_type, ptr, size, extra_data);
+        WorkRequest work_req(cur_req_id_, work_type, ptr, size);
+        work_req.set_extra_data(extra_data);
         id_lock_->unlock();
         AddWorkRequest(work_req);
         return work_req.id();
     }
+    template <typename T>
     uint64_t NewWorkRequest(const WorkType& work_type, const void* ptr,
-            const size_t& size, void* extra_data = nullptr) {
+            const size_t& size, const T& extra_data) {
         id_lock_->lock();
         cur_req_id_++;
-        WorkRequest work_req(cur_req_id_, work_type, ptr, size, extra_data);
+        WorkRequest work_req(cur_req_id_, work_type, ptr, size);
+        work_req.set_extra_data(extra_data);
         id_lock_->unlock();
         AddWorkRequest(work_req);
         return work_req.id();

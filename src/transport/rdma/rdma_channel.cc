@@ -178,22 +178,31 @@ void RdmaChannel::CreateLocalAddr() {
     own_rdma_addr_.rkey = recv_memory_region_->rkey;
     own_rdma_addr_.raddr = (uint64_t)recv_buf_;
 }
-WorkCompletion RdmaChannel::ISend(const void* sendbuf_, size_t size) {
-    ibv_mr* mr = RdmaMemoryMgr::Get()->FindOrInsert(
-        const_cast<void*>(sendbuf_), size);
+WorkCompletion RdmaChannel::ISend(const Buffer& sendbuf) {
+    ibv_mr* mr = nullptr;
+    if (sendbuf.pinned()) {
+        mr = sendbuf.memory_region();
+    } else {
+        mr = RdmaMemoryMgr::Get()->FindOrInsert(
+            sendbuf.addr(), sendbuf.size_in_bytes());
+    }
+    RdmaChnnaelInfo channel_info;
+    channel_info.buf_pinned = sendbuf.pinned();
     uint64_t req_id = WorkRequestManager::Get()->
-                     NewWorkRequest(kSend, sendbuf_, size, nullptr);
+        NewWorkRequest(kSend, sendbuf.addr(), sendbuf.size_in_bytes(),
+                channel_info);
+
     auto num_parts = div_up(size , kMTU);
     std::vector<ibv_send_wr> send_wrs(num_parts);
     for (auto i = 0U; i < num_parts; i++) {
-        memset(&send_wrs[i], 0, sizeof(ibv_send_wr));
+        std::memset(&send_wrs[i], 0, sizeof(ibv_send_wr));
         send_wrs[i].wr_id       = req_id;
         send_wrs[i].num_sge     = 1;
         send_wrs[i].opcode      = IBV_WR_SEND;
 
         struct ibv_sge sge_list;
-        memset(&sge_list, 0, sizeof(struct ibv_sge));
-        sge_list.addr      = (uint64_t)sendbuf_ + i * kMTU;
+        std::memset(&sge_list, 0, sizeof(struct ibv_sge));
+        sge_list.addr      = (uint64_t)sendbuf.addr() + i * kMTU;
         sge_list.length    = size - i * kMTU;
         sge_list.lkey      = mr->lkey;
 
@@ -222,20 +231,29 @@ WorkCompletion RdmaChannel::ISend(const void* sendbuf_, size_t size) {
 
 
 WorkCompletion RdmaChannel::IRecv(void* recvbuf_, size_t size) {
-    ibv_mr* mr = RdmaMemoryMgr::Get()->FindOrInsert(recvbuf_, size);
+    ibv_mr* mr = nullptr;
+    if (recvbuf.pinned()) {
+        mr = recvbuf.memory_region();
+    } else {
+        mr = RdmaMemoryMgr::Get()->FindOrInsert(
+            recvbuf.addr(), recvbuf.size_in_bytes());
+    }
+    RdmaChnnaelInfo channel_info;
+    channel_info.buf_pinned = recvbuf.pinned();
     uint64_t req_id = WorkRequestManager::Get()->
-                     NewWorkRequest(kRecv, recvbuf_, size, nullptr);
+        NewWorkRequest(kSend, recvbuf.addr(), recvbuf.size_in_bytes(),
+                channel_info);
 
     auto num_parts = div_up(size , kMTU);
     std::vector<ibv_recv_wr> recv_wrs(num_parts);
     for (auto i = 0U; i < num_parts; i++) {
         ibv_sge sge_list;
-        memset(&sge_list, 0, sizeof(struct ibv_sge));
+        std::memset(&sge_list, 0, sizeof(struct ibv_sge));
         sge_list.addr      = (uint64_t)recvbuf_ + i * kMTU;
         sge_list.length    = size - i * kMTU;
         sge_list.lkey      = mr->lkey;
 
-        memset(&recv_wrs[i], 0, sizeof(ibv_recv_wr));
+        std::memset(&recv_wrs[i], 0, sizeof(ibv_recv_wr));
         recv_wrs[i].wr_id       = req_id;
         recv_wrs[i].sg_list     = &sge_list;
         recv_wrs[i].num_sge     = 1;
