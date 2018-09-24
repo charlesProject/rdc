@@ -8,7 +8,7 @@
 
 #include "transport/rdma/rdma_adapter.h"
 namespace rdc {
-void MRDeleter(ibv_mr* mr) {
+inline void MRDeleter(ibv_mr* mr) {
     if (mr) {
         ibv_dereg_mr(mr);
     }
@@ -25,14 +25,14 @@ public:
         return &mgr;
     }
     ibv_mr* FindMemoryRegion(void* addr, size_t length) {
-    std::lock_guard<std::mutex> lg(mrs_lock_);
-    auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
-    if (iter == std::end(mrs_) || iter->get()->addr > addr) {
-        return nullptr;
-    } else {
-        return iter->get();
+        std::lock_guard<std::mutex> lg(mrs_lock_);
+        auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
+        if (iter == std::end(mrs_) || iter->get()->addr > addr) {
+            return nullptr;
+        } else {
+            return iter->get();
+        }
     }
-}
     ibv_mr* InsertMemoryRegion(void* addr, size_t length,
                                        const std::string& allocator_name="") {
         ibv_mr* mr = nullptr;
@@ -65,9 +65,8 @@ public:
         std::lock_guard<std::mutex> lg(mrs_lock_);
         auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
         if (iter != std::end(mrs_) && iter->get()->addr == addr) {
-            mrs_.erase(iter);
             LOG(INFO) << "Evict memory region 0x" << std::hex << iter->get()->rkey;
-
+            mrs_.erase(iter);
         } else {
             LOG(WARNING) << "Failed to de-register memory region";
         }

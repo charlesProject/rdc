@@ -35,7 +35,6 @@ inline void Trim(std::string &s) {
     Ltrim(s);
     Rtrim(s);
 }
-
 /*! \brief c++11 version of string format */
 inline std::string SPrintf(const char *fmt, ...) {
     std::string msg(kPrintBuffer, '\0');
@@ -45,6 +44,18 @@ inline std::string SPrintf(const char *fmt, ...) {
     va_end(args);
     Trim(msg);
     return msg;
+}
+
+inline int SScanf(const std::string& str, const char* fmt, ...) {
+    char* cstr = new char[str.size() + 1];
+    std::memset(cstr, 0, str.size() + 1);
+    std::memcpy(cstr, str.c_str(), str.size());
+    va_list args;
+    va_start(args, fmt);
+    auto ret = vsscanf(cstr, fmt, args);
+    va_end(args);
+    delete[] cstr;
+    return ret;
 }
 
 template <typename Container>

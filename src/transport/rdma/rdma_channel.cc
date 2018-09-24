@@ -6,13 +6,22 @@
 #include <arpa/inet.h>
 
 
+#include "utils/utils.h"
 #include "core/env.h"
+#include "core/socket.h"
 #include "core/logging.h"
 #include "transport/rdma/rdma_channel.h"
 #include "transport/rdma/rdma_adapter.h"
 #include "transport/rdma/rdma_utils.h"
+#include "transport/rdma/rdma_memory_mgr.h"
 
 namespace rdc {
+
+const uint64_t kMTU = 1 << 23;
+static inline uint64_t div_up(uint64_t dividend, uint64_t divisor) {
+    return (dividend + divisor - 1) / divisor;
+}
+
 RdmaChannel::RdmaChannel():RdmaChannel(RdmaAdapter::Get()) {
 }
 
@@ -22,12 +31,16 @@ RdmaChannel::RdmaChannel(RdmaAdapter* adapter) :
 }
 RdmaChannel::RdmaChannel(RdmaAdapter* adapter, uint64_t buf_size)
                 : adapter_(adapter), buf_size_(buf_size) {
-    send_buf_ = new uint8_t[buf_size_];
-    recv_buf_ = new uint8_t[buf_size_];
+    send_buf_ = reinterpret_cast<uint8_t*>(utils::AllocTemp(buf_size_));
+    recv_buf_ = reinterpret_cast<uint8_t*>(utils::AllocTemp(buf_size_));
     num_comp_queue_entries_ = adapter->max_num_queue_entries();
     InitRdmaContext();
 }
 
+RdmaChannel::~RdmaChannel() {
+    utils::Free(send_buf_);
+    utils::Free(recv_buf_);
+}
 
 void RdmaChannel::InitRdmaContext() {
     send_memory_region_ = ibv_reg_mr(adapter_->protection_domain(),
@@ -47,12 +60,13 @@ void RdmaChannel::InitRdmaContext() {
     CreateQueuePair();
     CreateLocalAddr();
 }
+
 void RdmaChannel::ExitRdmaContext() {
     CHECK_EQ(ibv_destroy_qp(queue_pair_), 0);
     CHECK_EQ(ibv_dereg_mr(send_memory_region_), 0);
     CHECK_EQ(ibv_dereg_mr(recv_memory_region_), 0);
 }
-void RdmaChannel::AfterConnection() {
+void RdmaChannel::SetQueuePairForReady() {
     InitQueuePair();
     EnableQueuePairForRecv();
     EnableQueuePairForSend();
@@ -60,25 +74,15 @@ void RdmaChannel::AfterConnection() {
 
 Status RdmaChannel::Connect(const std::string& hostname,
         const uint32_t& port) {
-    sockaddr_in peer_addr;
-    std::memset(&peer_addr, 0, sizeof(peer_addr));
-    peer_addr.sin_family = AF_INET;
-    peer_addr.sin_addr.s_addr = inet_addr(hostname.c_str());
-    peer_addr.sin_port = htons(port);
-    int32_t peer_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (connect(peer_fd, (struct sockaddr*)&peer_addr,
-                sizeof(peer_addr)) != 0) {
-        LOG_F(ERROR, strerror(errno));
-        return static_cast<Status>(errno);
-    }
-    CHECK_GE(peer_fd, 0);
-    CHECK_EQ(send(peer_fd , (char*)&self_addr_,
-             sizeof(self_addr_), 0), sizeof(self_addr_))
-             << "Could not send local address to peer";
-    CHECK_EQ(recv(peer_fd , (char*)&peer_addr_,
-             sizeof(peer_addr_), 0), sizeof(peer_addr_))
-             << "Could not receive local address to peer";
-    AfterConnection();
+    TcpSocket peer_sock;
+    peer_sock.Connect(hostname, port);
+    // send addr to peer
+    peer_sock.SendStr(own_rdma_addr_.to_string());
+    // recv peer addr
+    std::string peer_rdma_addr_str;
+    peer_sock.RecvStr(peer_rdma_addr_str);
+    peer_rdma_addr_.from_string(peer_rdma_addr_str);
+    SetQueuePairForReady();
     return Status::kSuccess;
 }
 
@@ -93,8 +97,8 @@ void RdmaChannel::CreateQueuePair() {
                                     kNumCompQueueEntries);
     qp_init_attr.cap.max_recv_wr = Env::Get()->GetEnv("RDC_RDMA_MAX_WR",
                                     kNumCompQueueEntries);
-    qp_init_attr.cap.max_send_sge = 1;
-    qp_init_attr.cap.max_recv_sge = 1;
+    qp_init_attr.cap.max_send_sge = 16;
+    qp_init_attr.cap.max_recv_sge = 16;
     qp_init_attr.cap.max_inline_data = 1U << 6;
     queue_pair_ = ibv_create_qp(adapter_->protection_domain(),
                                 &qp_init_attr);
@@ -124,18 +128,18 @@ void RdmaChannel::EnableQueuePairForRecv() {
 
     attr->qp_state              = IBV_QPS_RTR;
     attr->path_mtu              = IBV_MTU_4096;
-    attr->dest_qp_num           = peer_addr_.qpn;
-    attr->rq_psn                = peer_addr_.psn;
+    attr->dest_qp_num           = peer_rdma_addr_.qpn;
+    attr->rq_psn                = peer_rdma_addr_.psn;
     attr->max_dest_rd_atomic    = 1;
     attr->min_rnr_timer         = 12;
     attr->ah_attr.is_global     = 1;
-    attr->ah_attr.dlid          = peer_addr_.lid;
+    attr->ah_attr.dlid          = peer_rdma_addr_.lid;
     attr->ah_attr.sl            = 0;
     attr->ah_attr.src_path_bits = 0;
     attr->ah_attr.port_num      = adapter_->ib_port();
-    attr->ah_attr.grh.dgid.global.subnet_prefix = peer_addr_.snp;
-    attr->ah_attr.grh.dgid.global.interface_id = peer_addr_.iid;
-    attr->ah_attr.grh.sgid_index = sgid_idx_;
+    attr->ah_attr.grh.dgid.global.subnet_prefix = peer_rdma_addr_.snp;
+    attr->ah_attr.grh.dgid.global.interface_id = peer_rdma_addr_.iid;
+    attr->ah_attr.grh.sgid_index = adapter_->sgid_idx();
     attr->ah_attr.grh.flow_label = 0;
     attr->ah_attr.grh.hop_limit = 255;
     CHECK_EQ(ibv_modify_qp(queue_pair_, attr, IBV_QP_STATE|IBV_QP_AV|
@@ -154,7 +158,7 @@ void RdmaChannel::EnableQueuePairForSend() {
     attr->timeout               = 14;
     attr->retry_cnt             = 7;
     attr->rnr_retry             = 7;    /* infinite retry */
-    attr->sq_psn                = self_addr_.psn;
+    attr->sq_psn                = own_rdma_addr_.psn;
     attr->max_rd_atomic         = 1;
 
     CHECK_EQ(ibv_modify_qp(queue_pair_, attr,
@@ -166,39 +170,49 @@ void RdmaChannel::EnableQueuePairForSend() {
 void RdmaChannel::CreateLocalAddr() {
     ibv_port_attr attr;
     ibv_query_port(adapter_->context(), adapter_->ib_port(), &attr);
-    self_addr_.lid = attr.lid;
-    self_addr_.qpn = queue_pair_->qp_num;
-    self_addr_.psn = rand() & 0xffffff;
-    this->sgid_idx_ = this->adapter_->sgid_idx();
-    self_addr_.snp = adapter_->snp();
-    self_addr_.iid = adapter_->iid();
-    self_addr_.rkey = recv_memory_region_->rkey;
-    self_addr_.raddr = (uint64_t)recv_buf_;
+    own_rdma_addr_.lid = attr.lid;
+    own_rdma_addr_.qpn = queue_pair_->qp_num;
+    own_rdma_addr_.psn = rand() & 0xffffff;
+    own_rdma_addr_.snp = adapter_->snp();
+    own_rdma_addr_.iid = adapter_->iid();
+    own_rdma_addr_.rkey = recv_memory_region_->rkey;
+    own_rdma_addr_.raddr = (uint64_t)recv_buf_;
 }
-
 WorkCompletion RdmaChannel::ISend(const void* sendbuf_, size_t size) {
+    ibv_mr* mr = RdmaMemoryMgr::Get()->FindOrInsert(
+        const_cast<void*>(sendbuf_), size);
     uint64_t req_id = WorkRequestManager::Get()->
-                     NewWorkRequest(kSend, sendbuf_, size, send_buf_);
-    memcpy(send_buf_, sendbuf_, size);
-    ibv_sge sge_list;
-    memset(&sge_list, 0, sizeof(sge_list));
-    sge_list.addr      = (uint64_t)send_buf_;
-    sge_list.length    = size;
-    sge_list.lkey      = send_memory_region_->lkey;
-    ibv_send_wr send_wr;
-    send_wr.wr_id       = req_id;
-    send_wr.sg_list     = &sge_list;
-    send_wr.num_sge     = 1;
-    send_wr.opcode      = IBV_WR_SEND;
-    send_wr.send_flags  = IBV_SEND_SIGNALED;
-    send_wr.next        = NULL;
+                     NewWorkRequest(kSend, sendbuf_, size, nullptr);
+    auto num_parts = div_up(size , kMTU);
+    std::vector<ibv_send_wr> send_wrs(num_parts);
+    for (auto i = 0U; i < num_parts; i++) {
+        memset(&send_wrs[i], 0, sizeof(ibv_send_wr));
+        send_wrs[i].wr_id       = req_id;
+        send_wrs[i].num_sge     = 1;
+        send_wrs[i].opcode      = IBV_WR_SEND;
 
-//    send_wr.wr.rdma.rkey = peer_addr_.rkey;
-//    send_wr.wr.rdma.remote_addr = peer_addr_.raddr;
+        struct ibv_sge sge_list;
+        memset(&sge_list, 0, sizeof(struct ibv_sge));
+        sge_list.addr      = (uint64_t)sendbuf_ + i * kMTU;
+        sge_list.length    = size - i * kMTU;
+        sge_list.lkey      = mr->lkey;
+
+        send_wrs[i].sg_list     = &sge_list;
+
+        if (i == num_parts - 1) {
+            send_wrs[i].send_flags  = IBV_SEND_SIGNALED;
+            send_wrs[i].next = nullptr;
+        }
+        else {
+            send_wrs[i].next = &send_wrs[i + 1];
+        }
+    }
+//    send_wr.wr.rdma.rkey = peer_rdma_addr_.rkey;
+//    send_wr.wr.rdma.remote_addr = peer_rdma_addr_.raddr;
 //    send_wr.imm_data = 0;
 
     ibv_send_wr *bad_wr;
-    auto rc = ibv_post_send(queue_pair_, &send_wr, &bad_wr);
+    auto rc = ibv_post_send(queue_pair_, &send_wrs[0], &bad_wr);
     if (rc != 0) {
         LOG_F(ERROR, "ibv_post_send failed: %s.", std::strerror(errno));
     }
@@ -206,27 +220,44 @@ WorkCompletion RdmaChannel::ISend(const void* sendbuf_, size_t size) {
     return wc;
 }
 
-WorkCompletion RdmaChannel::IRecv(void* recvbuf_, size_t size) {
-    uint64_t req_id = WorkRequestManager::Get()->
-                     NewWorkRequest(kRecv, recvbuf_, size, recv_buf_);
-    ibv_sge sge_list;
-    memset(&sge_list, 0, sizeof(sge_list));
-    sge_list.addr      = (uint64_t)recv_buf_;
-    sge_list.length    = size;
-    sge_list.lkey      = recv_memory_region_->lkey;
-    ibv_recv_wr recv_wr;
-    recv_wr.wr_id       = req_id;
-    recv_wr.sg_list     = &sge_list;
-    recv_wr.num_sge     = 1;
-    recv_wr.next        = NULL;
 
-    ibv_recv_wr* bad_wr;
-    auto rc = ibv_post_srq_recv(adapter_->shared_receive_queue(), &recv_wr, &bad_wr);
-    if (rc != 0) {
-        LOG_F(ERROR, "ibv_post_srq_recv failed: %s.", std::strerror(errno));
+WorkCompletion RdmaChannel::IRecv(void* recvbuf_, size_t size) {
+    ibv_mr* mr = RdmaMemoryMgr::Get()->FindOrInsert(recvbuf_, size);
+    uint64_t req_id = WorkRequestManager::Get()->
+                     NewWorkRequest(kRecv, recvbuf_, size, nullptr);
+
+    auto num_parts = div_up(size , kMTU);
+    std::vector<ibv_recv_wr> recv_wrs(num_parts);
+    for (auto i = 0U; i < num_parts; i++) {
+        ibv_sge sge_list;
+        memset(&sge_list, 0, sizeof(struct ibv_sge));
+        sge_list.addr      = (uint64_t)recvbuf_ + i * kMTU;
+        sge_list.length    = size - i * kMTU;
+        sge_list.lkey      = mr->lkey;
+
+        memset(&recv_wrs[i], 0, sizeof(ibv_recv_wr));
+        recv_wrs[i].wr_id       = req_id;
+        recv_wrs[i].sg_list     = &sge_list;
+        recv_wrs[i].num_sge     = 1;
+        if (i == num_parts - 1) {
+            recv_wrs[i].next = nullptr;
+        }
+        else {
+            recv_wrs[i].next = &recv_wrs[i + 1];
+        }
     }
-    //CHECK_EQ(ibv_post_recv(queue_pair_, &recv_wr, &bad_wr),0)
-    //         << "ibv_post_send failed.This is bad mkey";
+    ibv_recv_wr* bad_wr;
+    if (adapter_->use_srq()) {
+        auto rc = ibv_post_srq_recv(adapter_->shared_receive_queue(), &recv_wrs[0], &bad_wr);
+        if (rc != 0) {
+            LOG_F(ERROR, "ibv_post_srq_recv failed: %s.", std::strerror(errno));
+        }
+    } else {
+        auto rc = ibv_post_recv(queue_pair_, &recv_wrs[0], &bad_wr);
+        if (rc != 0) {
+            LOG_F(ERROR, "ibv_post_recv failed %s.", std::strerror(errno));
+        }
+    }
     WorkCompletion wc(req_id);
     return wc;
 }
