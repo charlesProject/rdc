@@ -364,7 +364,6 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
             ring_next_ = cur_link.get();
         }
     }
-    LOG_F(INFO,"");
     CHECK_F(prev_rank_ == -1 || ring_prev_ != nullptr,
            "cannot find prev link in the ring");
     CHECK_F(next_rank_ == -1 || ring_next_ != nullptr,

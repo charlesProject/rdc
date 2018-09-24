@@ -127,42 +127,42 @@ private:
 struct WorkRequestManager {
     std::unordered_map<uint64_t, WorkRequest> all_work_reqs;
     WorkRequestManager() {
-       store_lock = utils::make_unique<utils::SpinLock>();
-       id_lock = utils::make_unique<utils::SpinLock>();
+       store_lock_ = utils::make_unique<utils::SpinLock>();
+       id_lock_ = utils::make_unique<utils::SpinLock>();
        cond_lock_ = utils::make_unique<std::mutex>();
        cond_ = utils::make_unique<std::condition_variable>();
-       cur_req_id = 0;
+       cur_req_id_ = 0;
     }
     static WorkRequestManager* Get() {
         static WorkRequestManager mgr;
         return &mgr;
     }
     void AddWorkRequest(const WorkRequest& req) {
-        store_lock->lock();
+        store_lock_->lock();
         all_work_reqs[req.id()] = req;
-        store_lock->unlock();
+        store_lock_->unlock();
     }
     uint64_t NewWorkRequest(const WorkType& work_type, void* ptr,
             const size_t& size, void* extra_data = nullptr) {
-        id_lock->lock();
-        cur_req_id++;
-        WorkRequest work_req(cur_req_id, work_type, ptr, size, extra_data);
-        id_lock->unlock();
+        id_lock_->lock();
+        cur_req_id_++;
+        WorkRequest work_req(cur_req_id_, work_type, ptr, size, extra_data);
+        id_lock_->unlock();
         AddWorkRequest(work_req);
         return work_req.id();
     }
     uint64_t NewWorkRequest(const WorkType& work_type, const void* ptr,
             const size_t& size, void* extra_data = nullptr) {
-        id_lock->lock();
-        cur_req_id++;
-        WorkRequest work_req(cur_req_id, work_type, ptr, size, extra_data);
-        id_lock->unlock();
+        id_lock_->lock();
+        cur_req_id_++;
+        WorkRequest work_req(cur_req_id_, work_type, ptr, size, extra_data);
+        id_lock_->unlock();
         AddWorkRequest(work_req);
         return work_req.id();
     }
 
     WorkRequest& GetWorkRequest(uint64_t req_id) {
-        std::lock_guard<utils::SpinLock> lg(*store_lock);
+        std::lock_guard<utils::SpinLock> lg(*store_lock_);
         return all_work_reqs[req_id];
     }
     bool AddBytes(uint64_t req_id, size_t nbytes) {
@@ -172,9 +172,9 @@ struct WorkRequestManager {
         return all_work_reqs.count(req_id);
     }
     void Wait(uint64_t req_id) {
-        store_lock->lock();
+        store_lock_->lock();
         auto& work_req = all_work_reqs[req_id];
-        store_lock->unlock();
+        store_lock_->unlock();
         work_req.Wait();
     }
     void Notify() {
@@ -202,9 +202,9 @@ struct WorkRequestManager {
     void set_status(uint64_t req_id, const Status& status) {
         all_work_reqs[req_id].set_status(status);
     }
-    uint64_t cur_req_id;
-    std::unique_ptr<utils::SpinLock> store_lock;
-    std::unique_ptr<utils::SpinLock> id_lock;
+    uint64_t cur_req_id_;
+    std::unique_ptr<utils::SpinLock> store_lock_;
+    std::unique_ptr<utils::SpinLock> id_lock_;
     // used when we do not want workrequest shutdown by themselves, deprecated
     std::unique_ptr<std::mutex> cond_lock_;
     std::unique_ptr<std::condition_variable> cond_;
@@ -256,7 +256,6 @@ public:
 
 class ChainWorkCompletion {
 public:
-    ChainWorkCompletion() = default;
     void Push(const WorkCompletion& work_comp) {
         work_comps_.emplace_back(work_comp);
     }

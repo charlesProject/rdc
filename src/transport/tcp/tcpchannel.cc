@@ -10,8 +10,8 @@
 #include <cstring>
 
 #include "transport/channel.h"
-#include "transport/tcp/tcpadapter.h"
-#include "transport/tcp/tcpchannel.h"
+#include "transport/tcp/tcp_adapter.h"
+#include "transport/tcp/tcp_channel.h"
 #include "core/status.h"
 
 namespace rdc {

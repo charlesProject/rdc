@@ -12,8 +12,8 @@
 #include <condition_variable>
 #include <algorithm>
 #include <atomic>
-#include "transport/tcp/tcpadapter.h"
-#include "transport/tcp/tcpchannel.h"
+#include "transport/tcp/tcp_adapter.h"
+#include "transport/tcp/tcp_channel.h"
 #include "core/threadpool.h"
 #include "core/logging.h"
 #include "core/status.h"

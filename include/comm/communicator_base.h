@@ -23,11 +23,11 @@
 #include "comm/communicator.h"
 #include "transport/channel.h"
 #include "transport/adapter.h"
-#include "transport/tcp/tcpchannel.h"
-#include "transport/tcp/tcpadapter.h"
-#ifdef USE_RDMA
-#include "transport/rdma/rdmachannel.h"
-#include "transport/rdma/rdmaadapter.h"
+#include "transport/tcp/tcp_channel.h"
+#include "transport/tcp/tcp_adapter.h"
+#ifdef RDC_USE_RDMA
+#include "transport/rdma/rdma_channel.h"
+#include "transport/rdma/rdma_adapter.h"
 #endif
 namespace MPI {
 // MPI data type to be compatible with existing MPI interface
