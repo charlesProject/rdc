@@ -122,12 +122,10 @@ public:
      * \param count number of elements to be reduced
      * \param reducer reduce function
      */
-    virtual void Allreduce(void *sendrecvbuf_,
-                           size_t type_nbytes,
-                           size_t count,
-                           ReduceFunction reducer) override {
+    virtual void Allreduce(Buffer& sendrecvbuf_, ReduceFunction reducer)
+            override {
         if (world_size_ == 1 || world_size_ == -1) return;
-        TryAllreduce(sendrecvbuf_, type_nbytes, count, reducer);
+        TryAllreduce(sendrecvbuf_, reducer);
     }
     /*!
      * \brief broadcast data from root to all nodes
@@ -135,16 +133,14 @@ public:
      * \param size the size of the data to be broadcasted
      * \param root the root worker id to broadcast the data
      */
-    virtual void Broadcast(void* sendrecvbuf_, size_t total_size, 
-            int root) override {
+    virtual void Broadcast(Buffer& sendrecvbuf_, int root) override {
         if (world_size_ == 1 || world_size_ == -1) return;
-        TryBroadcast(sendrecvbuf_, total_size, root);
+        TryBroadcast(sendrecvbuf_, root);
     }
 
-    virtual void Allgather(void** sendrecvbufs_, size_t type_nbytes,
-                           size_t* counts) override {
+    virtual void Allgather(std::vector<Buffer>& sendrecvbufs_) override {
         if (world_size_ == 1 || world_size_ == -1) return;
-        TryAllgatherRing(sendrecvbufs_, type_nbytes, counts);
+        TryAllgatherRing(sendrecvbufs_);
     }
     /*!
      * \brief load latest check point
@@ -168,8 +164,8 @@ public:
      *
      * \sa CheckPoint, VersionNumber
      */
-    virtual int LoadCheckPoint(Serializable *global_model,
-                               Serializable *local_model = nullptr) override {
+    virtual int LoadCheckPoint(Serializable* global_model,
+            Serializable* local_model = nullptr) override {
         return 0;
     }
     /*!
@@ -182,8 +178,8 @@ public:
      * \param local_model pointer to local model, that is specific to current node/rank
      *   this can be NULL when no local state is needed
      */
-    virtual void CheckPoint(const Serializable *global_model,
-                            const Serializable *local_model = NULL) override {
+    virtual void CheckPoint(const Serializable* global_model,
+            const Serializable* local_model = NULL) override {
         version_number += 1;
     }
     /*!
@@ -254,19 +250,11 @@ protected:
      * \param reducer reduce function
      * \return this function can return Status::kSuccess, kSockError, kGetExcept, see void for details
      */
-    void TryAllreduce(void* sendrecvbuf_,
-                            size_t type_nbytes,
-                            size_t count,
-                            ReduceFunction reducer);
+    void TryAllreduce(Buffer& sendrecvbuf_, ReduceFunction reducer);
 
 
-    void TryReduceTree(void* sendrecvbuf_,
-                            void* reducebuf_,
-                            size_t type_nbytes,
-                            size_t count,
-                            ReduceFunction reducer,
-                            int root);
-
+    void TryReduceTree(Buffer& sendrecvbuf_, Buffer& reducebuf_,
+            ReduceFunction reducer, int root);
     /*!
      * \brief broadcast data from root to all nodes, this function can fail,and will return the cause of failure
      * \param sendrecvbuf_ buffer for both sending and receiving data
@@ -275,7 +263,7 @@ protected:
      * \return this function can return Status::kSuccess, kSockError, kGetExcept, see void for details
      * \sa void
      */
-    void TryBroadcast(void* sendrecvbuf_, size_t size, int root);
+    void TryBroadcast(Buffer& sendrecvbuf_, int root);
 
     /*!
      * \brief perform in-place allreduce, on sendrecvbuf,
@@ -288,10 +276,7 @@ protected:
      * \return this function can return Status::kSuccess, kSockError, kGetExcept, see void for details
      * \sa void
      */
-    void TryAllreduceTree(void *sendrecvbuf_,
-                                size_t type_nbytes,
-                                size_t count,
-                                ReduceFunction reducer);
+    void TryAllreduceTree(Buffer& sendrecvbuf_, ReduceFunction reducer);
     /*!
      * \brief internal Allgather function, each node have a segment of data in the ring of sendrecvbuf,
      *  the data provided by current node k is [slice_begin, slice_end),
@@ -306,8 +291,7 @@ protected:
      * \return this function can return Status::kSuccess, kSockError, kGetExcept, see void for details
      * \sa void
      */
-    void TryAllgatherRing(void** sendrecvbufs_, size_t type_nbytes, 
-                          size_t* counts);
+    void TryAllgatherRing(std::vector<Buffer>& sendrecvbufs_);
     /*!
      * \brief perform in-place allreduce, reduce on the sendrecvbuf,
      *
@@ -323,10 +307,7 @@ protected:
      * \return this function can return Status, see void for details
      * \sa void, TryAllreduce
      */
-    void TryReduceScatterRing(void* sendrecvbuf_,
-                              void* reducebuf_,
-                              size_t type_nbytes,
-                              size_t count,
+    void TryReduceScatterRing(Buffer& sendrecvbuf_, Buffer& reducebuf_,
                               ReduceFunction reducer);
     /*!
      * \brief perform in-place allreduce, on sendrecvbuf
@@ -339,10 +320,8 @@ protected:
      * \return this function can return Status see void for details
      * \sa void
      */
-    void TryAllreduceRing(void *sendrecvbuf_,
-                                size_t type_nbytes,
-                                size_t count,
-                                ReduceFunction reducer);
+    void TryAllreduceRing(Buffer& sendrecvbuf_, ReduceFunction reducer);
+
     std::shared_ptr<TcpSocket> get_trakcer() const {
         return this->tracker_;
     }

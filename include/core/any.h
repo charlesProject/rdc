@@ -1,3 +1,12 @@
+/*!
+ * Copyright by Contributors
+ * \file mpi.h
+ * \brief any adt which can hold any structure
+ * which do not hold any enternal data pointer
+ *
+ * \author Ankun Zheng
+ */
+
 #pragma once
 #include <typeinfo>
 #include <type_traits>
@@ -5,16 +14,14 @@
 
 namespace rdc {
 
-class bad_any_cast : public std::bad_cast
-{
+class bad_any_cast : public std::bad_cast {
 public:
     const char* what() const noexcept override {
         return "bad any cast";
     }
 };
 
-class any final
-{
+class any final {
 public:
     /// Constructs an object of type any with an empty state.
     any() :

@@ -67,7 +67,7 @@ inline std::vector<std::pair<int, int>> Split(
 }
 
 /*! brief alloc a chunk of memory*/
-inline void* AllocTemp(const size_t& nbytes) {
+inline void* AllocTemp(const uint64_t& nbytes) {
     void* buf = std::malloc(nbytes);
     return buf;
 }

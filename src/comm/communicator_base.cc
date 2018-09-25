@@ -370,23 +370,17 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
            "cannot find next link in the ring");
     TrackerPrint("Connected done");
 }
-void Communicator::TryAllreduce(void *sendrecvbuf_,
-                            size_t type_nbytes,
-                            size_t count,
+void Communicator::TryAllreduce(Buffer& sendrecvbuf
                             ReduceFunction reducer) {
     if (count > reduce_ring_mincount_) {
-        return this->TryAllreduceRing(sendrecvbuf_, type_nbytes, count, reducer);
+        return this->TryAllreduceRing(sendrecvbuf, reducer);
     }
     else {
-        return this->TryAllreduceTree(sendrecvbuf_, type_nbytes, count, reducer);
+        return this->TryAllreduceTree(sendrecvbuf, reducer);
     }
 }
-void Communicator::TryReduceTree(void* sendrecvbuf_,
-                                void* reducebuf_,
-                                size_t type_nbytes,
-                                size_t count,
-                                ReduceFunction reducer,
-                                int root) {
+void Communicator::TryReduceTree(Buffer& sendrecvbuf, Buffer& reducebuf,
+        ReduceFunction reducer, int root) {
     auto dists_from_root = tree_map_.ShortestDist(root);
     auto dist_from_root = dists_from_root[rank_];
     auto neighbors = tree_map_.GetNeighbors(rank_);
@@ -399,25 +393,21 @@ void Communicator::TryReduceTree(void* sendrecvbuf_,
             send_to_node = neighbor;
         }
     }
-    int total_size = count * type_nbytes;
-    char* reducebuf = reinterpret_cast<char*>(reducebuf_);
-    char* sendrecvbuf = reinterpret_cast<char*>(sendrecvbuf_);
     ChainWorkCompletion wc;
     for (const auto& recv_from_node : recv_from_nodes) {
-        wc << all_links_[recv_from_node]->IRecv(reducebuf_, total_size);
-        reducer(reducebuf, sendrecvbuf,
-                count, MPI::Datatype(type_nbytes));
+        wc << all_links_[recv_from_node]->IRecv(reducebuf);
+        reducer(reducebuf, sendrecvbuf);
     }
 
 
     if (send_to_node != -1) {
-        wc << all_links_[send_to_node]->ISend(sendrecvbuf_, total_size);
+        wc << all_links_[send_to_node]->ISend(sendrecvbuf);
     }
-        wc.Wait();
+    wc.Wait();
 
     return;
 }
-void Communicator::TryBroadcast(void *sendrecvbuf_, size_t total_size, int root) {
+void Communicator::TryBroadcast(Buffer& sendrecvbuf, int root) {
     auto dists_from_root = tree_map_.ShortestDist(root);
     auto dist_from_root = dists_from_root[rank_];
     auto neighbors = tree_map_.GetNeighbors(rank_);
@@ -432,27 +422,25 @@ void Communicator::TryBroadcast(void *sendrecvbuf_, size_t total_size, int root)
     }
     ChainWorkCompletion wc;
     if (recv_from_node != -1) {
-        wc << all_links_[recv_from_node]->IRecv(sendrecvbuf_, total_size);
+        wc << all_links_[recv_from_node]->IRecv(sendrecvbuf);
     }
     for (const auto& send_to_node : send_to_nodes) {
-        wc << all_links_[send_to_node]->ISend(sendrecvbuf_, total_size);
+        wc << all_links_[send_to_node]->ISend(sendrecvbuf);
     }
         wc.Wait();
     return;
 }
 
 
-void Communicator::TryAllreduceTree(void *sendrecvbuf_,
-                                size_t type_nbytes,
-                                size_t count,
+void Communicator::TryAllreduceTree(Buffer& sendrecvbuf,
                                 ReduceFunction reducer) {
-    void* reducebuf_  = utils::AllocTemp(type_nbytes * count);
-    TryReduceTree(sendrecvbuf_, reducebuf_, type_nbytes, count, reducer, 0);
-    utils::Free(reducebuf_);
-    TryBroadcast(sendrecvbuf_, type_nbytes * count, 0);
+    Buffer reducebuf(sendrecvbuf.size_in_bytes());
+    reducebuf.AllocTemp(utils::AllocTemp);
+    TryReduceTree(sendrecvbuf, reducebuf, reducer, 0);
+    reducebuf.FreeTemp(utils::Free);
+    TryBroadcast(sendrecvbuf, 0);
 }
-void Communicator::TryAllgatherRing(void** sendrecvbufs_, size_t type_nbytes,
-                                     size_t* counts) {
+void Communicator::TryAllgatherRing(std::vector<Buffer>& sendrecvbufs) {
     // read from next link and send to prev one
     auto &prev = ring_prev_, &next = ring_next_;
     // need to reply on special rank structure
@@ -476,25 +464,20 @@ void Communicator::TryAllgatherRing(void** sendrecvbufs_, size_t type_nbytes,
         ChainWorkCompletion wc;
         if (write_idx < read_idx && write_idx != stop_write_idx) {
             size_t start = write_idx % count_bufs;
-            wc << prev->ISend(*(sendrecvbufs_ + start),
-                                  counts[start] * type_nbytes);
+            wc << prev->ISend(sendrecvbufs_[start]);
             write_idx++;
         }
         if (read_idx != stop_read_idx) {
             size_t start = read_idx % count_bufs;
-            wc << next->IRecv(*(sendrecvbufs_ + start),
-                                  counts[start] * type_nbytes);
+            wc << next->IRecv(sendrecvbufs[start]);
 //            wc.Wait();
             read_idx++;
         }
         wc.Wait();
-
     }
 }
-void Communicator::TryReduceScatterRing(void *sendrecvbuf_,
-                                    void* reducebuf_,
-                                    size_t type_nbytes,
-                                    size_t count,
+void Communicator::TryReduceScatterRing(Buffer& sendrecvbuf,
+                                    Buffer& reducebuf,
                                     ReduceFunction reducer) {
     // read from next link and send to prev one
     auto& prev = ring_prev_, &next = ring_next_;
@@ -502,17 +485,13 @@ void Communicator::TryReduceScatterRing(void *sendrecvbuf_,
     CHECK_F(next_rank_ == (rank_ + 1) % world_size_ &&
            rank_ == (prev_rank_ + 1) % world_size_,
            "need to assume rank structure");
-    size_t n = static_cast<size_t>(world_size_);
-    const auto& ranges = utils::Split(0, count, n);
-    size_t write_idx = next_rank_;
-    size_t read_idx = next_rank_ + 1;
-    size_t reduce_idx = read_idx;
-    // send recv buffer
-    char* sendrecvbuf = reinterpret_cast<char*>(sendrecvbuf_);
-    // reduce buffer
-    char* reducebuf = reinterpret_cast<char*>(reducebuf_);
+    uint64_t n = static_cast<uint64_t>(world_size_);
+    const auto& ranges = utils::Split(0, sendrecvbuf.size_in_bytes(), n);
+    uint64_t write_idx = next_rank_;
+    uint64_t read_idx = next_rank_ + 1;
+    uint64_t reduce_idx = read_idx;
     // position to stop reading
-    const size_t stop_read_idx = n + next_rank_;
+    const uint64_t stop_read_idx = n + next_rank_;
     // position to stop writing
     size_t stop_write_idx = n + rank_;
     if (stop_write_idx > stop_read_idx) {
@@ -530,59 +509,54 @@ void Communicator::TryReduceScatterRing(void *sendrecvbuf_,
         if (finished) break;
         ChainWorkCompletion wc;
         if (write_idx < reduce_idx && write_idx != stop_write_idx) {
-            size_t write_pos = write_idx % n;
-            size_t write_size = (ranges[write_pos].second -
-                                 ranges[write_pos].first) * type_nbytes;
-            size_t write_start = ranges[write_pos].first * type_nbytes;
-            wc << prev->ISend(sendrecvbuf + write_start,
-                                          write_size);
+            uint64_t write_pos = write_idx % n;
+            uint64_t write_size = (ranges[write_pos].second -
+                    ranges[write_pos].first);
+            uint64_t write_start = ranges[write_pos].first;
+            wc << prev->ISend(sendrecvbuf.Slice(write_start,
+                        write_start + write_size));
             write_idx ++;
         }
         if (read_idx != stop_read_idx) {
-            size_t read_pos = read_idx % n;
-            size_t read_start = ranges[read_pos].first * type_nbytes;
-            size_t read_size = (ranges[read_pos].second -
-                                ranges[read_pos].first) * type_nbytes;
-            wc << next->IRecv(reducebuf + read_start, read_size);
+            uint64_t read_pos = read_idx % n;
+            uint64_t read_start = ranges[read_pos].first;
+            uint64_t read_size = (ranges[read_pos].second -
+                    ranges[read_pos].first);
+            wc << next->IRecv(reducebuf.addr.Slice(read_start,
+                        read_start + read_size));
             wc.Wait();
             CHECK_F(read_idx <= stop_read_idx,"[%d] read_ptr boundary check",
                      rank_);
             read_idx++;
             size_t reduce_pos = reduce_idx % n;
-            size_t reduce_start = ranges[reduce_pos].first * type_nbytes;
-            size_t reduce_size = (ranges[reduce_pos].second -
-                                  ranges[reduce_pos].first) * type_nbytes;
-            reducer(reducebuf + reduce_start,
-                    sendrecvbuf + reduce_start,
-                    static_cast<int>(reduce_size / type_nbytes),
-                    MPI::Datatype(type_nbytes));
+            size_t reduce_start = ranges[reduce_pos].first;
+            size_t reduce_size = (ranges[reduce_pos].second - 
+                    ranges[reduce_pos].first);
+            reducer(reducebuf.Slice(reduce_start, reduce_start + reduce_size),
+                    sendrecvbuf.Slice(reduce_start, reduce_start + reduce_size));
             reduce_idx++;
         }
     }
     return;
 }
-void Communicator::TryAllreduceRing(void *sendrecvbuf_,
-                                size_t type_nbytes,
-                                size_t count,
-                                ReduceFunction reducer) {
-    void* reducebuf = utils::AllocTemp(count * type_nbytes);
-    TryReduceScatterRing(sendrecvbuf_, reducebuf, type_nbytes, 
-                         count, reducer);
-    utils::Free(reducebuf);
-    size_t n = static_cast<size_t>(world_size_);
-    const auto& ranges = utils::Split(0, count, n);
+void Communicator::TryAllreduceRing(Buffer& sendrecvbuf,
+        ReduceFunction reducer) {
+    Buffer reducebuf(sendrecvbuf.size_in_bytes());
+    reducebuf.AllocTemp(utils::AllocTemp);
+    TryReduceScatterRing(sendrecvbuf, reducebuf, reducer);
+    reducebuf.FreeTemp(utils::Free);
+    uint64_t n = static_cast<uint64_t>(world_size_);
+    const auto& ranges = utils::Split(0, sendrecvbuf.size_in_bytes(), n);
     // get rank of previous
-    std::vector<void*> sendrecv_bufs(n);
-    std::vector<size_t> sizes(n);
+    std::vector<Buffer> sendrecvbufs(n);
     for (auto i = 0U; i < n; i++) {
-        size_t begin = ranges[i].first;
-        size_t end = ranges[i].second;
-        size_t size = end - begin;
-        sizes[i] = size;
-        sendrecv_bufs[i] = utils::IncrVoidPtr(sendrecvbuf_, begin * type_nbytes);
+        uint64_t begin = ranges[i].first;
+        uint64_t end = ranges[i].second;
+        uint64_t size = end - begin;
+        sendrecvbufs[i].set_size_in_bytes(size);
+        sendrecvbufs[i].set_addr(utils::IncrVoidPtr(sendrecvbuf.addr(), begin));
     }
-    return TryAllgatherRing(utils::BeginPtr(sendrecv_bufs), type_nbytes, 
-                            utils::BeginPtr(sizes));
+    return TryAllgatherRing(sendrecvbufs);
 }
 
 std::unique_ptr<ICommunicator> Communicator::CreateGroup(

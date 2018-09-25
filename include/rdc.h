@@ -119,6 +119,7 @@ inline void Allgather(std::vector<std::vector<DType>>& sendrecv_data,
 
 inline void Allgather(void** sendrecv_data, size_t type_nbyes, size_t* counts,
         const std::string& comm_name = kWorldCommName);
+
 /*!
  * \brief performs in-place Allreduce, on sendrecvbuf
  *        with a prepare function specified by a lambda function
@@ -128,9 +129,10 @@ inline void Allgather(void** sendrecv_data, size_t type_nbyes, size_t* counts,
  * \tparam DType data type
  */
 template<typename OP, typename DType>
-inline void Allreduce(DType *sendrecvbuf, size_t count,
+inline void Allreduce(DType* sendrecvbuf, uint64_t count,
         const std::string& comm_name = kWorldCommName);
-
+template<typename OP>
+inline void Allreduce(Buffer& sendrecvbuf);
 /*!
  * \brief loads the latest check point
  * \param global_model pointer to the globally shared model/state

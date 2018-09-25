@@ -48,73 +48,75 @@ inline void Send(const Buffer& sendbuf, int dest) {
 inline void Recv(Buffer& recvbuf, int src) {
     comm::GetCommunicator()->Recv(recvbuf, src);
 }
-inline void Send(void *send_data, size_t size, int dest) {
+inline void Send(void* send_data, uint64_t size, int dest) {
     comm::GetCommunicator()->Send(send_data, size, dest);
 }
-inline void Recv(void *recv_data, size_t size, int src) {
+inline void Recv(void* recv_data, uint64_t size, int src) {
     comm::GetCommunicator()->Recv(recv_data, size, src);
 }
 inline void Barrier() {
     comm::GetCommunicator()->Barrier();
 }
 // broadcast data to all other nodes from root
-inline void Broadcast(void *sendrecv_data, size_t size, int root,
+inline void Broadcast(Buffer& sendrecvbuf, int root,
         const std::string& comm_name) {
-    comm::GetCommunicator(comm_name)->Broadcast(sendrecv_data, size, root);
+    comm::GetCommunicator(comm_name)->Broadcast(sendrecvbuf, root);
+}
+inline void Broadcast(void* sendrecvaddr, uint64_t size, int root,
+        const std::string& comm_name) {
+    comm::GetCommunicator(comm_name)->Broadcast(sendrecvaddr, size, root);
 }
 template<typename DType>
 inline void Broadcast(std::vector<DType>& sendrecv_data, int root,
         const std::string& comm_name) {
-    size_t size = sendrecv_data.size();
+    uint64_t size = sendrecv_data.size();
     Broadcast(&size, sizeof(size), root, comm_name);
     if (sendrecv_data.size() != size) {
         sendrecv_data.resize(size);
     }
     if (size != 0) {
-        Broadcast(utils::BeginPtr(sendrecv_data),
-            size * sizeof(DType), root, comm_name);
+        Broadcast({utils::BeginPtr(sendrecv_data),
+            size * sizeof(DType)}, root, comm_name);
     }
 }
 inline void Broadcast(std::string& sendrecv_data, int root,
         const std::string& comm_name) {
     size_t size = sendrecv_data.length();
-    Broadcast(&size, sizeof(size), root);
+    Broadcast({&size, sizeof(size)}, root);
     if (sendrecv_data.length() != size) {
         sendrecv_data.resize(size);
     }
     if (size != 0) {
-        Broadcast(utils::BeginPtr(sendrecv_data),
-            size * sizeof(char), root, comm_name);
+        Broadcast({utils::BeginPtr(sendrecv_data),
+            size * sizeof(char)}, root, comm_name);
     }
 }
 
 template<typename DType>
 inline void Allgather(std::vector<std::vector<DType>>& sendrecv_data,
-                      const std::string& comm_name) {
-    std::vector<void*> sendrecv_ptrs(sendrecv_data.size());
-    std::vector<size_t> sizes(sendrecv_data.size());
+        const std::string& comm_name) {
+    std::vector<Buffer> sendrecvbufs(sendrecv_data.size());
     for (auto i = 0U; i < sendrecv_data.size(); ++i) {
-        sendrecv_ptrs[i] = reinterpret_cast<void*>(
-                           utils::BeginPtr(sendrecv_data[i]));
-        sizes[i] = sendrecv_data[i].size();
+        sendrecvbufs[i].set_addr(reinterpret_cast<void*>(
+                    utils::BeginPtr(sendrecv_data[i]));
+        sendrecvbufs[i].set_size_in_bytes(sendrecv_data[i].size() *
+            sizeof(DType));
     }
-    Allgather(utils::BeginPtr(sendrecv_ptrs), sizeof(DType),
-              utils::BeginPtr(sizes), comm_name);
-}
-inline void Allgather(void** sendrecv_data, size_t size_nbytes,
-                      size_t* counts, const std::string& comm_name) {
-    comm::GetCommunicator(comm_name)->Allgather(sendrecv_data, size_nbytes,
-                                       counts);
+    Allgather(sendrecvbufs, comm_name);
 }
 
 // perform inplace Allreduce
 template<typename OP, typename DType>
-inline void Allreduce(DType *sendrecvbuf, size_t count,
+inline void Allreduce(DType* sendrecvbuf_, uint64_t count,
         const std::string& comm_name) {
-    comm::Allreduce_(sendrecvbuf, sizeof(DType),
-                     count, op::Reducer<OP, DType>,
-                     comm::mpi::GetType<DType>(),
-                     OP::kType, comm_name);
+    Buffer sendrecvbuf(sendrecvbuf_, count * sizeof(DType));
+    sendrecvbuf.template set_type<DType>();
+    auto reducer = [] (const Buffer& src, Buffer& dst) {
+        op::Reducer<OP, DType>(src.addr(), dst.addr(), src.count(),
+                comm::mpi::GetType<DType>());
+    }
+    comm::Allreduce_(sendrecvbuf, reducer,
+            comm::mpi::GetType<DType>(), OP::kType, comm_name);
 }
 
 // print message to the tracker
@@ -128,8 +130,8 @@ inline int LoadCheckPoint(Serializable *global_model,
             global_model, local_model);
 }
 // checkpoint the model, meaning we finished a stage of execution
-inline void CheckPoint(const Serializable *global_model,
-                       const Serializable *local_model) {
+inline void CheckPoint(const Serializable* global_model,
+        const Serializable* local_model) {
     comm::GetCommunicator()->CheckPoint(global_model, local_model);
 }
 // lazy checkpoint the model, only remember the pointer to global_model
@@ -181,12 +183,9 @@ template<typename DType>
 struct SerializeReduceClosure {
     DType *sendrecvobj;
     size_t max_nbyte, count;
-    void (*prepare_fun)(void *arg);
-    void *prepare_arg;
     std::string *p_buffer;
     // invoke the closure
     inline void Run(void) {
-        if (prepare_fun != NULL) prepare_fun(prepare_arg);
         for (size_t i = 0; i < count; ++i) {
             MemoryFixSizeBuffer fs(utils::BeginPtr(*p_buffer) + i * max_nbyte, max_nbyte);
             sendrecvobj[i].Save(fs);

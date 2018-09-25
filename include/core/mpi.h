@@ -1,7 +1,7 @@
 /*!
  * Copyright by Contributors
- * \file rdc-inl.h
- * \brief implementation of inline template function for rdc interface
+ * \file mpi.h
+ * \brief stubs to be compatible with MPI
  *
  * \author Ankun Zheng
  */
@@ -9,6 +9,27 @@
 namespace rdc {
 namespace comm {
 namespace mpi {
+/*!\brief enum of all operators */
+enum OpType {
+    kMax = 0,
+    kMin = 1,
+    kSum = 2,
+    kBitwiseOR = 3
+};
+/*!\brief enum of supported data types */
+enum DataType {
+    kChar = 0,
+    kUChar = 1,
+    kInt = 2,
+    kUInt = 3,
+    kLong = 4,
+    kULong = 5,
+    kFloat = 6,
+    kDouble = 7,
+    kLongLong = 8,
+    kULongLong = 9
+};
+
 // template function to translate type to enum indicator
 template<typename DType>
 inline DataType GetType(void);
