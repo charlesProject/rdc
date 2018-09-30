@@ -28,8 +28,8 @@ public:
       * @param flags events flags from epoll
     */
     Status Connect(const std::string& hostname, const uint32_t& port) override;
-    WorkCompletion ISend(const Buffer& sendbuf) override;
-    WorkCompletion IRecv(Buffer& recvbuf) override;
+    WorkCompletion ISend(const Buffer sendbuf) override;
+    WorkCompletion IRecv(Buffer recvbuf) override;
 
     void Close() override {
         CloseSocket(fd_);

@@ -8,6 +8,7 @@
 #include <string>
 #include <memory>
 #include "io/io.h"
+#include "core/mpi.h"
 #include "core/work_request.h"
 #include "transport/buffer.h"
 namespace MPI {
@@ -31,9 +32,9 @@ namespace comm {
  *              the definition of the reduce function should be type aware
  * \param dtype the data type object, to be compatible with MPI reduce
  */
-using ReduceFunction = std::function<void(const Buffer& src, Buffer& dst)>;
-using RawReduceFunction = std::function<void(const void* src, void* dst,
-        uint64_t len, )>;
+using ReduceFunction = std::function<void(Buffer src, Buffer dst)>;
+using RawReduceFunction = std::function<void(const void* src, void* dst, uint64_t len)>;
+
 
 /*! \brief interface of core Allreduce comm */
 class ICommunicator {
@@ -42,8 +43,8 @@ public:
     virtual ~ICommunicator() {}
     virtual void NewCommunicator(const std::string& name) = 0;
     virtual ICommunicator* GetCommunicator(const std::string& name) = 0;
-    virtual void Send(const Buffer& sendbuf, int dest) = 0;
-    virtual void Recv(Buffer& recvbuf, int src) = 0;
+    virtual void Send(Buffer sendbuf, int dest) = 0;
+    virtual void Recv(Buffer recvbuf, int src) = 0;
     void Send(void* sendaddr, uint64_t size_in_bytes, int dest) {
         Buffer sendbuf(sendaddr, size_in_bytes);
         return this->Send(sendbuf, dest);
@@ -52,8 +53,8 @@ public:
         Buffer recvbuf(recvaddr, size_in_bytes);
         return this->Recv(recvbuf, src);
     }
-    virtual WorkCompletion ISend(const Buffer& sendbuf, int dest) = 0;
-    virtual WorkCompletion IRecv(Buffer& recvbuf, int src) = 0;
+    virtual WorkCompletion ISend(Buffer sendbuf, int dest) = 0;
+    virtual WorkCompletion IRecv(Buffer recvbuf, int src) = 0;
     WorkCompletion ISend(void *sendaddr, uint64_t size_in_bytes, int dest) {
         Buffer sendbuf(sendaddr, size_in_bytes);
         return this->ISend(sendbuf, dest);
@@ -71,15 +72,28 @@ public:
      * \param count number of elements to be reduced
      * \param reducer reduce function
      */
-    virtual void Allreduce(Buffer& sendrecvbuf, ReduceFunction reducer) = 0;
+    virtual void Allreduce(Buffer sendrecvbuf, ReduceFunction reducer) = 0;
     /*!
      * \brief broadcasts data from root to every other node
      * \param sendrecvbuf_ buffer for both sending and receiving data
      * \param size the size of the data to be broadcasted
      * \param root the root worker id to broadcast the data
      */
-    virtual void Broadcast(Buffer& sendrecvbuf, int root) = 0;
-    virtual void Allgather(std::vector<Buffer>& sendrecvbufs) = 0;
+    virtual void Broadcast(Buffer sendrecvbuf, int root) = 0;
+    void Broadcast(void* sendrecvaddr, uint64_t size, int root) {
+        Buffer sendrecvbuf(sendrecvaddr, size);
+        Broadcast(sendrecvbuf, root);
+    }
+    virtual void Allgather(std::vector<Buffer> sendrecvbufs) = 0;
+    void Allgather(std::vector<void*> sendrecvbufs_, std::vector<uint64_t> sizes) {
+        auto num_bufs = sendrecvbufs_.size();
+        std::vector<Buffer> sendrecvbufs(num_bufs);
+        for (auto i = 0U; i < num_bufs; i++) {
+            sendrecvbufs[i].set_addr(sendrecvbufs_[i]);
+            sendrecvbufs[i].set_size_in_bytes(sizes[i]);
+        }
+        Allgather(sendrecvbufs);
+    }
     /*!
      * \brief explicitly re-initialize everything before calling LoadCheckPoint
      *    call this function when ICommunicator throws an exception,
@@ -187,7 +201,7 @@ ICommunicator *GetCommunicator(const std::string& name = kWorldCommName);
  * \param dtype the data type
  * \param op the reduce operator type
  */
-void Allreduce_(Buffer& sendrecvbuf, ICommunicator::ReduceFunction red,
-        mpi::DataType dtype, mpi::OpType op, const std::string& comm_name);
+void Allreduce_(Buffer sendrecvbuf, ReduceFunction red, mpi::DataType dtype,
+        mpi::OpType op, const std::string& comm_name);
 }  // namespace comm
 }  // namespace rdc

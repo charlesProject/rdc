@@ -64,8 +64,8 @@ ICommunicator* GetCommunicator(const std::string& name) {
     }
 }
 // perform in-place allreduce, on sendrecvbuf
-void Allreduce_(Buffer& sendrecvbuf, ICommunicator::ReduceFunction red,
-        mpi::DataType dtype, mpi::OpType op, const std::string& name) {
+void Allreduce_(Buffer sendrecvbuf, ReduceFunction red, mpi::DataType dtype,
+        mpi::OpType op, const std::string& name) {
     GetCommunicator(name)->Allreduce(sendrecvbuf, red);
 }
 

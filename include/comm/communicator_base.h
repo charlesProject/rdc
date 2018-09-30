@@ -100,16 +100,16 @@ public:
      *  \param nbytes buffer size in bytes
      *  \param dest destination rank
     */
-    void Send(const Buffer& sendbuf_, int dest) override;
+    void Send(Buffer sendbuf_, int dest) override;
     /*!
      *   \brief blocking send
      *  \param sendbuf_ buffer need to  send
      *  \param nbytes buffer size in bytes
      *  \param dest destination rank
     */
-    void Recv(Buffer& recvbuf_, int src) override;
-    WorkCompletion ISend(const Buffer& sendbuf_, int dest) override;
-    WorkCompletion IRecv(Buffer& recvbuf_, int src) override;
+    void Recv(Buffer recvbuf_, int src) override;
+    WorkCompletion ISend(Buffer sendbuf_, int dest) override;
+    WorkCompletion IRecv(Buffer recvbuf_, int src) override;
     /*! \brief barrier all nodes*/
     void Barrier() override;
     /*! \brief register this communicator to tracker */
@@ -122,7 +122,7 @@ public:
      * \param count number of elements to be reduced
      * \param reducer reduce function
      */
-    virtual void Allreduce(Buffer& sendrecvbuf_, ReduceFunction reducer)
+    virtual void Allreduce(Buffer sendrecvbuf_, ReduceFunction reducer)
             override {
         if (world_size_ == 1 || world_size_ == -1) return;
         TryAllreduce(sendrecvbuf_, reducer);
@@ -133,12 +133,12 @@ public:
      * \param size the size of the data to be broadcasted
      * \param root the root worker id to broadcast the data
      */
-    virtual void Broadcast(Buffer& sendrecvbuf_, int root) override {
+    virtual void Broadcast(Buffer sendrecvbuf_, int root) override {
         if (world_size_ == 1 || world_size_ == -1) return;
         TryBroadcast(sendrecvbuf_, root);
     }
 
-    virtual void Allgather(std::vector<Buffer>& sendrecvbufs_) override {
+    virtual void Allgather(std::vector<Buffer> sendrecvbufs_) override {
         if (world_size_ == 1 || world_size_ == -1) return;
         TryAllgatherRing(sendrecvbufs_);
     }
@@ -151,16 +151,6 @@ public:
      *   this can be NULL when no local model is needed
      *
      * \return the version number of check point loaded
-     *     if returned version == 0, this means no model has been CheckPointed
-     *     the p_model is not touched, user should do necessary initialization by themselves
-     *
-     *   Common usage example:
-     *      int iter = rdc::LoadCheckPoint(&model);
-     *      if (iter == 0) model.InitParameters();
-     *      for (i = iter; i < max_iter; ++i) {
-     *        do many things, include allreduce
-     *        rdc::CheckPoint(model);
-     *      }
      *
      * \sa CheckPoint, VersionNumber
      */
@@ -186,17 +176,7 @@ public:
      * \brief This function can be used to replace CheckPoint for global_model only,
      *   when certain condition is met(see detailed expplaination).
      *
-     *   This is a "lazy" checkpoint such that only the pointer to global_model is
-     *   remembered and no memory copy is taken. To use this function, the user MUST ensure that:
-     *   The global_model must remain unchanged util last call of Allreduce/Broadcast in current version finishs.
-     *   In another words, global_model model can be changed only between last call of
-     *   Allreduce/Broadcast and LazyCheckPoint in current version
      *
-     *   For example, suppose the calling sequence is:
-     *   LazyCheckPoint, code1, Allreduce, code2, Broadcast, code3, LazyCheckPoint
-     *
-     *   If user can only changes global_model in code3, then LazyCheckPoint can be used to
-     *   improve efficiency of the program.
      * \param global_model pointer to the globally shared model/state
      *   when calling this function, the caller need to gauranttees that global_model
      *   is the same in all nodes
@@ -239,21 +219,14 @@ protected:
     /*!
      * \brief perform in-place allreduce, on sendrecvbuf, this function can fail, and will return the cause of failure
      *
-     * NOTE on Allreduce:
-     *    The kSuccess TryAllreduce does NOT mean every node have successfully finishes TryAllreduce.
-     *    It only means the current node get the correct result of Allreduce.
-     *    However, it means every node finishes LAST call(instead of this one) of Allreduce/Bcast
-     *
      * \param sendrecvbuf_ buffer for both sending and recving data
-     * \param type_nbytes the unit number of bytes the type have
-     * \param count number of elements to be reduced
      * \param reducer reduce function
      * \return this function can return Status::kSuccess, kSockError, kGetExcept, see void for details
      */
-    void TryAllreduce(Buffer& sendrecvbuf_, ReduceFunction reducer);
+    void TryAllreduce(Buffer sendrecvbuf_, ReduceFunction reducer);
 
 
-    void TryReduceTree(Buffer& sendrecvbuf_, Buffer& reducebuf_,
+    void TryReduceTree(Buffer sendrecvbuf_, Buffer reducebuf_,
             ReduceFunction reducer, int root);
     /*!
      * \brief broadcast data from root to all nodes, this function can fail,and will return the cause of failure
@@ -263,7 +236,7 @@ protected:
      * \return this function can return Status::kSuccess, kSockError, kGetExcept, see void for details
      * \sa void
      */
-    void TryBroadcast(Buffer& sendrecvbuf_, int root);
+    void TryBroadcast(Buffer sendrecvbuf_, int root);
 
     /*!
      * \brief perform in-place allreduce, on sendrecvbuf,
@@ -276,7 +249,7 @@ protected:
      * \return this function can return Status::kSuccess, kSockError, kGetExcept, see void for details
      * \sa void
      */
-    void TryAllreduceTree(Buffer& sendrecvbuf_, ReduceFunction reducer);
+    void TryAllreduceTree(Buffer sendrecvbuf_, ReduceFunction reducer);
     /*!
      * \brief internal Allgather function, each node have a segment of data in the ring of sendrecvbuf,
      *  the data provided by current node k is [slice_begin, slice_end),
@@ -291,7 +264,7 @@ protected:
      * \return this function can return Status::kSuccess, kSockError, kGetExcept, see void for details
      * \sa void
      */
-    void TryAllgatherRing(std::vector<Buffer>& sendrecvbufs_);
+    void TryAllgatherRing(std::vector<Buffer> sendrecvbufs_);
     /*!
      * \brief perform in-place allreduce, reduce on the sendrecvbuf,
      *
@@ -307,7 +280,7 @@ protected:
      * \return this function can return Status, see void for details
      * \sa void, TryAllreduce
      */
-    void TryReduceScatterRing(Buffer& sendrecvbuf_, Buffer& reducebuf_,
+    void TryReduceScatterRing(Buffer sendrecvbuf_, Buffer reducebuf_,
                               ReduceFunction reducer);
     /*!
      * \brief perform in-place allreduce, on sendrecvbuf
@@ -320,7 +293,7 @@ protected:
      * \return this function can return Status see void for details
      * \sa void
      */
-    void TryAllreduceRing(Buffer& sendrecvbuf_, ReduceFunction reducer);
+    void TryAllreduceRing(Buffer sendrecvbuf_, ReduceFunction reducer);
 
     std::shared_ptr<TcpSocket> get_trakcer() const {
         return this->tracker_;

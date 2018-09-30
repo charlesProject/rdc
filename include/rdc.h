@@ -145,15 +145,6 @@ inline void Allreduce(Buffer& sendrecvbuf);
  *     if returned version == 0, this means no model has been CheckPointed
  *     the p_model is not touched, users should do the necessary initialization by themselves
  *
- * \code{.cpp}
- * // Example usage code of LoadCheckPoint
- * int iter = rdc::LoadCheckPoint(&model);
- * if (iter == 0) model.InitParameters();
- * for (i = iter; i < max_iter; ++i) {
- *   // do many things, include allreduce
- *   rdc::CheckPoint(model);
- * }
- * \endcode
  * \sa CheckPoint, VersionNumber
  */
 inline int LoadCheckPoint(Serializable *global_model,
@@ -184,12 +175,6 @@ inline void CheckPoint(const Serializable *global_model,
  *   In other words, the global_model model can be changed only between the last call of
  *   Allreduce/Broadcast and LazyCheckPoint, both in the same version
  *
- *   For example, suppose the calling sequence is:
- *   LazyCheckPoint, code1, Allreduce, code2, Broadcast, code3, LazyCheckPoint/(or can be CheckPoint)
- *
- *   Then the user MUST only change the global_model in code3.
- *
- *   The use of LazyCheckPoint instead of CheckPoint will improve the efficiency of the program.
  * \param global_model pointer to the globally shared model/state
  *   when calling this function, the caller needs to guarantee that the global_model
  *   is the same in every node

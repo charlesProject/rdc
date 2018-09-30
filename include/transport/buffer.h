@@ -5,12 +5,12 @@
 #endif
 #include <typeinfo>
 #include "core/env.h"
+#include "core/logging.h"
 namespace rdc {
 class Buffer {
 public:
-    Buffer() = default;
-    Buffer(uint64_t size_in_bytes):
-        Buffer(nullptr, size_in_bytes) {}
+    Buffer() {};
+    Buffer(uint64_t size_in_bytes): size_in_bytes_(size_in_bytes) {}
     Buffer(void* addr, uint64_t size_in_bytes):
         Buffer(addr, size_in_bytes, 0, size_in_bytes) {}
     Buffer(const void* addr, uint64_t size_in_bytes):
@@ -48,6 +48,9 @@ public:
     }
     Buffer Slice(const uint64_t& start, const uint64_t& end) const {
         Buffer subbuffer(addr_, end - start, start, end);
+        subbuffer.set_with_type(with_type_);
+        subbuffer.set_type_nbytes(type_nbytes_);
+        subbuffer.set_is_mutable(is_mutable_);
         return subbuffer;
     }
     void* addr() const {
@@ -70,33 +73,29 @@ public:
     bool is_mutable() const {
         return is_mutable_;
     }
+    void set_is_mutable(const bool& is_mutable) {
+        is_mutable_ = is_mutable;
+    }
 #ifdef RDC_USE_RDMA
     ibv_mr* memory_region() const {
         return memory_region_;
     }
 #endif
     uint64_t count() const {
-        std::assert(has_type_ && size_in_bytes_ % type_nbytes_ == 0);
+        LOG(INFO) << with_type_ << '\t' << size_in_bytes_ << '\t' << type_nbytes_;
+        CHECK(with_type_ && (size_in_bytes_ % type_nbytes_ == 0));
         return size_in_bytes_ / type_nbytes_;
     }
-    bool has_type() const {
-        return has_type_;
+    bool with_type() const {
+        return with_type_;
     }
-    std::type_info type() const {
-        return type_;
+    void set_with_type(const bool& with_type) {
+        with_type_ = with_type;
     }
     void set_type_nbytes(const uint64_t& type_nbytes) {
+        with_type_ = true;
+        LOG(INFO) << type_nbytes;
         type_nbytes_ = type_nbytes;
-    }
-    void set_type(const std::type_info& type) {
-        has_type_ = true;
-        type_ = type;
-    }
-    template <typename T>
-    void set_type() {
-        has_type_ = true;
-        type_ = typeid(std::decay<T>::type);
-        type_nbytes_ = sizeof(std::decay<T>::type);
     }
     void set_start(const uint64_t start) {
         start_ = start;
@@ -121,9 +120,9 @@ private:
     bool is_mutable_;
     bool pinned_;
     bool temp_;
-    bool has_type_;
-    std::type_info type_;
+    bool with_type_;
     uint64_t type_nbytes_;
+    std::string data_type_;
     bool own_data_;
     uint64_t start_;
     uint64_t end_;

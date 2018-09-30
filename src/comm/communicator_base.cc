@@ -370,16 +370,15 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
            "cannot find next link in the ring");
     TrackerPrint("Connected done");
 }
-void Communicator::TryAllreduce(Buffer& sendrecvbuf
-                            ReduceFunction reducer) {
-    if (count > reduce_ring_mincount_) {
+void Communicator::TryAllreduce(Buffer sendrecvbuf, ReduceFunction reducer) {
+    if (sendrecvbuf.size_in_bytes() > reduce_ring_mincount_) {
         return this->TryAllreduceRing(sendrecvbuf, reducer);
     }
     else {
         return this->TryAllreduceTree(sendrecvbuf, reducer);
     }
 }
-void Communicator::TryReduceTree(Buffer& sendrecvbuf, Buffer& reducebuf,
+void Communicator::TryReduceTree(Buffer sendrecvbuf, Buffer reducebuf,
         ReduceFunction reducer, int root) {
     auto dists_from_root = tree_map_.ShortestDist(root);
     auto dist_from_root = dists_from_root[rank_];
@@ -407,7 +406,7 @@ void Communicator::TryReduceTree(Buffer& sendrecvbuf, Buffer& reducebuf,
 
     return;
 }
-void Communicator::TryBroadcast(Buffer& sendrecvbuf, int root) {
+void Communicator::TryBroadcast(Buffer sendrecvbuf, int root) {
     auto dists_from_root = tree_map_.ShortestDist(root);
     auto dist_from_root = dists_from_root[rank_];
     auto neighbors = tree_map_.GetNeighbors(rank_);
@@ -432,7 +431,7 @@ void Communicator::TryBroadcast(Buffer& sendrecvbuf, int root) {
 }
 
 
-void Communicator::TryAllreduceTree(Buffer& sendrecvbuf,
+void Communicator::TryAllreduceTree(Buffer sendrecvbuf,
                                 ReduceFunction reducer) {
     Buffer reducebuf(sendrecvbuf.size_in_bytes());
     reducebuf.AllocTemp(utils::AllocTemp);
@@ -440,7 +439,7 @@ void Communicator::TryAllreduceTree(Buffer& sendrecvbuf,
     reducebuf.FreeTemp(utils::Free);
     TryBroadcast(sendrecvbuf, 0);
 }
-void Communicator::TryAllgatherRing(std::vector<Buffer>& sendrecvbufs) {
+void Communicator::TryAllgatherRing(std::vector<Buffer> sendrecvbufs) {
     // read from next link and send to prev one
     auto &prev = ring_prev_, &next = ring_next_;
     // need to reply on special rank structure
@@ -464,7 +463,7 @@ void Communicator::TryAllgatherRing(std::vector<Buffer>& sendrecvbufs) {
         ChainWorkCompletion wc;
         if (write_idx < read_idx && write_idx != stop_write_idx) {
             size_t start = write_idx % count_bufs;
-            wc << prev->ISend(sendrecvbufs_[start]);
+            wc << prev->ISend(sendrecvbufs[start]);
             write_idx++;
         }
         if (read_idx != stop_read_idx) {
@@ -476,8 +475,8 @@ void Communicator::TryAllgatherRing(std::vector<Buffer>& sendrecvbufs) {
         wc.Wait();
     }
 }
-void Communicator::TryReduceScatterRing(Buffer& sendrecvbuf,
-                                    Buffer& reducebuf,
+void Communicator::TryReduceScatterRing(Buffer sendrecvbuf,
+                                    Buffer reducebuf,
                                     ReduceFunction reducer) {
     // read from next link and send to prev one
     auto& prev = ring_prev_, &next = ring_next_;
@@ -522,7 +521,7 @@ void Communicator::TryReduceScatterRing(Buffer& sendrecvbuf,
             uint64_t read_start = ranges[read_pos].first;
             uint64_t read_size = (ranges[read_pos].second -
                     ranges[read_pos].first);
-            wc << next->IRecv(reducebuf.addr.Slice(read_start,
+            wc << next->IRecv(reducebuf.Slice(read_start,
                         read_start + read_size));
             wc.Wait();
             CHECK_F(read_idx <= stop_read_idx,"[%d] read_ptr boundary check",
@@ -539,7 +538,7 @@ void Communicator::TryReduceScatterRing(Buffer& sendrecvbuf,
     }
     return;
 }
-void Communicator::TryAllreduceRing(Buffer& sendrecvbuf,
+void Communicator::TryAllreduceRing(Buffer sendrecvbuf,
         ReduceFunction reducer) {
     Buffer reducebuf(sendrecvbuf.size_in_bytes());
     reducebuf.AllocTemp(utils::AllocTemp);
@@ -564,22 +563,22 @@ std::unique_ptr<ICommunicator> Communicator::CreateGroup(
         const std::string& name) {
     return utils::make_unique<Communicator>();
 }
-void Communicator::Send(const Buffer& sendbuf, int dest) {
+void Communicator::Send(Buffer sendbuf, int dest) {
     auto wc = all_links_[dest]->ISend(sendbuf);
     wc.Wait();
     return;
 }
-void Communicator::Recv(Buffer& recvbuf, int src)  {
+void Communicator::Recv(Buffer recvbuf, int src)  {
     auto wc= all_links_[src]->IRecv(recvbuf);
     wc.Wait();
     return;
 }
 
-WorkCompletion Communicator::ISend(const Buffer& sendbuf, int dest) {
+WorkCompletion Communicator::ISend(Buffer sendbuf, int dest) {
     return all_links_[dest]->ISend(sendbuf);
 }
 
-WorkCompletion Communicator::IRecv(Buffer& recvbuf, int src)  {
+WorkCompletion Communicator::IRecv(Buffer recvbuf, int src)  {
     return all_links_[src]->IRecv(recvbuf);
 }
 

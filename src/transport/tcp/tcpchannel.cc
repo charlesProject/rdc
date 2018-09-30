@@ -92,7 +92,7 @@ Status TcpChannel::Connect(const std::string& hostname,
     return Status::kSuccess;
 }
 
-WorkCompletion TcpChannel::ISend(const Buffer& sendbuf) {
+WorkCompletion TcpChannel::ISend(const Buffer sendbuf) {
     uint64_t send_req_id = WorkRequestManager::Get()->
         NewWorkRequest(kSend, sendbuf.addr(), sendbuf.size_in_bytes());
     WorkCompletion wc(send_req_id);
@@ -103,7 +103,7 @@ WorkCompletion TcpChannel::ISend(const Buffer& sendbuf) {
     }
     return wc;
 }
-WorkCompletion TcpChannel::IRecv(Buffer& recvbuf) {
+WorkCompletion TcpChannel::IRecv(Buffer recvbuf) {
     uint64_t recv_req_id = WorkRequestManager::Get()->
         NewWorkRequest(kRecv, recvbuf.addr(), recvbuf.size_in_bytes());
     WorkCompletion wc(recv_req_id);

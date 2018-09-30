@@ -435,11 +435,11 @@ public:
     size_t buffer_size_;
     /*! \brief current pointer */
     size_t curr_ptr_;
-  };  // class MemoryFixSizeBuffer
+};  // class MemoryFixSizeBuffer
 
   /*! \brief a in memory buffer that can be read and write as stream interface */
-  struct MemoryBufferStream : public SeekStream {
-   public:
+struct MemoryBufferStream : public SeekStream {
+public:
     explicit MemoryBufferStream(std::string *p_buffer)
         : p_buffer_(p_buffer) {
       curr_ptr_ = 0;

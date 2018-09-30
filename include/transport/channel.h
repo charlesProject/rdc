@@ -20,8 +20,8 @@ public:
     IChannel() = default;
     IChannel(const ChannelType& type) : type_(type) {}
     virtual ~IChannel() = default;
-    virtual WorkCompletion ISend(const Buffer& sendbuf) = 0;
-    virtual WorkCompletion IRecv(Buffer& recvbuf) = 0;
+    virtual WorkCompletion ISend(const Buffer sendbuf) = 0;
+    virtual WorkCompletion IRecv(Buffer recvbuf) = 0;
     virtual void Close() = 0;
     virtual Status Connect(const std::string& host, const uint32_t& port) = 0;
     Status Connect(const std::string& addr_str) {

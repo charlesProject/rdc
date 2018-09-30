@@ -82,23 +82,26 @@ inline void Broadcast(std::vector<DType>& sendrecv_data, int root,
 inline void Broadcast(std::string& sendrecv_data, int root,
         const std::string& comm_name) {
     size_t size = sendrecv_data.length();
-    Broadcast({&size, sizeof(size)}, root);
+    Broadcast(&size, sizeof(size), root);
     if (sendrecv_data.length() != size) {
         sendrecv_data.resize(size);
     }
     if (size != 0) {
-        Broadcast({utils::BeginPtr(sendrecv_data),
-            size * sizeof(char)}, root, comm_name);
+        Broadcast(utils::BeginPtr(sendrecv_data),
+            size * sizeof(char), root, comm_name);
     }
 }
-
+inline void Allgather(std::vector<Buffer>& sendrecvbufs,
+        const std::string& comm_name) {
+    comm::GetCommunicator(comm_name)->Allgather(sendrecvbufs);
+}
 template<typename DType>
 inline void Allgather(std::vector<std::vector<DType>>& sendrecv_data,
         const std::string& comm_name) {
     std::vector<Buffer> sendrecvbufs(sendrecv_data.size());
     for (auto i = 0U; i < sendrecv_data.size(); ++i) {
         sendrecvbufs[i].set_addr(reinterpret_cast<void*>(
-                    utils::BeginPtr(sendrecv_data[i]));
+                    utils::BeginPtr(sendrecv_data[i])));
         sendrecvbufs[i].set_size_in_bytes(sendrecv_data[i].size() *
             sizeof(DType));
     }
@@ -110,13 +113,13 @@ template<typename OP, typename DType>
 inline void Allreduce(DType* sendrecvbuf_, uint64_t count,
         const std::string& comm_name) {
     Buffer sendrecvbuf(sendrecvbuf_, count * sizeof(DType));
-    sendrecvbuf.template set_type<DType>();
-    auto reducer = [] (const Buffer& src, Buffer& dst) {
-        op::Reducer<OP, DType>(src.addr(), dst.addr(), src.count(),
-                comm::mpi::GetType<DType>());
-    }
+    LOG(INFO) << sizeof(DType);
+    sendrecvbuf.set_type_nbytes(sizeof(DType));
+    auto reducer = [] (Buffer src, Buffer dst) {
+        op::Reducer<OP, DType>(src.addr(), dst.addr(), src.count());
+    };
     comm::Allreduce_(sendrecvbuf, reducer,
-            comm::mpi::GetType<DType>(), OP::kType, comm_name);
+            mpi::GetType<DType>(), OP::kType, comm_name);
 }
 
 // print message to the tracker

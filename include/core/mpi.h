@@ -7,7 +7,6 @@
  */
 #pragma once
 namespace rdc {
-namespace comm {
 namespace mpi {
 /*!\brief enum of all operators */
 enum OpType {
@@ -74,39 +73,38 @@ inline DataType GetType<unsigned long long>(void) { // NOLINT(*)
     return kULongLong;
 }
 }  // namespace mpi
-}  // namespace comm
 
 namespace op {
 struct Max {
-    static const comm::mpi::OpType kType = comm::mpi::kMax;
+    static const mpi::OpType kType = mpi::kMax;
     template<typename DType>
     inline static void Reduce(DType &dst, const DType &src) { // NOLINT(*)
         if (dst < src) dst = src;
     }
 };
 struct Min {
-    static const comm::mpi::OpType kType = comm::mpi::kMin;
+    static const mpi::OpType kType = mpi::kMin;
     template<typename DType>
     inline static void Reduce(DType &dst, const DType &src) { // NOLINT(*)
         if (dst > src) dst = src;
     }
 };
 struct Sum {
-    static const comm::mpi::OpType kType = comm::mpi::kSum;
+    static const mpi::OpType kType = mpi::kSum;
     template<typename DType>
     inline static void Reduce(DType &dst, const DType &src) { // NOLINT(*)
         dst += src;
     }
 };
 struct BitOR {
-    static const comm::mpi::OpType kType = comm::mpi::kBitwiseOR;
+    static const mpi::OpType kType = mpi::kBitwiseOR;
     template<typename DType>
     inline static void Reduce(DType &dst, const DType &src) { // NOLINT(*)
         dst |= src;
     }
 };
 template<typename OP, typename DType>
-inline void Reducer(const void *src_, void *dst_, int len, const MPI::Datatype &dtype) {
+inline void Reducer(const void *src_, void *dst_, uint64_t len) {
     const DType *src = (const DType*)src_;
     DType *dst = (DType*)dst_;  // NOLINT(*)
     for (int i = 0; i < len; ++i) {
