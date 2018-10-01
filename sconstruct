@@ -1,0 +1,48 @@
+use_rdma        = False
+with_fpic       = True
+# Set our required libraries
+libraries       = []
+library_paths   = ''
+cpp_defines      = {'LOGGING_WITH_STREAMS' : 1, 'LOGGING_REPLACE_GLOG': None,
+                    'RDC_USE_BASE': None}
+cpp_flags        = ['-Wall', '-Wextra', '-Wno-unused-paramter',
+                    '-Wno-unused-function', '-Wno-braced-scalar-init']
+cxx_flags        = ['-std=c++11']
+ld_flags        = []
+if use_rdma:
+    libriaries.append('-libverbs')
+    cpp_defines['RDC_USE_RDMA'] = 1
+if with_fpic:
+    cpp_flags.append('-fPIC')
+# define the attributes of the build environment shared between
+# both the debug and release builds
+common_env = Environment()
+common_env.Append(LIBS          = libraries)
+common_env.Append(LIBPATH       = library_paths)
+common_env.Append(CPPDEFINES    = cpp_defines)
+common_env.Append(CPPFLAGS      = cpp_flags)
+common_env.Append(CXXFLAGS      = cxx_flags)
+
+# uncomment to force g++ for c code also--creates warnings but
+# avoids need for extern "C"
+common_env['CC'] = 'clang++6.0'
+
+# Our release build is derived from the common build environment...
+release_env = common_env.Clone()
+release_env.Append(CPPDEFINES=['RELEASE'])
+release_env.VariantDir('build/release', '.', duplicate=0)
+release_env.VariantDir('build/release/test', 'test', duplicate=0)
+
+# We define our debug build environment in a similar fashion...
+debug_env = common_env.Clone()
+debug_env.Append(CPPDEFINES=['DEBUG'])
+debug_env.VariantDir('build/debug', '.', duplicate=0)
+debug_env.VariantDir('build/debug/test', 'test', duplicate=0)
+
+# Now that all build environment have been defined, let's iterate over
+# them and invoke the lower level SConscript files.
+for mode, env in dict(release=release_env,
+                      debug=debug_env).items():
+    mode_dir = 'build/%s' % mode
+    env.SConscript('%s/sconscript' % mode_dir, {'env': env})
+    #env.SConscript('%s/test/sconscript' % mode_dir, {'env': env})
