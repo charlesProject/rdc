@@ -47,11 +47,34 @@ public:
 #endif
     }
     Buffer Slice(const uint64_t& start, const uint64_t& end) const {
-        Buffer subbuffer(addr_, end - start, start, end);
+        Buffer subbuffer((void*)((int8_t*)addr_ + start), end - start, start, end);
         subbuffer.set_with_type(with_type_);
         subbuffer.set_type_nbytes(type_nbytes_);
         subbuffer.set_is_mutable(is_mutable_);
         return subbuffer;
+    }
+    template <typename DType>
+    DType* As() const {
+        return reinterpret_cast<DType*>(addr_);
+    }
+    template <typename DType>
+    DType* At(const uint16_t& index) {
+        return reinterpret_cast<DType*>(addr_) + index;
+    }
+    template <typename DType>
+    std::string DebugString() const {
+        CHECK(std::is_pod<DType>::value);
+        const auto& type_nbytes = sizeof(DType);
+        const auto& count = size_in_bytes_ / type_nbytes;
+        DType* typed_addr = this->template As<DType>();
+        std::string debug_string;
+        for (auto i = 0U; i < count; i++) {
+            debug_string += std::to_string(*(typed_addr + i));
+            if (i != count - 1) {
+                debug_string += '\t';
+            }
+        }
+        return debug_string;
     }
     void* addr() const {
         return addr_;
@@ -82,7 +105,6 @@ public:
     }
 #endif
     uint64_t count() const {
-        LOG(INFO) << with_type_ << '\t' << size_in_bytes_ << '\t' << type_nbytes_;
         CHECK(with_type_ && (size_in_bytes_ % type_nbytes_ == 0));
         return size_in_bytes_ / type_nbytes_;
     }
@@ -92,9 +114,11 @@ public:
     void set_with_type(const bool& with_type) {
         with_type_ = with_type;
     }
+    uint64_t type_nbytes() const {
+        return type_nbytes_;
+    }
     void set_type_nbytes(const uint64_t& type_nbytes) {
         with_type_ = true;
-        LOG(INFO) << type_nbytes;
         type_nbytes_ = type_nbytes;
     }
     void set_start(const uint64_t start) {

@@ -3,11 +3,12 @@ with_fpic       = True
 # Set our required libraries
 libraries       = []
 library_paths   = ''
-cpp_defines      = {'LOGGING_WITH_STREAMS' : 1, 'LOGGING_REPLACE_GLOG': None,
-                    'RDC_USE_BASE': None}
+cpp_defines      = [('LOGGING_WITH_STREAMS', 1), ('LOGGING_REPLACE_GLOG',),
+                    ('RDC_USE_BASE',)]
 cpp_flags        = ['-Wall', '-Wextra', '-Wno-unused-paramter',
                     '-Wno-unused-function', '-Wno-braced-scalar-init']
 cxx_flags        = ['-std=c++11']
+cpp_paths        = ['include']
 ld_flags        = []
 if use_rdma:
     libriaries.append('-libverbs')
@@ -19,25 +20,27 @@ if with_fpic:
 common_env = Environment()
 common_env.Append(LIBS          = libraries)
 common_env.Append(LIBPATH       = library_paths)
+common_env.Append(CPPPATH       = cpp_paths)
 common_env.Append(CPPDEFINES    = cpp_defines)
 common_env.Append(CPPFLAGS      = cpp_flags)
 common_env.Append(CXXFLAGS      = cxx_flags)
 
 # uncomment to force g++ for c code also--creates warnings but
 # avoids need for extern "C"
-common_env['CC'] = 'clang++6.0'
+common_env['CC'] = 'clang-6.0'
+common_env['CXX'] = 'clang++-6.0'
 
 # Our release build is derived from the common build environment...
 release_env = common_env.Clone()
 release_env.Append(CPPDEFINES=['RELEASE'])
-release_env.VariantDir('build/release', '.', duplicate=0)
-release_env.VariantDir('build/release/test', 'test', duplicate=0)
+release_env.VariantDir('build/release/', '.', duplicate=1)
+release_env.VariantDir('build/release/test', 'test', duplicate=1)
 
 # We define our debug build environment in a similar fashion...
 debug_env = common_env.Clone()
 debug_env.Append(CPPDEFINES=['DEBUG'])
-debug_env.VariantDir('build/debug', '.', duplicate=0)
-debug_env.VariantDir('build/debug/test', 'test', duplicate=0)
+debug_env.VariantDir('build/debug/', '.', duplicate=1)
+debug_env.VariantDir('build/debug/test', 'test', duplicate=1)
 
 # Now that all build environment have been defined, let's iterate over
 # them and invoke the lower level SConscript files.
@@ -45,4 +48,4 @@ for mode, env in dict(release=release_env,
                       debug=debug_env).items():
     mode_dir = 'build/%s' % mode
     env.SConscript('%s/sconscript' % mode_dir, {'env': env})
-    #env.SConscript('%s/test/sconscript' % mode_dir, {'env': env})
+    env.SConscript('%s/test/sconscript' % mode_dir, {'env': env})

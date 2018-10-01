@@ -1,10 +1,10 @@
-TEST_SRCS = $(wildcard tests/*.cc)
-TESTS = $(patsubst tests/%.cc, tests/test_%, $(TEST_SRCS))
+TEST_SRCS = $(wildcard test/*.cc)
+TESTS = $(patsubst test/%.cc, test/test_%, $(TEST_SRCS))
 
 LDFLAGS += -Wl,-rpath=$(shell pwd)/lib -L$(shell pwd)/lib -lrdc -ldl -libverbs -pthread
 
-tests/test_% : tests/%.cc $(SLIB)
-		$(CXX) $(INCFLAGS) $(CFLAGS) -DLOGGING_IMPLEMENTATION=1  -MM -MT tests/$* $< >tests/$*.d
+test/test_% : test/%.cc $(SLIB)
+		$(CXX) $(INCFLAGS) $(CFLAGS) -DLOGGING_IMPLEMENTATION=1  -MM -MT test/$* $< >test/$*.d
 			$(CXX) $(INCFLAGS) $(CFLAGS) -DLOGGING_IMPLEMENTATION=1 -o $@ $(filter %.cc %.a, $^) $(LDFLAGS)
 
--include tests/*.d
+-include test/*.d

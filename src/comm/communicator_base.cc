@@ -35,8 +35,8 @@ Communicator::Communicator(const std::string& name) {
     connect_retry_ = 5;
     version_number = 0;
     // 32 K items
-    reduce_ring_mincount_ = 1;//32 << 10;
-    //reduce_ring_mincount_ = 32;
+    reduce_ring_mincount_ = 1;
+    //reduce_ring_mincount_ = 1 << 15;
     // tracker URL
     err_link = nullptr;
     child_counter_ = 0;
@@ -149,7 +149,7 @@ void Communicator::Shutdown() {
         tracker_->Close();
     }
     tracker_lock_->unlock();
-//    TcpAdapter::Get()->Shutdown();
+    TcpAdapter::Get()->Shutdown();
 }
 void Communicator::TrackerPrint(const std::string &msg) {
     if (tracker_uri_ == "NULL") {
@@ -529,7 +529,7 @@ void Communicator::TryReduceScatterRing(Buffer sendrecvbuf,
             read_idx++;
             size_t reduce_pos = reduce_idx % n;
             size_t reduce_start = ranges[reduce_pos].first;
-            size_t reduce_size = (ranges[reduce_pos].second - 
+            size_t reduce_size = (ranges[reduce_pos].second -
                     ranges[reduce_pos].first);
             reducer(reducebuf.Slice(reduce_start, reduce_start + reduce_size),
                     sendrecvbuf.Slice(reduce_start, reduce_start + reduce_size));
@@ -542,6 +542,7 @@ void Communicator::TryAllreduceRing(Buffer sendrecvbuf,
         ReduceFunction reducer) {
     Buffer reducebuf(sendrecvbuf.size_in_bytes());
     reducebuf.AllocTemp(utils::AllocTemp);
+    reducebuf.set_type_nbytes(sendrecvbuf.type_nbytes());
     TryReduceScatterRing(sendrecvbuf, reducebuf, reducer);
     reducebuf.FreeTemp(utils::Free);
     uint64_t n = static_cast<uint64_t>(world_size_);

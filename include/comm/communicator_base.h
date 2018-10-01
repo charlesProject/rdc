@@ -1,7 +1,8 @@
 /*!
  *  Copyright (c) 2018 by Contributors
  * \file allreduce_base.h
- * \brief Basic implementation of AllReduce
+ * \brief Basic implementation of communication primitives
+ *   include non-block send recv, allreduce, broadcast and allgather
  *   using TCP non-block socket or RDMA for communication.
  *
  *   This implementation provides basic utility of Communication Primitives

@@ -113,7 +113,6 @@ template<typename OP, typename DType>
 inline void Allreduce(DType* sendrecvbuf_, uint64_t count,
         const std::string& comm_name) {
     Buffer sendrecvbuf(sendrecvbuf_, count * sizeof(DType));
-    LOG(INFO) << sizeof(DType);
     sendrecvbuf.set_type_nbytes(sizeof(DType));
     auto reducer = [] (Buffer src, Buffer dst) {
         op::Reducer<OP, DType>(src.addr(), dst.addr(), src.count());
