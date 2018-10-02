@@ -193,11 +193,6 @@ bool TcpAdapter::Poll() {
                 channel->DeleteCarefulEvent(ChannelKind::kWrite);
                 ThreadPool::Get()->AddTask([channel, this] {
                     channel->WriteCallback();
-                    this->shutdown_lock_.lock();
-                    if (!this->shutdown_called_) {
-                        channel->AddCarefulEvent(ChannelKind::kWrite);
-                    }
-                    this->shutdown_lock_.unlock();
                 });
             }
             // shutdown or error
@@ -224,6 +219,6 @@ TcpChannel* TcpAdapter::Accept() {
     // accept the connection
     // set flags to check
     const auto& sock = listen_sock_.Accept();
-    return new TcpChannel(this, sock, kReadWrite);
+    return new TcpChannel(this, sock, kRead);
 }
 }
