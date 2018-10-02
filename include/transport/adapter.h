@@ -62,7 +62,7 @@ class IChannel;
 class IAdapter {
 public:
     virtual IChannel* Accept() = 0;
-    virtual int Listen(const uint32_t& port) = 0;
+    virtual void Listen(const int& port) = 0;
     void set_backend(const Backend& backend) {
         backend_ = backend;
     }

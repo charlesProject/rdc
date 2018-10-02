@@ -33,14 +33,14 @@ namespace rdc {
 struct SockAddr {
     sockaddr_in addr;
     // constructor
-    SockAddr(void) {}
+    SockAddr() {}
     SockAddr(const char *url, int port) {
         this->Set(url, port);
     }
     SockAddr(std::string host,int port) {
         this->Set(host.c_str(), port);
     }
-    inline static std::string GetHostName(void) {
+    inline static std::string GetHostName() {
         std::string buf; buf.resize(256);
         CHECK_S(gethostname(&buf[0], 256) != -1) << "fail to get host name";
         return std::string(buf.c_str());
@@ -64,11 +64,11 @@ struct SockAddr {
         freeaddrinfo(res);
     }
     /*! \brief return port of the address*/
-    inline int port(void) const {
+    inline int port() const {
         return ntohs(addr.sin_port);
     }
     /*! \return a string representation of the address */
-    inline std::string AddrStr(void) const {
+    inline std::string AddrStr() const {
         std::string buf; buf.resize(256);
 #ifdef _WIN32
         const char *s = inet_ntop(AF_INET, (PVOID)&addr.sin_addr,
@@ -96,7 +96,7 @@ public:
     /*!
     * \return last error of socket operation
     */
-    inline static int GetLastError(void) {
+    inline static int GetLastError() {
 #ifdef _WIN32
         return WSAGetLastError();
 #else
@@ -104,7 +104,7 @@ public:
 #endif
     }
     /*! \return whether last error was would block */
-    inline static bool LastErrorWouldBlock(void) {
+    inline static bool LastErrorWouldBlock() {
         int errsv = GetLastError();
 #ifdef _WIN32
         return errsv == WSAEWOULDBLOCK;
@@ -116,7 +116,7 @@ public:
     * \brief start up the socket module
     *   call this before using the sockets
     */
-    inline static void Startup(void) {
+    inline static void Startup() {
 #ifdef _WIN32
         WSADATA wsa_data;
         if (WSAStartup(MAKEWORD(2, 2), &wsa_data) == -1) {
@@ -131,7 +131,7 @@ public:
     /*!
     * \brief shutdown the socket module after use, all sockets need to be closed
     */
-    inline static void Finalize(void) {
+    inline static void Finalize() {
 #ifdef _WIN32
         WSACleanup();
 #endif
@@ -223,7 +223,7 @@ public:
         return -1;
     }
     /*! \brief get last error code if any */
-    inline int GetSockError(void) const {
+    inline int GetSockError() const {
         int error = 0;
         socklen_t len = sizeof(error);
         if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&error), &len) != 0) {
@@ -232,18 +232,18 @@ public:
         return error;
     }
     /*! \brief check if anything bad happens */
-    inline bool BadSocket(void) const {
+    inline bool BadSocket() const {
         if (IsClosed()) return true;
         int err = GetSockError();
         if (err == EBADF || err == EINTR) return true;
         return false;
     }
     /*! \brief check if socket is already closed */
-    inline bool IsClosed(void) const {
+    inline bool IsClosed() const {
         return sockfd == INVALID_SOCKET;
     }
     /*! \brief close the socket */
-    inline void Close(void) {
+    inline void Close() {
         if (sockfd != INVALID_SOCKET) {
 #ifdef _WIN32
             closesocket(sockfd);
@@ -336,7 +336,7 @@ public:
         listen(sockfd, backlog);
     }
     /*! \brief get a new connection */
-    TcpSocket Accept(void) {
+    TcpSocket Accept() {
         SOCKET newfd = accept(sockfd, NULL, NULL);
         if (newfd == INVALID_SOCKET) {
             LOGERROR("Accept");
@@ -347,7 +347,7 @@ public:
     * \brief decide whether the socket is at OOB mark
     * \return 1 if at mark, 0 if not, -1 if an error occured
     */
-    inline int AtMark(void) const {
+    inline int AtMark() const {
 #ifdef _WIN32
         unsigned long atmark;  // NOLINT(*)
         if (ioctlsocket(sockfd, SIOCATMARK, &atmark) != NO_LOGERROR) return -1;

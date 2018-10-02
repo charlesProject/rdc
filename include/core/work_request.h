@@ -60,17 +60,17 @@ struct WorkRequest {
     void set_done(const bool& done) {
         done_ = done;
     }
-    Status status() {
+    bool status() const {
         return status_;
     }
-    void set_status(const Status& status) {
+    void set_status(const bool& status) {
         status_ = status;
         return;
     }
     bool AddBytes(const size_t nbytes) {
         completed_bytes_ += nbytes;
         if (completed_bytes_ == size_in_bytes_) {
-            status_ = Status::kSuccess;
+            status_ = true;
             return true;
         }
         return false;
@@ -122,7 +122,7 @@ private:
     void* ptr_;
     size_t size_in_bytes_;
     size_t completed_bytes_;
-    Status status_;
+    bool status_;
     any extra_data_;
     std::mutex done_lock_;
     std::condition_variable done_cond_;
@@ -188,17 +188,17 @@ struct WorkRequestManager {
         return work_req.id();
     }
 
-    WorkRequest& GetWorkRequest(uint64_t req_id) {
+    WorkRequest& GetWorkRequest(const uint64_t& req_id) {
         std::lock_guard<utils::SpinLock> lg(*store_lock_);
         return all_work_reqs[req_id];
     }
-    bool AddBytes(uint64_t req_id, size_t nbytes) {
+    bool AddBytes(const uint64_t& req_id, size_t nbytes) {
         return all_work_reqs[req_id].AddBytes(nbytes);
     }
-    bool Contain(uint64_t req_id) {
+    bool Contain(const uint64_t& req_id) {
         return all_work_reqs.count(req_id);
     }
-    void Wait(uint64_t req_id) {
+    void Wait(const uint64_t& req_id) {
         store_lock_->lock();
         auto& work_req = all_work_reqs[req_id];
         store_lock_->unlock();
@@ -207,26 +207,26 @@ struct WorkRequestManager {
     void Notify() {
         cond_->notify_all();
     }
-    bool done(uint64_t req_id) {
+    bool done(const uint64_t& req_id) {
         return all_work_reqs[req_id].done();
     }
-    void set_done(uint64_t req_id, bool done) {
+    void set_done(const uint64_t& req_id, const bool& done) {
         all_work_reqs[req_id].set_done(done);
     }
 
-    void set_finished(uint64_t req_id) {
+    void set_finished(const uint64_t& req_id) {
         cond_lock_->lock();
         all_work_reqs[req_id].set_done(true);
         cond_lock_->unlock();
         cond_->notify_all();
     }
-    size_t completed_bytes(uint64_t req_id) {
+    size_t completed_bytes(const uint64_t& req_id) {
         return all_work_reqs[req_id].completed_bytes();
     }
-    Status status(uint64_t req_id) {
+    bool status(const uint64_t& req_id) {
         return all_work_reqs[req_id].status();
     }
-    void set_status(uint64_t req_id, const Status& status) {
+    void set_status(const uint64_t& req_id, const bool& status) {
         all_work_reqs[req_id].set_status(status);
     }
     uint64_t cur_req_id_;
@@ -247,7 +247,7 @@ public:
     uint64_t id_;
     bool done_;
     size_t completed_bytes_;
-    Status status_;
+    bool status_;
     bool is_status_setted_;
     uint64_t id() const {
         return id_;
@@ -273,7 +273,7 @@ public:
             WorkRequestManager::Get()->Wait(id_);
         }
     }
-    Status status() {
+    bool status() {
         if (WorkRequestManager::Get()->Contain(id_)) {
             status_ = WorkRequestManager::Get()->status(id_);
         }
@@ -301,13 +301,13 @@ public:
             work_comp.Wait();
         }
     }
-    Status status() {
+    bool status() {
         for (auto& work_comp : work_comps_) {
-            if (work_comp.status() != Status::kSuccess) {
+            if (work_comp.status() != true) {
                 return work_comp.status();
             }
         }
-        return Status::kSuccess;
+        return true;
     }
 private:
     std::vector<WorkCompletion> work_comps_;

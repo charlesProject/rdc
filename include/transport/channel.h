@@ -8,7 +8,7 @@
 namespace rdc {
 const uint32_t kCommTimeoutMs = 600;
 
-enum ChannelType : uint32_t {
+enum ChannelKind : uint32_t {
     kRead,
     kWrite,
     kReadWrite,
@@ -18,34 +18,34 @@ enum ChannelType : uint32_t {
 class IChannel {
 public:
     IChannel() = default;
-    IChannel(const ChannelType& type) : type_(type) {}
+    IChannel(const ChannelKind& kind) : kind_(kind) {}
     virtual ~IChannel() = default;
-    virtual WorkCompletion ISend(const Buffer sendbuf) = 0;
+    virtual WorkCompletion ISend(Buffer sendbuf) = 0;
     virtual WorkCompletion IRecv(Buffer recvbuf) = 0;
     virtual void Close() = 0;
-    virtual Status Connect(const std::string& host, const uint32_t& port) = 0;
-    Status Connect(const std::string& addr_str) {
+    virtual bool Connect(const std::string& host, const uint32_t& port) = 0;
+    bool Connect(const std::string& addr_str) {
         Backend backend;
         std::string host;
         uint32_t port;
         std::tie(backend, host, port) = ParseAddr(addr_str);
         return Connect(host, port);
     }
-    WorkCompletion ISend(const void* sendaddr, size_t sendbytes) {
+    WorkCompletion ISend(const void* sendaddr, const uint64_t& sendbytes) {
         Buffer sendbuf(sendaddr, sendbytes);
         return this->ISend(sendbuf);
     }
-    WorkCompletion IRecv(void* recvaddr, size_t recvbytes) {
+    WorkCompletion IRecv(void* recvaddr, const uint64_t& recvbytes) {
         Buffer recvbuf(recvaddr, recvbytes);
         return this->IRecv(recvbuf);
     }
 
-    inline Status SendInt(int32_t val) {
+    inline bool SendInt(int32_t val) {
         auto wc = this->ISend(&val, sizeof(int32_t));
         wc.Wait();
         return wc.status();
     }
-    inline Status SendStr(std::string str) {
+    inline bool SendStr(std::string str) {
         int32_t size = static_cast<int32_t>(str.size());
         ChainWorkCompletion wc;
         wc << this->ISend(&size, sizeof(size));
@@ -53,12 +53,12 @@ public:
         wc.Wait();
         return wc.status();
     }
-    inline Status RecvInt(int32_t& val) {
+    inline bool RecvInt(int32_t& val) {
         auto wc = this->IRecv(&val, sizeof(int32_t));
         wc.Wait();
         return wc.status();
     }
-    inline Status RecvStr(std::string& str) {
+    inline bool RecvStr(std::string& str) {
         int32_t size = 0;
         auto wc = this->IRecv(&size, sizeof(int32_t));
         wc.Wait();
@@ -76,14 +76,14 @@ public:
     inline bool error_detected() const {
         return error_detected_.load(std::memory_order_acquire);
     }
-    inline ChannelType type() const {
-        return type_;
+    inline ChannelKind kind() const {
+        return kind_;
     }
-    inline void set_type(const ChannelType& type) {
-        type_ = type;
+    inline void set_kind(const ChannelKind& kind) {
+        kind_ = kind;
     }
 private:
     std::atomic<bool> error_detected_;
-    ChannelType type_;
+    ChannelKind kind_;
 };
 }

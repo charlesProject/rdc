@@ -2,6 +2,7 @@
  *  Copyright (c) 2018 by Contributors
  * @file   network_utils.h
  * @brief  network utilities
+ * @author Ankun Zheng
  */
 #pragma once
 #include <unistd.h>
@@ -20,7 +21,7 @@
 #include <string>
 
 namespace rdc {
-namespace network_utils {
+namespace network {
 /**
  * \brief return the IP address for given interface eth0, eth1, ...
  */

@@ -107,7 +107,7 @@ template<typename OP, typename DType>
 inline void Reducer(const void *src_, void *dst_, uint64_t len) {
     const DType *src = (const DType*)src_;
     DType *dst = (DType*)dst_;  // NOLINT(*)
-    for (int i = 0; i < len; ++i) {
+    for (uint64_t i = 0U; i < len; ++i) {
         OP::Reduce(dst[i], src[i]);
     }
 }

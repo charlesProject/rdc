@@ -17,43 +17,39 @@
 namespace rdc {
 TcpChannel::TcpChannel() {
     this->adapter_ = nullptr;
-    this->fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    this->set_type(kReadWrite);
+    this->sock_ = TcpSocket();
+    this->set_kind(kReadWrite);
     this->set_spin(false);
 }
-TcpChannel::TcpChannel(int32_t fd) {
+TcpChannel::TcpChannel(const ChannelKind& kind) {
     this->adapter_ = nullptr;
-    this->fd_ = fd;
-    this->set_type(kReadWrite);
-    this->set_spin(false);
-}
-TcpChannel::TcpChannel(ChannelType type) {
-    this->adapter_ = nullptr;
-    this->fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    this->set_type(type);
+    this->sock_ = TcpSocket();
+    this->set_kind(kind);
     this->set_spin(false);
 }
 
-TcpChannel::TcpChannel(int32_t fd, ChannelType type) {
-    this->adapter_ = nullptr;
-    this->fd_ = fd;
-    this->set_type(type);
-    this->set_spin(false);
-}
-TcpChannel::TcpChannel(TcpAdapter* adapter, ChannelType type) {
+TcpChannel::TcpChannel(TcpAdapter* adapter, const ChannelKind& kind) {
     this->adapter_ = adapter;
-    this->fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    this->set_type(type);
+    this->sock_ = TcpSocket();
+    this->set_kind(kind);
     this->set_spin(false);
     this->adapter_->AddChannel(this);
 }
 
-
-TcpChannel::TcpChannel(TcpAdapter* adapter, int32_t fd, ChannelType type) {
+TcpChannel::TcpChannel(TcpAdapter* adapter, const int& sockfd,
+        const ChannelKind& kind) {
     this->adapter_ = adapter;
-    this->fd_ = fd;
-    this->set_type(type);
-    this->spin_.store(false, std::memory_order_release);
+    this->sock_ = TcpSocket(sockfd);
+    this->set_kind(kind);
+    this->set_spin(false);
+    this->adapter_->AddChannel(this);
+}
+TcpChannel::TcpChannel(TcpAdapter* adapter, const TcpSocket& sock,
+        const ChannelKind& kind) {
+    this->adapter_ = adapter;
+    this->sock_ = sock;
+    this->set_kind(kind);
+    this->set_spin(false);
     this->adapter_->AddChannel(this);
 }
 
@@ -63,33 +59,24 @@ TcpChannel::~TcpChannel() {
     }
     this->Close();
 }
-void TcpChannel::ModifyType(const ChannelType& type) {
-    this->set_type(type);
+void TcpChannel::ModifyKind(const ChannelKind& kind) {
+    this->set_kind(kind);
     if (this->adapter_) {
-        adapter_->ModifyChannel(this, type);
+        adapter_->ModifyChannel(this, kind);
     }
 }
-Status TcpChannel::Connect(const std::string& hostname,
+bool TcpChannel::Connect(const std::string& hostname,
         const uint32_t& port) {
-    sockaddr_in peer_addr;
-    std::memset(&peer_addr, 0, sizeof(peer_addr));
-    peer_addr.sin_family = AF_INET;
-    peer_addr.sin_addr.s_addr = inet_addr(hostname.c_str());
-    peer_addr.sin_port = htons(port);
     LOG_F(INFO, "%s %d", hostname.c_str(), port);
-    if (connect(this->fd_, (struct sockaddr*)&peer_addr,
-                sizeof(peer_addr)) != 0) {
-        int error = GetLastSocketError(fd_);
-        LOG_F(INFO, "Fail to connect to host %s port %d : %s",
-                hostname.c_str(), port, strerror(error));
-        return static_cast<Status>(errno);
+    if (!sock_.Connect(hostname, port)) {
+        return false;
     }
-    fcntl(this->fd_, F_SETFL, O_NONBLOCK);
+    sock_.SetNonBlock(true);
     if (this->adapter_ == nullptr) {
-        this->adapter_ = TcpAdapter::Get();
+        this->set_adapter(TcpAdapter::Get());
         this->adapter_->AddChannel(this);
     }
-    return Status::kSuccess;
+    return true;
 }
 
 WorkCompletion TcpChannel::ISend(const Buffer sendbuf) {
@@ -128,13 +115,10 @@ void TcpChannel::ReadCallback() {
     }
     WorkRequest& recv_req = WorkRequestManager::Get()->
         GetWorkRequest(recv_req_id);
-    auto read_nbytes = read(fd_, recv_req.ptr_at<uint8_t>(
+    auto read_nbytes = sock_.Recv(recv_req.ptr_at<uint8_t>(
                 recv_req.completed_bytes()), recv_req.remain_nbytes());
     if (read_nbytes == 0) {
-        int error = GetLastSocketError(fd_);
-        LOG_F(ERROR, "Error during recieving : %s", strerror(errno));
-        WorkRequestManager::Get()->set_status(
-            recv_req.id(), static_cast<Status>(error));
+        WorkRequestManager::Get()->set_status(recv_req.id(), false);
     }
     if (recv_req.AddBytes(read_nbytes)) {
         if (spin_) {
@@ -160,13 +144,10 @@ void TcpChannel::WriteCallback() {
     }
     WorkRequest& send_req = WorkRequestManager::Get()->
         GetWorkRequest(send_req_id);
-    auto write_nbytes = write(fd_, send_req.ptr_at<uint8_t>(
+    auto write_nbytes = sock_.Send(send_req.ptr_at<uint8_t>(
                 send_req.completed_bytes()), send_req.remain_nbytes());
     if (write_nbytes == 0) {
-        int error = GetLastSocketError(fd_);
-        LOG_F(ERROR, "Error during sending : %s", strerror(error));
-        WorkRequestManager::Get()->set_status(
-            send_req.id(), static_cast<Status>(error));
+        WorkRequestManager::Get()->set_status(send_req.id(), false);
     }
     if (send_req.AddBytes(write_nbytes)) {
         if (spin_) {
@@ -180,60 +161,60 @@ void TcpChannel::WriteCallback() {
 }
 
 
-void TcpChannel::DeleteCarefulEvent(const ChannelType& type) {
+void TcpChannel::DeleteCarefulEvent(const ChannelKind& kind) {
     mu_.lock();
-    if (type == ChannelType::kRead) {
-        if (this->type() == ChannelType::kReadWrite) {
-            this->set_type(ChannelType::kWrite);
-        } else if (this->type() == ChannelType::kRead) {
-            this->set_type(ChannelType::kNone);
+    if (kind == ChannelKind::kRead) {
+        if (this->kind() == ChannelKind::kReadWrite) {
+            this->set_kind(ChannelKind::kWrite);
+        } else if (this->kind() == ChannelKind::kRead) {
+            this->set_kind(ChannelKind::kNone);
         } else {
             LOG_F(ERROR, "cannot delete");
         }
-    } else if (type == ChannelType::kWrite) {
-        if (this->type() == ChannelType::kReadWrite) {
-            this->set_type(ChannelType::kRead);
-        } else if (this->type() == ChannelType::kWrite) {
-            this->set_type(ChannelType::kNone);
+    } else if (kind == ChannelKind::kWrite) {
+        if (this->kind() == ChannelKind::kReadWrite) {
+            this->set_kind(ChannelKind::kRead);
+        } else if (this->kind() == ChannelKind::kWrite) {
+            this->set_kind(ChannelKind::kNone);
         } else {
             LOG_F(ERROR, "cannot delete");
         }
-    } else if (type == ChannelType::kReadWrite) {
-        if (this->type() == ChannelType::kReadWrite) {
-            this->set_type(ChannelType::kNone);
+    } else if (kind == ChannelKind::kReadWrite) {
+        if (this->kind() == ChannelKind::kReadWrite) {
+            this->set_kind(ChannelKind::kNone);
         } else {
             LOG_F(ERROR, "cannot delete");
         }
     }
-    ModifyType(this->type());
+    ModifyKind(this->kind());
     mu_.unlock();
 }
-void TcpChannel::AddCarefulEvent(const ChannelType& type) {
+void TcpChannel::AddCarefulEvent(const ChannelKind& kind) {
     mu_.lock();
-    if (type == ChannelType::kRead) {
-        if (this->type() == ChannelType::kNone) {
-            this->set_type(kRead);
-        } else if (this->type() == ChannelType::kWrite) {
-            this->set_type(kReadWrite);
+    if (kind == ChannelKind::kRead) {
+        if (this->kind() == ChannelKind::kNone) {
+            this->set_kind(kRead);
+        } else if (this->kind() == ChannelKind::kWrite) {
+            this->set_kind(kReadWrite);
         } else {
             LOG_F(ERROR, "cannot add");
         }
-    } else if (type == ChannelType::kWrite) {
-        if (this->type() == ChannelType::kNone) {
-            this->set_type(kWrite);
-        } else if (this->type() == ChannelType::kRead) {
-            this->set_type(kReadWrite);
+    } else if (kind == ChannelKind::kWrite) {
+        if (this->kind() == ChannelKind::kNone) {
+            this->set_kind(kWrite);
+        } else if (this->kind() == ChannelKind::kRead) {
+            this->set_kind(kReadWrite);
         } else {
             LOG_F(ERROR, "cannot add");
         }
-    } else if (type == ChannelType::kReadWrite) {
-        if (this->type() == ChannelType::kNone) {
-            this->set_type(kReadWrite);
+    } else if (kind == ChannelKind::kReadWrite) {
+        if (this->kind() == ChannelKind::kNone) {
+            this->set_kind(kReadWrite);
         } else {
             LOG_F(ERROR, "cannot add");
         }
     }
-    ModifyType(this->type());
+    ModifyKind(this->kind());
     mu_.unlock();
 }
 }

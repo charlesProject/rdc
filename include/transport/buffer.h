@@ -104,7 +104,7 @@ public:
         return memory_region_;
     }
 #endif
-    uint64_t count() const {
+    uint64_t Count() const {
         CHECK(with_type_ && (size_in_bytes_ % type_nbytes_ == 0));
         return size_in_bytes_ / type_nbytes_;
     }

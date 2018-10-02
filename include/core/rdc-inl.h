@@ -115,7 +115,7 @@ inline void Allreduce(DType* sendrecvbuf_, uint64_t count,
     Buffer sendrecvbuf(sendrecvbuf_, count * sizeof(DType));
     sendrecvbuf.set_type_nbytes(sizeof(DType));
     auto reducer = [] (Buffer src, Buffer dst) {
-        op::Reducer<OP, DType>(src.addr(), dst.addr(), src.count());
+        op::Reducer<OP, DType>(src.addr(), dst.addr(), src.Count());
     };
     comm::Allreduce_(sendrecvbuf, reducer,
             mpi::GetType<DType>(), OP::kType, comm_name);

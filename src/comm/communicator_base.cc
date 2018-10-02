@@ -8,8 +8,8 @@
 #include <map>
 #include <cstdlib>
 #include <cstring>
-#include "utils/network_utils.h"
 #include "utils/string_utils.h"
+#include "sys/network.h"
 #include "core/threadpool.h"
 #include "core/logging.h"
 #include "core/env.h"
@@ -97,8 +97,8 @@ void Communicator::Init(int argc, char* argv[]) {
     // start
     CHECK_F(all_links_.size() == 0, "can only call Init once");
     std::string interface, ip;
-    network_utils::GetAvailableInterfaceAndIP(&interface, &ip);
-    worker_port_ = network_utils::GetAvailablePort();
+    network::GetAvailableInterfaceAndIP(&interface, &ip);
+    worker_port_ = network::GetAvailablePort();
     this->host_uri_ = ip;
     std::tie(num_conn_, num_accept_) = this->ConnectTracker();
     // get information from tracker
@@ -326,13 +326,13 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
 #else
             channel.reset(new TcpChannel);
 #endif
-        if (channel->Connect(haddr) != Status::kSuccess) {
+        if (channel->Connect(haddr) != true) {
             channel->Close();
             LOG_F(ERROR,"Error");
             continue;
         } else {
             int hrank = 0;
-            CHECK_F(channel->RecvInt(hrank) == Status::kSuccess,
+            CHECK_F(channel->RecvInt(hrank) == true,
                     "Reconnect Link failure 14");
             channel->SendInt(rank_);
         }
@@ -344,7 +344,7 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
         std::shared_ptr<IChannel> schannel(channel);
         int hrank = 0;
         channel->SendInt(rank_);
-        CHECK_F(channel->RecvInt(hrank) == Status::kSuccess,
+        CHECK_F(channel->RecvInt(hrank) == true,
                 "ReConnect Link failure 15");
         all_links_[hrank] = schannel;
     }
@@ -485,7 +485,7 @@ void Communicator::TryReduceScatterRing(Buffer sendrecvbuf,
            rank_ == (prev_rank_ + 1) % world_size_,
            "need to assume rank structure");
     uint64_t n = static_cast<uint64_t>(world_size_);
-    const auto& ranges = utils::Split(0, sendrecvbuf.size_in_bytes(), n);
+    const auto& ranges = utils::Split(0, sendrecvbuf.Count(), n);
     uint64_t write_idx = next_rank_;
     uint64_t read_idx = next_rank_ + 1;
     uint64_t reduce_idx = read_idx;
@@ -493,6 +493,7 @@ void Communicator::TryReduceScatterRing(Buffer sendrecvbuf,
     const uint64_t stop_read_idx = n + next_rank_;
     // position to stop writing
     size_t stop_write_idx = n + rank_;
+    const auto& type_nbytes = sendrecvbuf.type_nbytes();
     if (stop_write_idx > stop_read_idx) {
         stop_write_idx -= n;
         CHECK_F(write_idx <= stop_write_idx, "write ptr boundary check");
@@ -510,17 +511,17 @@ void Communicator::TryReduceScatterRing(Buffer sendrecvbuf,
         if (write_idx < reduce_idx && write_idx != stop_write_idx) {
             uint64_t write_pos = write_idx % n;
             uint64_t write_size = (ranges[write_pos].second -
-                    ranges[write_pos].first);
-            uint64_t write_start = ranges[write_pos].first;
+                    ranges[write_pos].first) * type_nbytes;
+            uint64_t write_start = ranges[write_pos].first * type_nbytes;
             wc << prev->ISend(sendrecvbuf.Slice(write_start,
                         write_start + write_size));
             write_idx ++;
         }
         if (read_idx != stop_read_idx) {
             uint64_t read_pos = read_idx % n;
-            uint64_t read_start = ranges[read_pos].first;
+            uint64_t read_start = ranges[read_pos].first * type_nbytes;
             uint64_t read_size = (ranges[read_pos].second -
-                    ranges[read_pos].first);
+                    ranges[read_pos].first) * type_nbytes;
             wc << next->IRecv(reducebuf.Slice(read_start,
                         read_start + read_size));
             wc.Wait();
@@ -528,9 +529,9 @@ void Communicator::TryReduceScatterRing(Buffer sendrecvbuf,
                      rank_);
             read_idx++;
             size_t reduce_pos = reduce_idx % n;
-            size_t reduce_start = ranges[reduce_pos].first;
+            size_t reduce_start = ranges[reduce_pos].first * type_nbytes;
             size_t reduce_size = (ranges[reduce_pos].second -
-                    ranges[reduce_pos].first);
+                    ranges[reduce_pos].first) * type_nbytes;
             reducer(reducebuf.Slice(reduce_start, reduce_start + reduce_size),
                     sendrecvbuf.Slice(reduce_start, reduce_start + reduce_size));
             reduce_idx++;
@@ -546,15 +547,16 @@ void Communicator::TryAllreduceRing(Buffer sendrecvbuf,
     TryReduceScatterRing(sendrecvbuf, reducebuf, reducer);
     reducebuf.FreeTemp(utils::Free);
     uint64_t n = static_cast<uint64_t>(world_size_);
-    const auto& ranges = utils::Split(0, sendrecvbuf.size_in_bytes(), n);
+    const auto& ranges = utils::Split(0, sendrecvbuf.Count(), n);
     // get rank of previous
     std::vector<Buffer> sendrecvbufs(n);
     for (auto i = 0U; i < n; i++) {
         uint64_t begin = ranges[i].first;
         uint64_t end = ranges[i].second;
-        uint64_t size = end - begin;
+        uint64_t size = (end - begin) * sendrecvbuf.type_nbytes();
         sendrecvbufs[i].set_size_in_bytes(size);
-        sendrecvbufs[i].set_addr(utils::IncrVoidPtr(sendrecvbuf.addr(), begin));
+        sendrecvbufs[i].set_addr(utils::IncrVoidPtr(sendrecvbuf.addr(),
+                    begin * sendrecvbuf.type_nbytes()));
     }
     return TryAllgatherRing(sendrecvbufs);
 }

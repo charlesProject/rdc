@@ -21,9 +21,9 @@
 static const uint32_t kNumMaxEvents = 32;
 
 namespace rdc {
-static inline uint32_t channel_type_to_epoll_event(
-        const ChannelType& channel_type) {
-    switch(channel_type) {
+static inline uint32_t channel_kind_to_epoll_event(
+        const ChannelKind& channel_kind) {
+    switch(channel_kind) {
         case kRead:
             return EPOLLIN;
         case kWrite:
@@ -37,8 +37,8 @@ static inline uint32_t channel_type_to_epoll_event(
     }
 }
 
-static inline std::string channel_type_to_string(ChannelType channel_type) {
-    switch(channel_type) {
+static inline std::string channel_kind_to_string(ChannelKind channel_kind) {
+    switch(channel_kind) {
         case kRead:
             return "read";
         case kWrite:
@@ -77,7 +77,7 @@ static inline bool IsError(uint32_t events) {
 }
 TcpAdapter::TcpAdapter() {
     this->set_backend(kTcp);
-    this->listen_fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    this->listen_sock_ = TcpSocket();
     this->shutdown_called_ = false;
     this->timeout_ = -1;
     this->epoll_fd_ = epoll_create(kNumMaxEvents);
@@ -99,13 +99,13 @@ TcpAdapter::~TcpAdapter() {
     this->Shutdown();
     this->loop_thrd->join();
     CloseSocket(this->epoll_fd_);
-    CloseSocket(this->listen_fd_);
+    this->listen_sock_.Close();
 }
 void TcpAdapter::AddChannel(int32_t fd, TcpChannel* channel) {
     lock_.lock();
     channels_[fd] = channel;
     LOG_S(INFO) << "Add new channel with fd :" << fd;
-    uint32_t flags = channel_type_to_epoll_event(channel->type());
+    uint32_t flags = channel_kind_to_epoll_event(channel->kind());
     epoll_event ev;
     std::memset(&ev, 0, sizeof(ev));
     ev.data.fd = fd;
@@ -115,24 +115,24 @@ void TcpAdapter::AddChannel(int32_t fd, TcpChannel* channel) {
 }
 
 void TcpAdapter::AddChannel(TcpChannel* channel) {
-    this->AddChannel(channel->fd(), channel);
+    this->AddChannel(channel->sockfd(), channel);
 }
 
 void TcpAdapter::RemoveChannel(TcpChannel* channel) {
     lock_.lock();
-    channels_.erase(channel->fd());
-    epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, channel->fd(), nullptr);
+    channels_.erase(channel->sockfd());
+    epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, channel->sockfd(), nullptr);
     lock_.unlock();
 }
 
 void TcpAdapter::ModifyChannel(TcpChannel* channel,
-        const ChannelType& target_type) {
+        const ChannelKind& target_kind) {
     epoll_event ev;
     std::memset(&ev, 0, sizeof(ev));
-    ev.data.fd = channel->fd();
-    uint32_t flags = channel_type_to_epoll_event(target_type);
+    ev.data.fd = channel->sockfd();
+    uint32_t flags = channel_kind_to_epoll_event(target_kind);
     ev.events |= flags;
-    epoll_ctl(epoll_fd_, EPOLL_CTL_MOD, channel->fd(), &ev);
+    epoll_ctl(epoll_fd_, EPOLL_CTL_MOD, channel->sockfd(), &ev);
 }
 
 void TcpAdapter::Shutdown() {
@@ -177,12 +177,12 @@ bool TcpAdapter::Poll() {
                         }
                     }
                 }
-                channel->DeleteCarefulEvent(ChannelType::kRead);
+                channel->DeleteCarefulEvent(ChannelKind::kRead);
                 ThreadPool::Get()->AddTask([channel, this] {
                     channel->ReadCallback();
                     this->shutdown_lock_.lock();
                     if (!this->shutdown_called_) {
-                        channel->AddCarefulEvent(ChannelType::kRead);
+                        channel->AddCarefulEvent(ChannelKind::kRead);
                     }
                     this->shutdown_lock_.unlock();
                 });
@@ -190,12 +190,12 @@ bool TcpAdapter::Poll() {
 
             // when write possible
             if (IsWrite(events[i].events)) {
-                channel->DeleteCarefulEvent(ChannelType::kWrite);
+                channel->DeleteCarefulEvent(ChannelKind::kWrite);
                 ThreadPool::Get()->AddTask([channel, this] {
                     channel->WriteCallback();
                     this->shutdown_lock_.lock();
                     if (!this->shutdown_called_) {
-                        channel->AddCarefulEvent(ChannelType::kWrite);
+                        channel->AddCarefulEvent(ChannelKind::kWrite);
                     }
                     this->shutdown_lock_.unlock();
                 });
@@ -214,37 +214,16 @@ bool TcpAdapter::Poll() {
     }
     return false;
 }
-int TcpAdapter::Listen(const uint32_t& port) {
-    struct sockaddr_in own_addr;
-    std::memset(&own_addr, 0 , sizeof(own_addr));
-    own_addr.sin_family = AF_INET;
-    own_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    own_addr.sin_port = htons(port);
-    if(bind(this->listen_fd_, (struct sockaddr *) &own_addr,
-            sizeof(own_addr)) != 0) {
-        LOG_S(ERROR) << "Fail to bind on port " << port
-                     << " :" << strerror(errno);
-    };
-    if (listen(this->listen_fd_, kNumBacklogs) != 0) {
-        LOG_S(ERROR) << "Fail to listen on port " << port
-                     << " :" << strerror(errno);
-    }
-    int32_t opt = 0;
-    setsockopt(this->listen_fd_, SOL_SOCKET, SO_REUSEADDR,
-               &opt,sizeof(opt));
-    return 0;
+void TcpAdapter::Listen(const int& port) {
+    listen_sock_.TryBindHost(port);
+    listen_sock_.Listen(port);
+    return;
 }
 
 TcpChannel* TcpAdapter::Accept() {
     // accept the connection
-    sockaddr_in incoming_addr;
-    socklen_t incoming_addr_len = sizeof(incoming_addr);
-    int32_t accepted_fd = accept(this->listen_fd_,
-                                 (struct sockaddr*)&incoming_addr,
-                                 &incoming_addr_len);
-    CHECK_F(accepted_fd > 0);
-    fcntl(accepted_fd, F_SETFL, O_NONBLOCK);
     // set flags to check
-    return new TcpChannel(this, accepted_fd, kReadWrite);
+    const auto& sock = listen_sock_.Accept();
+    return new TcpChannel(this, sock, kReadWrite);
 }
 }
