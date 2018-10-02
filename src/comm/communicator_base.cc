@@ -13,6 +13,7 @@
 #include "core/threadpool.h"
 #include "core/logging.h"
 #include "core/env.h"
+#include "sys/error.h"
 #include "transport/channel.h"
 #include "comm/communicator_base.h"
 #ifdef RDC_USE_RDMA
@@ -109,14 +110,14 @@ void Communicator::Init(int argc, char* argv[]) {
 
 void Communicator::NewCommunicator(const std::string& name) {
     // increase volumn of threadpool
-    if (GetAdapter()->backend() == kTcp) {
-        ThreadPool::Get()->AddWorkers(2 *
-                Env::Get()->GetEnv("RDC_NUM_WORKERS", 0));
-    }
-    comm_lock_.lock();
+//    if (GetAdapter()->backend() == kTcp) {
+//        ThreadPool::Get()->AddWorkers(2 * Env::Get()->
+//                GetEnv("RDC_NUM_WORKERS", 0));
+//    }
+    std::unique_lock<std::mutex> comm_lock(comm_lock_);
     if (name == kWorldCommName) return;
     if (sub_comms_.count(name)) return;
-    comm_lock_.unlock();
+    comm_lock.unlock();
     auto comm = utils::make_unique<Communicator>(*this);
     comm->set_name(name);
     std::unique_lock<std::mutex> lock(*tracker_lock_);
@@ -127,9 +128,8 @@ void Communicator::NewCommunicator(const std::string& name) {
     comm->ReConnectLinks(std::make_tuple(num_conn_, num_accept_));
     conn_lock_.unlock();
     // add this communicator to the goverment of main communicator
-    comm_lock_.lock();
+    comm_lock.lock();
     this->sub_comms_[name] = std::move(comm);
-    comm_lock_.unlock();
 }
 // register communicator to tracker
 void Communicator::Register() {
@@ -149,7 +149,7 @@ void Communicator::Shutdown() {
         tracker_->Close();
     }
     tracker_lock_->unlock();
-    TcpAdapter::Get()->Shutdown();
+//    TcpAdapter::Get()->Shutdown();
 }
 void Communicator::TrackerPrint(const std::string &msg) {
     if (tracker_uri_ == "NULL") {
@@ -319,9 +319,11 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
     this->Register();
     int num_conn = 0, num_accept = 0;
     std::tie(num_conn, num_accept) = num_conn_accept;
+    int nc = 0, na = 0;
     for (auto& peer_addr : peer_addrs_) {
         int hrank = peer_addr.first;
         auto haddr = peer_addr.second;
+        LOG(ERROR) << rank_ << '\t' << hrank;
         std::shared_ptr<IChannel> channel;
 #ifdef RDC_USE_RDMA
         if (GetAdapter()->backend() == kRdma) {
@@ -330,7 +332,7 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
             channel.reset(new TcpChannel);
         }
 #else
-            channel.reset(new TcpChannel);
+        channel.reset(new TcpChannel);
 #endif
         if (channel->Connect(haddr) != true) {
             channel->Close();
@@ -341,8 +343,8 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
             CHECK_F(channel->RecvInt(hrank) == true,
                     "Reconnect Link failure 14");
             channel->SendInt(rank_);
+            all_links_[hrank] = channel;
         }
-        all_links_[hrank] = channel;
     }
     // listen to incoming links
     for (int i = 0; i < num_accept; ++i) {
@@ -352,14 +354,23 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
         channel->SendInt(rank_);
         CHECK_F(channel->RecvInt(hrank) == true,
                 "ReConnect Link failure 15");
+        LOG(ERROR) << rank_ << '\t' << hrank;
+        if (all_links_.count(hrank))
+            LOG(ERROR) << rank_ << '\t' << hrank;
         all_links_[hrank] = schannel;
     }
+//    sleep(1);
+    CHECK(all_links_.size() == world_size_ - 1);
     // setup tree links and ring structure
     tree_links.clear();
     for (auto& link_with_rank : all_links_) {
         // set the socket to non-blocking mode, enable TCP keepalive
         auto cur_rank = link_with_rank.first;
         auto cur_link = link_with_rank.second;
+        // post check
+        if (cur_link->CheckError()) {
+            LOG(ERROR) << cur_rank << "\t error detected";
+        }
         if (tree_neighbors_.count(cur_rank) != 0) {
             tree_links.push_back(cur_link.get());
         }
@@ -375,6 +386,7 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
     CHECK_F(next_rank_ == -1 || ring_next_ != nullptr,
            "cannot find next link in the ring");
     TrackerPrint("Connected done");
+    this->Barrier();
 }
 void Communicator::TryAllreduce(Buffer sendrecvbuf, ReduceFunction reducer) {
     if (sendrecvbuf.size_in_bytes() > reduce_ring_mincount_) {
