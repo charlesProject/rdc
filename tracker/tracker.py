@@ -21,6 +21,7 @@ from threading import Thread
 from threading import Lock
 from enum import Enum
 
+from topo import TopoHelper
 """
 Extension of socket to handle recv and send of special data
 """
@@ -67,96 +68,16 @@ def log_args(level=logging.INFO):
 
     return inner_func
 
-class TopoHelper:
-    def get_neighbor(self, rank, nworker):
-        rank = rank + 1
-        ret = []
-        if rank > 1:
-            ret.append(rank // 2 - 1)
-        if rank * 2 - 1  < nworker:
-            ret.append(rank * 2 - 1)
-        if rank * 2 < nworker:
-            ret.append(rank * 2)
-        return ret
-
-    def get_tree(self, nworker):
-        tree_map = {}
-        parent_map = {}
-        for r in range(nworker):
-            tree_map[r] = self.get_neighbor(r, nworker)
-            parent_map[r] = (r + 1) // 2 - 1
-        return tree_map, parent_map
-
-    def find_share_ring(self, tree_map, parent_map, r):
-        """
-        get a ring structure that tends to share nodes with the tree
-        return a list starting from r
-        """
-        nset = set(tree_map[r])
-        cset = nset - set([parent_map[r]])
-        if len(cset) == 0:
-            return [r]
-        rlst = [r]
-        cnt = 0
-        for v in cset:
-            vlst = self.find_share_ring(tree_map, parent_map, v)
-            cnt += 1
-            if cnt == len(cset):
-                vlst.reverse()
-            rlst += vlst
-        return rlst
-
-    def get_ring(self, tree_map, parent_map):
-        """
-        get a ring connection used to recover local data
-        """
-        assert parent_map[0] == -1
-        rlst = self.find_share_ring(tree_map, parent_map, 0)
-        assert len(rlst) == len(tree_map)
-        ring_map = {}
-        nworker = len(tree_map)
-        for r in range(nworker):
-            rprev = (r + nworker - 1) % nworker
-            rnext = (r + 1) % nworker
-            ring_map[rlst[r]] = (rlst[rprev], rlst[rnext])
-        return ring_map
-
-    def get_link_map(self, nworker):
-        """
-        get the link map, this is a bit hacky, call for better algorithm
-        to place similar nodes together
-        """
-        tree_map, parent_map = self.get_tree(nworker)
-        ring_map = self.get_ring(tree_map, parent_map)
-        rmap = {0 : 0}
-        k = 0
-        for i in range(nworker - 1):
-            k = ring_map[k][1]
-            rmap[k] = i + 1
-
-        ring_map_ = {}
-        tree_map_ = {}
-        parent_map_ = {}
-        for k, v in ring_map.items():
-            ring_map_[rmap[k]] = (rmap[v[0]], rmap[v[1]])
-        for k, v in tree_map.items():
-            tree_map_[rmap[k]] = [rmap[x] for x in v]
-        for k, v in parent_map.items():
-            if k != 0:
-                parent_map_[rmap[k]] = rmap[v]
-            else:
-                parent_map_[rmap[k]] = -1
-        return tree_map_, parent_map_, ring_map_
-
 class State(Enum):
     CMD = 1
     FIN = 2
     UNKNOWN = 3
 
 class TrackerHandler:
-    def __init__(self, sock, tracker):
+    def __init__(self, sock, tracker, worker_id):
         self.sock = sock
         self.tracker = tracker
+        self.worker_id = worker_id
         self.state = State.FIN
         self.cmd = None
     def handle(self):
@@ -178,57 +99,82 @@ class TrackerHandler:
             self.cmd = None
         return True
     def handle_start(self):
-        with self.tracker.tracker_lock:
-            # send world size
-            self.sendint(self.tracker.nworker)
-            # send rank
-            self.rank = self.tracker.last_rank
-            self.tracker.last_rank += 1
-            self.sendint(self.rank)
-            if self.tracker.last_rank == self.tracker.nworker:
-                self.tracker.last_rank = 0
+        rank = self.recvint()
+        self.tracker.tracker_lock.acquire()
+        self.tracker.worker_id_to_ranks[self.worker_id] = rank
+        self.addr = self.recvstr()
+        self.tracker.tracker_lock.release()
+        self.tracker.rank_cond.acquire()
+        self.tracker.rank_counter += 1
+        if self.tracker.rank_counter != self.tracker.nworker:
+            self.tracker.rank_cond.wait()
+        else:
+            self.tracker.rank_counter = 0
+            self.tracker.realloc_ranks()
+            self.tracker.rank_cond.notify_all()
+        self.tracker.rank_cond.release()
 
-            self.addr = self.recvstr()
+        self.rank = self.tracker.worker_id_to_ranks[self.worker_id]
+        self.tracker.rank_cond.acquire()
+        self.tracker.addrs[self.rank] = self.addr
+        if len(self.tracker.addrs) != self.tracker.nworker:
+            self.tracker.rank_cond.wait()
+        else:
+            self.tracker.rank_cond.notify_all()
+        self.tracker.rank_cond.release()
 
-            # send the whole tree map
-            tree_map = self.tracker.tree_map
-            parent_map = self.tracker.parent_map
-            ring_map = self.tracker.ring_map
-            nnset = set(tree_map[self.rank])
-            rprev, rnext = ring_map[self.rank]
+        # send world size
+        self.sendint(self.tracker.nworker)
+        # send rank
+        self.tracker.tracker_lock.acquire()
+        self.sendint(self.rank)
+        # send the whole tree map
+        tree_map = self.tracker.tree_map
+        parent_map = self.tracker.parent_map
+        ring_map = self.tracker.ring_map
+        nnset = set(tree_map[self.rank])
+        rprev, rnext = ring_map[self.rank]
 
-            # send parent rank
-            self.sendint(parent_map[self.rank])
+        # send parent rank
+        self.sendint(parent_map[self.rank])
 
-            # send num neighbors
-            self.sendint(len(nnset))
-            for r in nnset:
-                self.sendint(r)
-            # send prev link$
-            if rprev != -1 and rprev != self.rank:
-                nnset.add(rprev)
-                self.sendint(rprev)
-            else:
-                self.sendint(-1)
-            # send next link
-            if rnext != -1 and rnext != self.rank:
-                nnset.add(rnext)
-                self.sendint(rnext)
-            else:
-                self.sendint(-1)
-            for rank, neighbors in self.tracker.tree_map.items():
-                self.sendint(rank)
-                self.sendint(len(neighbors))
-                for i in range(len(neighbors)):
-                    self.sendint(neighbors[i])
-            # send num_conn and num_accept
-            # connnect to node who has rank less than my rank
-            self.sendint(self.rank)
-            self.sendint(self.tracker.nworker - self.rank - 1)
-            for rank, addr in self.tracker.addrs.items():
+        # send num neighbors
+        self.sendint(len(nnset))
+        for r in nnset:
+            self.sendint(r)
+        # send prev link$
+        if rprev != -1 and rprev != self.rank:
+            nnset.add(rprev)
+            self.sendint(rprev)
+        else:
+            self.sendint(-1)
+        # send next link
+        if rnext != -1 and rnext != self.rank:
+            nnset.add(rnext)
+            self.sendint(rnext)
+        else:
+            self.sendint(-1)
+        for rank, neighbors in self.tracker.tree_map.items():
+            self.sendint(rank)
+            self.sendint(len(neighbors))
+            for i in range(len(neighbors)):
+                self.sendint(neighbors[i])
+        # send num_conn and num_accept
+        # connnect to node who has rank less than my rank
+        num_conn = 0
+        num_accept = 0
+        for rank, addr in self.tracker.addrs.items():
+            if rank < self.rank:
+                num_conn += 1
+            elif rank > self.rank:
+                num_accept += 1
+        self.sendint(num_conn)
+        self.sendint(num_accept)
+        for rank, addr in self.tracker.addrs.items():
+            if rank < self.rank:
                 self.sendstr(addr)
                 self.sendint(rank)
-            self.tracker.addrs[self.rank] = self.addr
+        self.tracker.tracker_lock.release()
 
     def handle_print(self):
         msg = self.recvstr()
@@ -251,6 +197,7 @@ class TrackerHandler:
         self.tracker.name_to_barrier_conds[name].release()
     def handle_register(self):
         name = self.recvstr()
+        self.name = name
         if name not in self.tracker.names:
             self.tracker.names.add(name)
             self.tracker.name_to_ranks[name] = set()
@@ -288,6 +235,9 @@ class Tracker:
         self.name_to_ranks = dict()
         self.last_rank = 0
 
+        self.worker_id_to_ranks = dict()
+        self.rank_cond = threading.Condition()
+        self.rank_counter = 0
         # thread associated members
         self.tracker_lock = Lock()
         self.name_lock = Lock()
@@ -301,22 +251,36 @@ class Tracker:
         self.tree_map, self.parent_map, self.ring_map = \
             self.topohelper.get_link_map(nworker)
 
-        def run():
+        def run(worker_id):
             fd, s_addr = self.sock.accept()
             sock = ExSocket(fd)
-            handler = TrackerHandler(sock, self)
+            handler = TrackerHandler(sock, self, worker_id)
             ret = True
             while ret:
                 ret = handler.handle()
 
         logging.info('start listen on %s:%d' % (hostIP, self.port))
         self.threads = dict()
-        for _ in range(nworker):
-            thread = Thread(target = run, args = ())
+        for worker_id in range(nworker):
+            thread = Thread(target = run, args = (worker_id,))
             self.threads[self.cur_rank] = thread
             thread.setDaemon(True)
             thread.start()
 
+    def realloc_ranks(self):
+        existing_ranks = set()
+        for worker_id, rank in self.worker_id_to_ranks.items():
+            if rank != -1:
+                existing_ranks.add(rank)
+        last_rank = 0
+        for worker_id, rank in self.worker_id_to_ranks.items():
+            if rank != -1:
+                continue
+            else:
+                while last_rank in existing_ranks:
+                    last_rank += 1
+                self.worker_id_to_ranks[worker_id] = last_rank
+                last_rank += 1
     def worker_envs(self):
         """
         get enviroment variables for workers
@@ -367,7 +331,7 @@ def submit(nworker, fun_submit, hostIP = 'auto', pscmd = None):
     s.bind((hostIP, 0))
     port = s.getsockname()[1]
     envs = {'RDC_NUM_WORKERS' : nworker,
-            'RDC_BACKEND' : 'RDMA',
+            'RDC_BACKEND' : 'TCP',
             'RDC_RDMA_BUFSIZE' : 1 << 25}
 
     # start the root

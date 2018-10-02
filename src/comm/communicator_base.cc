@@ -242,17 +242,23 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
         // start listener at very begining
         GetAdapter()->Listen(worker_port_);
         tracker_->SendStr(std::string(cmd));
+        rank_ = Env::Get()->GetEnv("RDC_RANK", -1);
+        // first send my rank to tracker for global rank scheduling
+        tracker_->SendInt(rank_);
+        // send my addr to tracker for decision making
+        auto backend_str = GetAdapter()->backend_str();
+        auto host_addr = str_utils::SPrintf("%s:%s:%d",
+                backend_str.c_str(), host_uri_.c_str(), worker_port_);
+        tracker_->SendStr(host_addr);
+
         tracker_->RecvInt(world_size_) ,
         LOG_F(INFO, "%d", world_size_);
+        // recieve my new rank from tracker
         tracker_->RecvInt(rank_);
         LOG_F(INFO, "%d", rank_);
         logging::add_file(str_utils::SPrintf("log/%d", rank_).c_str(),
                           logging::Truncate, logging::Verbosity_MAX);
         // send back socket listening port to tracker
-        auto backend_str = GetAdapter()->backend_str();
-        auto host_addr = str_utils::SPrintf("%s:%s:%d",
-                backend_str.c_str(), host_uri_.c_str(), worker_port_);
-        tracker_->SendStr(host_addr);
         // get new ranks
         tracker_->RecvInt(parent_rank_);
         LOG_F(INFO, "%d", parent_rank_);
