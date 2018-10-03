@@ -6,7 +6,7 @@
 namespace rdc {
 
 
-const uint32_t kNumBacklogs = 32;
+const uint32_t kNumBacklogs = 128;
 
 enum Backend {
     kTcp = 0,

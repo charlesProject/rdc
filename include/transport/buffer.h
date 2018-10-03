@@ -142,7 +142,6 @@ private:
     void* addr_;
     uint64_t size_in_bytes_;
     bool is_mutable_;
-    bool pinned_;
     bool temp_;
     bool with_type_;
     uint64_t type_nbytes_;
@@ -150,6 +149,7 @@ private:
     bool own_data_;
     uint64_t start_;
     uint64_t end_;
+    bool pinned_;
 #ifdef RDC_USE_RDMA
     ibv_mr* memory_region_;
 #endif

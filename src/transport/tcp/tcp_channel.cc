@@ -19,12 +19,14 @@ TcpChannel::TcpChannel() {
     this->adapter_ = nullptr;
     this->sock_ = TcpSocket();
     this->set_kind(kRead);
+    this->set_error_detected(false);
     this->set_spin(false);
 }
 TcpChannel::TcpChannel(const ChannelKind& kind) {
     this->adapter_ = nullptr;
     this->sock_ = TcpSocket();
     this->set_kind(kind);
+    this->set_error_detected(false);
     this->set_spin(false);
 }
 
@@ -32,6 +34,7 @@ TcpChannel::TcpChannel(TcpAdapter* adapter, const ChannelKind& kind) {
     this->adapter_ = adapter;
     this->sock_ = TcpSocket();
     this->set_kind(kind);
+    this->set_error_detected(false);
     this->set_spin(false);
     this->adapter_->AddChannel(this);
 }
@@ -41,6 +44,7 @@ TcpChannel::TcpChannel(TcpAdapter* adapter, const int& sockfd,
     this->adapter_ = adapter;
     this->sock_ = TcpSocket(sockfd);
     this->set_kind(kind);
+    this->set_error_detected(false);
     this->set_spin(false);
     this->adapter_->AddChannel(this);
 }
@@ -49,6 +53,7 @@ TcpChannel::TcpChannel(TcpAdapter* adapter, const TcpSocket& sock,
     this->adapter_ = adapter;
     this->sock_ = sock;
     this->set_kind(kind);
+    this->set_error_detected(false);
     this->set_spin(false);
     this->adapter_->AddChannel(this);
 }
@@ -91,14 +96,16 @@ WorkCompletion TcpChannel::ISend(const Buffer sendbuf) {
             if (send_req.AddBytes(write_nbytes)) {
                 send_req.Notify();
             }
-        } else if (write_nbytes == -1 && errno == EAGAIN) {
+        } else if (write_nbytes <= 0 && errno == EAGAIN) {
+            LOG(ERROR) << "ERROR";
             if (spin_) {
                 send_reqs_.NoLockPush(send_req_id);
             } else {
                 send_reqs_.Push(send_req_id);
             }
             this->AddCarefulEvent(kWrite);
-        } else if (write_nbytes == -1) {
+            break;
+        } else {
             WorkRequestManager::Get()->set_status(send_req.id(), false);
         }
     } while (!send_req.done());
@@ -131,7 +138,7 @@ void TcpChannel::ReadCallback() {
         GetWorkRequest(recv_req_id);
     auto read_nbytes = sock_.Recv(recv_req.ptr_at<uint8_t>(
                 recv_req.completed_bytes()), recv_req.remain_nbytes());
-    if (read_nbytes == -1 && errno != EAGAIN) {
+    if (read_nbytes <= 0 && errno != EAGAIN) {
         WorkRequestManager::Get()->set_status(recv_req.id(), false);
     }
     if (recv_req.AddBytes(read_nbytes)) {
@@ -160,7 +167,7 @@ void TcpChannel::WriteCallback() {
         GetWorkRequest(send_req_id);
     auto write_nbytes = sock_.Send(send_req.ptr_at<uint8_t>(
                 send_req.completed_bytes()), send_req.remain_nbytes());
-    if (write_nbytes == -1 && errno != EAGAIN) {
+    if (write_nbytes <= 0 && errno != EAGAIN) {
         WorkRequestManager::Get()->set_status(send_req.id(), false);
     }
     if (send_req.AddBytes(write_nbytes)) {

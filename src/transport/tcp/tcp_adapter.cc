@@ -17,8 +17,8 @@
 #include "core/threadpool.h"
 #include "core/logging.h"
 #include "core/status.h"
-
-static const uint32_t kNumMaxEvents = 32;
+#include "sys/error.h"
+static const uint32_t kNumMaxEvents = 1024;
 
 namespace rdc {
 static inline uint32_t channel_kind_to_epoll_event(
@@ -168,6 +168,15 @@ bool TcpAdapter::Poll() {
         channel = this->channels_[events[i].data.fd];
         lock_.unlock();
         if (channel) {
+            // shutdown or error
+            if (IsError(events[i].events)) {
+                int32_t error = GetLastSocketError(events[i].data.fd);
+                LOG(ERROR) << "OOPS";
+                channel->set_error_detected(true);
+                LOG_F(ERROR, "%s",  sys::FormatError(error).c_str());
+                return true;
+            }
+
             // when data avaliable for read or urgent flag is set
             if (IsRead(events[i].events)) {
                 if (events[i].events & EPOLLIN) {
@@ -191,16 +200,9 @@ bool TcpAdapter::Poll() {
             // when write possible
             if (IsWrite(events[i].events)) {
                 channel->DeleteCarefulEvent(ChannelKind::kWrite);
-                ThreadPool::Get()->AddTask([channel, this] {
+                ThreadPool::Get()->AddTask([channel] {
                     channel->WriteCallback();
                 });
-            }
-            // shutdown or error
-            if (IsError(events[i].events)) {
-                int32_t error = GetLastSocketError(events[i].data.fd);
-                channel->set_error_detected(true);
-                LOG_F(ERROR, "%s", strerror(error));
-                return true;
             }
         } // if
     } // for
@@ -211,7 +213,8 @@ bool TcpAdapter::Poll() {
 }
 void TcpAdapter::Listen(const int& port) {
     listen_sock_.TryBindHost(port);
-    listen_sock_.Listen(port);
+    listen_sock_.SetReuseAddr(true);
+    listen_sock_.Listen(kNumBacklogs);
     return;
 }
 

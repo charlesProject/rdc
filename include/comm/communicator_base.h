@@ -113,6 +113,8 @@ public:
     WorkCompletion IRecv(Buffer recvbuf_, int src) override;
     /*! \brief barrier all nodes*/
     void Barrier() override;
+    void Lock();
+    void UnLock();
     /*! \brief register this communicator to tracker */
     void Register();
     /*!

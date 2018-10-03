@@ -38,7 +38,7 @@ public:
     void AddCarefulEvent(const ChannelKind& type);
     void DeleteCarefulEvent(const ChannelKind& type);
     void ModifyKind(const ChannelKind& type);
-    const int& sockfd() const {
+    int sockfd() const {
         return SOCKET(sock_);
     }
 
@@ -50,7 +50,7 @@ public:
         spin_.store(spin, std::memory_order_release);
     }
 
-    inline const bool& spin() const {
+    inline bool spin() const {
         return spin_.load(std::memory_order_acquire);
     }
 private:

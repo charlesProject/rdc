@@ -33,11 +33,15 @@ namespace rdc {
 struct SockAddr {
     sockaddr_in addr;
     // constructor
-    SockAddr() {}
+    SockAddr() {
+        std::memset(&addr, 0, sizeof(addr));
+    }
     SockAddr(const char *url, int port) {
+        std::memset(&addr, 0, sizeof(addr));
         this->Set(url, port);
     }
     SockAddr(std::string host,int port) {
+        std::memset(&addr, 0, sizeof(addr));
         this->Set(host.c_str(), port);
     }
     inline static std::string GetHostName() {
@@ -181,6 +185,7 @@ public:
     */
     inline int TryBindHost(int port) {
         SockAddr addr("0.0.0.0", port);
+        addr.addr.sin_addr.s_addr = htonl(INADDR_ANY);
         if (bind(sockfd, reinterpret_cast<sockaddr*>(&addr.addr),
             sizeof(addr.addr)) == 0) {
             return port;
@@ -313,7 +318,7 @@ public:
     * \param af domain
     */
     inline void Create(int af = PF_INET) {
-        sockfd = socket(PF_INET, SOCK_STREAM, 0);
+        sockfd = socket(af, SOCK_STREAM, 0);
         if (sockfd == INVALID_SOCKET) {
             LOGERROR("Create");
         }
@@ -332,8 +337,12 @@ public:
     * \brief perform listen of the socket
     * \param backlog backlog parameter
     */
-    inline void Listen(int backlog = 16) {
-        listen(sockfd, backlog);
+    inline bool Listen(int backlog = 128) {
+        if (listen(sockfd, backlog) == -1) {
+            return false;
+        } else {
+            return true;
+        }
     }
     /*! \brief get a new connection */
     TcpSocket Accept() {
@@ -341,7 +350,7 @@ public:
         if (newfd == INVALID_SOCKET) {
             LOGERROR("Accept");
         }
-        return TcpSocket(newfd,false);
+        return TcpSocket(newfd, false);
     }
     /*!
     * \brief decide whether the socket is at OOB mark

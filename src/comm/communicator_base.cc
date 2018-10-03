@@ -110,10 +110,10 @@ void Communicator::Init(int argc, char* argv[]) {
 
 void Communicator::NewCommunicator(const std::string& name) {
     // increase volumn of threadpool
-//    if (GetAdapter()->backend() == kTcp) {
-//        ThreadPool::Get()->AddWorkers(2 * Env::Get()->
-//                GetEnv("RDC_NUM_WORKERS", 0));
-//    }
+    if (GetAdapter()->backend() == kTcp) {
+        ThreadPool::Get()->AddWorkers(Env::Get()->
+                GetEnv("RDC_NUM_WORKERS", 0));
+    }
     std::unique_lock<std::mutex> comm_lock(comm_lock_);
     if (name == kWorldCommName) return;
     if (sub_comms_.count(name)) return;
@@ -138,6 +138,7 @@ void Communicator::Register() {
     tracker_->SendStr(std::string("register"));
     tracker_->SendStr(name_);
     tracker_lock_->unlock();
+    this->Barrier();
 }
 void Communicator::Shutdown() {
     if (tracker_uri_ == "NULL") return;
@@ -165,11 +166,30 @@ void Communicator::Barrier() {
     tracker_lock_->lock();
     tracker_->SendStr(std::string("barrier"));
     tracker_->SendStr(name_);
-    std::string barrier_token_;
-    tracker_->RecvStr(barrier_token_);
-    //CHECK_EQ_S(barrier_token_, "barrier_done");
+    std::string barrier_token;
+    tracker_->RecvStr(barrier_token);
+    CHECK_EQ(barrier_token, "barrier_done");
     tracker_lock_->unlock();
 }
+void Communicator::Lock() {
+    tracker_lock_->lock();
+    tracker_->SendStr(std::string("lock"));
+    tracker_->SendStr(name_);
+    std::string lock_token;
+    tracker_->RecvStr(lock_token);
+    CHECK_EQ(lock_token, "lock_done");
+    tracker_lock_->unlock();
+}
+void Communicator::UnLock() {
+    tracker_lock_->lock();
+    tracker_->SendStr(std::string("unlock"));
+    tracker_->SendStr(name_);
+    std::string unlock_token;
+    tracker_->RecvStr(unlock_token);
+    CHECK_EQ(unlock_token, "unlock_done");
+    tracker_lock_->unlock();
+}
+
 // util to parse data with unit suffix
 inline size_t ParseUnit(const char *name, const char *val) {
     char unit;
@@ -252,12 +272,13 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
         tracker_->SendStr(host_addr);
 
         tracker_->RecvInt(world_size_) ,
-        LOG_F(INFO, "%d", world_size_);
+        VLOG_F(2, "workd size %d", world_size_);
         // recieve my new rank from tracker
         tracker_->RecvInt(rank_);
-        LOG_F(INFO, "%d", rank_);
+        VLOG_F(2, "new rank %d", rank_);
         logging::add_file(str_utils::SPrintf("log/%d", rank_).c_str(),
                           logging::Truncate, logging::Verbosity_MAX);
+        logging::g_stderr_verbosity = 1;
         // send back socket listening port to tracker
         // get new ranks
         tracker_->RecvInt(parent_rank_);
@@ -267,14 +288,14 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
         for (int i = 0; i < num_neighbors_; ++i) {
               int nrank;
               tracker_->RecvInt(nrank);
-              LOG_F(INFO, "%d", nrank);
+              VLOG_F(2, "%d", nrank);
               tree_neighbors_[nrank] = 1;
         }
         tracker_->RecvInt(prev_rank_);
-        LOG_F(INFO, "pr %d", prev_rank_);
+        VLOG_F(2, "pr %d", prev_rank_);
         tracker_->RecvInt(next_rank_);
 
-        LOG_F(INFO, "nr %d", next_rank_);
+        VLOG_F(2, "nr %d", next_rank_);
         // get the global tree map
         std::vector<int> nodes(this->world_size_);
         std::vector<std::pair<int, int>> edges;
@@ -294,10 +315,10 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
         // get number of to connect and number of to accept nodes from tracker
         tracker_->RecvInt(num_conn_);
 
-        LOG_F(INFO, "nc %d", num_conn_);
+        VLOG_F(2, "number peers need to connect %d", num_conn_);
         tracker_->RecvInt(num_accept_);
 
-        LOG_F(INFO, "na %d", num_accept_);
+        VLOG_F(2, "number peers need to accept %d", num_accept_);
         for (int i = 0; i < num_conn_; ++i) {
             std::string haddr;
             int hrank = -1;
@@ -317,13 +338,12 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd)  {
 void Communicator::ReConnectLinks(const std::tuple<int, int>&
         num_conn_accept) {
     this->Register();
+    this->Lock();
     int num_conn = 0, num_accept = 0;
     std::tie(num_conn, num_accept) = num_conn_accept;
-    int nc = 0, na = 0;
     for (auto& peer_addr : peer_addrs_) {
         int hrank = peer_addr.first;
         auto haddr = peer_addr.second;
-        LOG(ERROR) << rank_ << '\t' << hrank;
         std::shared_ptr<IChannel> channel;
 #ifdef RDC_USE_RDMA
         if (GetAdapter()->backend() == kRdma) {
@@ -336,15 +356,15 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
 #endif
         if (channel->Connect(haddr) != true) {
             channel->Close();
-            LOG_F(ERROR,"Error");
+            LOG_F(ERROR,"Connect Error");
             continue;
         } else {
             int hrank = 0;
             CHECK_F(channel->RecvInt(hrank) == true,
                     "Reconnect Link failure 14");
             channel->SendInt(rank_);
-            all_links_[hrank] = channel;
         }
+        all_links_[hrank] = channel;
     }
     // listen to incoming links
     for (int i = 0; i < num_accept; ++i) {
@@ -354,13 +374,9 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
         channel->SendInt(rank_);
         CHECK_F(channel->RecvInt(hrank) == true,
                 "ReConnect Link failure 15");
-        LOG(ERROR) << rank_ << '\t' << hrank;
-        if (all_links_.count(hrank))
-            LOG(ERROR) << rank_ << '\t' << hrank;
         all_links_[hrank] = schannel;
     }
-//    sleep(1);
-    CHECK(all_links_.size() == world_size_ - 1);
+    CHECK_EQ(all_links_.size(), world_size_ - 1);
     // setup tree links and ring structure
     tree_links.clear();
     for (auto& link_with_rank : all_links_) {
@@ -369,7 +385,7 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
         auto cur_link = link_with_rank.second;
         // post check
         if (cur_link->CheckError()) {
-            LOG(ERROR) << cur_rank << "\t error detected";
+            LOG_F(ERROR, "[%d] Detected error from [%d]", rank_, cur_rank);
         }
         if (tree_neighbors_.count(cur_rank) != 0) {
             tree_links.push_back(cur_link.get());
@@ -385,8 +401,8 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>&
            "cannot find prev link in the ring");
     CHECK_F(next_rank_ == -1 || ring_next_ != nullptr,
            "cannot find next link in the ring");
-    TrackerPrint("Connected done");
-    this->Barrier();
+    this->TrackerPrint("Connected done");
+    this->UnLock();
 }
 void Communicator::TryAllreduce(Buffer sendrecvbuf, ReduceFunction reducer) {
     if (sendrecvbuf.size_in_bytes() > reduce_ring_mincount_) {

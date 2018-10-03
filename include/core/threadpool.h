@@ -41,7 +41,7 @@ private:
     }
 
 public:
-    ThreadPool() : ThreadPool(2 * Env::Get()->GetIntEnv("RDC_NUM_WORKERS")) {}
+    ThreadPool() : ThreadPool(Env::Get()->GetIntEnv("RDC_NUM_WORKERS") + 4) {}
     // Constructor
     ThreadPool(uint32_t num_workers)
         : num_workers_(num_workers)

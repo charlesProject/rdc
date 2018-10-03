@@ -18,7 +18,7 @@ enum ChannelKind : uint32_t {
 class IChannel {
 public:
     IChannel() = default;
-    IChannel(const ChannelKind& kind) : kind_(kind) {}
+    IChannel(const ChannelKind& kind) : kind_(kind), error_detected_(false) {}
     virtual ~IChannel() = default;
     virtual WorkCompletion ISend(Buffer sendbuf) = 0;
     virtual WorkCompletion IRecv(Buffer recvbuf) = 0;

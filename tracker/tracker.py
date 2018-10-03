@@ -19,6 +19,7 @@ import inspect
 import threading
 from threading import Thread
 from threading import Lock
+from threading import Condition
 from enum import Enum
 
 from topo import TopoHelper
@@ -93,6 +94,10 @@ class TrackerHandler:
                 self.handle_register()
             elif self.cmd == 'barrier':
                 self.handle_barrier()
+            elif self.cmd == 'lock':
+                self.handle_lock()
+            elif self.cmd == 'unlock':
+                self.handle_unlock()
             elif self.cmd == 'shutdown':
                 return False
             self.state = State.FIN
@@ -181,17 +186,47 @@ class TrackerHandler:
         if self.rank != -1:
             msg = 'rank %d: %s ' % (self.rank, msg.strip())
         logging.info(msg)
-
+    '''A distributed lock impletentation, only communicator or group
+    with same name can continue, otherwise will be blocked
+    '''
+    def handle_lock(self):
+        comm = self.recvstr()
+        self.tracker.comm_cond.acquire()
+        while comm != self.tracker.last_comm:
+            if self.tracker.last_comm is None:
+                self.tracker.last_comm = comm
+            else:
+                if self.tracker.last_comm != comm:
+                    logging.info(comm)
+                    self.tracker.pending_comms.add(comm)
+                    self.tracker.comm_cond.wait()
+                else:
+                    break
+        self.tracker.comm_cond.release()
+        self.sendstr('lock_done')
+    def handle_unlock(self):
+        comm = self.recvstr()
+        self.tracker.comm_cond.acquire()
+        self.tracker.lock_counter += 1
+        if self.tracker.lock_counter != len(\
+                self.tracker.name_to_ranks[comm]):
+            self.tracker.comm_cond.wait()
+        else:
+            self.tracker.lock_counter = 0
+            self.tracker.last_comm = None
+            self.tracker.comm_cond.notify_all()
+        self.tracker.comm_cond.release()
+        self.sendstr('unlock_done')
     def handle_barrier(self):
         name = self.recvstr()
         self.tracker.name_to_barrier_conds[name].acquire()
-        self.tracker.name_to_barrier_counts[name] += 1
-        if self.tracker.name_to_barrier_counts[name] != \
+        self.tracker.name_to_barrier_counter[name] += 1
+        if self.tracker.name_to_barrier_counter[name] != \
                 self.tracker.nworker:
             self.tracker.name_to_barrier_conds[name].wait()
             self.sendstr("barrier_done")
         else:
-            self.tracker.name_to_barrier_counts[name] = 0
+            self.tracker.name_to_barrier_counter[name] = 0
             self.tracker.name_to_barrier_conds[name].notify_all()
             self.sendstr("barrier_done")
         self.tracker.name_to_barrier_conds[name].release()
@@ -201,7 +236,7 @@ class TrackerHandler:
         if name not in self.tracker.names:
             self.tracker.names.add(name)
             self.tracker.name_to_ranks[name] = set()
-            self.tracker.name_to_barrier_counts[name] = 0
+            self.tracker.name_to_barrier_counter[name] = 0
             self.tracker.name_to_barrier_conds[name] = \
                     threading.Condition()
             self.tracker.name_to_barrier_locks[name] = \
@@ -243,9 +278,14 @@ class Tracker:
         self.name_lock = Lock()
 
         # barrier related
-        self.name_to_barrier_counts = dict()
+        self.name_to_barrier_counter = dict()
         self.name_to_barrier_conds = dict()
         self.name_to_barrier_locks = dict()
+        # distributed lock related
+        self.last_comm = None
+        self.pending_comms = set()
+        self.lock_counter = 0
+        self.comm_cond = Condition()
         # construct initial tree map
         self.topohelper = TopoHelper()
         self.tree_map, self.parent_map, self.ring_map = \
