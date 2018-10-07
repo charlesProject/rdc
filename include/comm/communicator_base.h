@@ -12,37 +12,37 @@
  */
 #pragma once
 
-#include <vector>
-#include <string>
 #include <algorithm>
-#include "utils/utils.h"
-#include "utils/graph.h"
-#include "core/status.h"
-#include "core/logging.h"
-#include "core/work_request.h"
+#include <string>
+#include <vector>
 #include "comm/communicator.h"
-#include "transport/tcp/socket.h"
-#include "transport/channel.h"
+#include "core/logging.h"
+#include "core/status.h"
+#include "core/work_request.h"
 #include "transport/adapter.h"
-#include "transport/tcp/tcp_channel.h"
+#include "transport/channel.h"
+#include "transport/tcp/socket.h"
 #include "transport/tcp/tcp_adapter.h"
+#include "transport/tcp/tcp_channel.h"
+#include "utils/graph.h"
+#include "utils/utils.h"
 #ifdef RDC_USE_RDMA
-#include "transport/rdma/rdma_channel.h"
 #include "transport/rdma/rdma_adapter.h"
+#include "transport/rdma/rdma_channel.h"
 #endif
 namespace MPI {
 // MPI data type to be compatible with existing MPI interface
 class Datatype {
-public:
+   public:
     size_t type_size;
     explicit Datatype(size_t type_size) : type_size(type_size) {}
 };
-}
+}  // namespace MPI
 namespace rdc {
 namespace comm {
 /*! \brief implementation of basic Allreduce comm */
 class Communicator : public ICommunicator {
-public:
+   public:
     Communicator();
     Communicator(const std::string& name);
     Communicator(const Communicator& other);
@@ -52,7 +52,7 @@ public:
     /*!
      * \brief Create a new communicator which takes its own channels
      * \param name communicator name
-    */
+     */
     virtual void NewCommunicator(const std::string& name) override;
     // shutdown the comm
     virtual void Shutdown();
@@ -61,14 +61,14 @@ public:
      * \param name parameter name
      * \param val parameter value
      */
-    virtual void SetParam(const char *name, const char *val);
+    virtual void SetParam(const char* name, const char* val);
     /*!
      * \brief print the msg in the tracker_,
-     *    this function can be used to communicate the information of the progress to
-     *    the user who monitors the tracker_
-     * \param msg message to be printed in the tracker_
+     *    this function can be used to communicate the information of the
+     * progress to the user who monitors the tracker_ \param msg message to be
+     * printed in the tracker_
      */
-    virtual void TrackerPrint(const std::string &msg) override;
+    virtual void TrackerPrint(const std::string& msg) override;
     virtual ICommunicator* GetCommunicator(const std::string& name) override {
         if (name == kWorldCommName) {
             return this;
@@ -79,9 +79,7 @@ public:
     }
 
     /*! \brief get rank */
-    virtual int GetRank() const override {
-        return rank_;
-    }
+    virtual int GetRank() const override { return rank_; }
     /*! \brief get rank */
     virtual int GetWorldSize() const override {
         if (world_size_ == -1) return 1;
@@ -92,29 +90,27 @@ public:
         return tracker_uri_ != "NULL";
     }
     /*! \brief get rank */
-    virtual std::string GetHost(void) const override {
-        return host_uri_;
-    }
+    virtual std::string GetHost(void) const override { return host_uri_; }
     /*!
      *   \brief blocking send
      *  \param sendbuf_ buffer need to  send
      *  \param nbytes buffer size in bytes
      *  \param dest destination rank
-    */
+     */
     void Send(Buffer sendbuf_, int dest) override;
     /*!
      *   \brief blocking send
      *  \param sendbuf_ buffer need to  send
      *  \param nbytes buffer size in bytes
      *  \param dest destination rank
-    */
+     */
     void Recv(Buffer recvbuf_, int src) override;
     WorkCompletion ISend(Buffer sendbuf_, int dest) override;
     WorkCompletion IRecv(Buffer recvbuf_, int src) override;
     /*! \brief barrier all nodes*/
     void Barrier() override;
-    void Lock();
-    void UnLock();
+    void Exclude();
+    void UnExclude();
     /*! \brief register this communicator to tracker */
     void Register();
     /*!
@@ -125,8 +121,8 @@ public:
      * \param count number of elements to be reduced
      * \param reducer reduce function
      */
-    virtual void Allreduce(Buffer sendrecvbuf_, ReduceFunction reducer)
-            override {
+    virtual void Allreduce(Buffer sendrecvbuf_,
+                           ReduceFunction reducer) override {
         if (world_size_ == 1 || world_size_ == -1) return;
         TryAllreduce(sendrecvbuf_, reducer);
     }
@@ -148,44 +144,45 @@ public:
     /*!
      * \brief load latest check point
      * \param global_model pointer to the globally shared model/state
-     *   when calling this function, the caller need to gauranttees that global_model
-     *   is the same in all nodes
-     * \param local_model pointer to local model, that is specific to current node/rank
-     *   this can be NULL when no local model is needed
+     *   when calling this function, the caller need to gauranttees that
+     * global_model is the same in all nodes \param local_model pointer to local
+     * model, that is specific to current node/rank this can be NULL when no
+     * local model is needed
      *
      * \return the version number of check point loaded
      *
      * \sa CheckPoint, VersionNumber
      */
     virtual int LoadCheckPoint(Serializable* global_model,
-            Serializable* local_model = nullptr) override {
+                               Serializable* local_model = nullptr) override {
         return 0;
     }
     /*!
      * \brief checkpoint the model, meaning we finished a stage of execution
-     *  every time we call check point, there is a version number which will increase by one
+     *  every time we call check point, there is a version number which will
+     * increase by one
      *
      * \param global_model pointer to the globally shared model/state
-     *   when calling this function, the caller need to gauranttees that global_model
-     *   is the same in all nodes
-     * \param local_model pointer to local model, that is specific to current node/rank
-     *   this can be NULL when no local state is needed
+     *   when calling this function, the caller need to gauranttees that
+     * global_model is the same in all nodes \param local_model pointer to local
+     * model, that is specific to current node/rank this can be NULL when no
+     * local state is needed
      */
     virtual void CheckPoint(const Serializable* global_model,
-            const Serializable* local_model = NULL) override {
+                            const Serializable* local_model = NULL) override {
         version_number += 1;
     }
     /*!
-     * \brief This function can be used to replace CheckPoint for global_model only,
-     *   when certain condition is met(see detailed expplaination).
+     * \brief This function can be used to replace CheckPoint for global_model
+     * only, when certain condition is met(see detailed expplaination).
      *
      *
      * \param global_model pointer to the globally shared model/state
-     *   when calling this function, the caller need to gauranttees that global_model
-     *   is the same in all nodes
-     * \sa LoadCheckPoint, CheckPoint, VersionNumber
+     *   when calling this function, the caller need to gauranttees that
+     * global_model is the same in all nodes \sa LoadCheckPoint, CheckPoint,
+     * VersionNumber
      */
-    virtual void LazyCheckPoint(const Serializable *global_model) override {
+    virtual void LazyCheckPoint(const Serializable* global_model) override {
         version_number += 1;
     }
     /*!
@@ -193,9 +190,7 @@ public:
      *         which means how many calls to CheckPoint we made so far
      * \sa LoadCheckPoint, CheckPoint
      */
-    virtual int VersionNumber(void) const override{
-        return version_number;
-    }
+    virtual int VersionNumber(void) const override { return version_number; }
     /*!
      * \brief explicitly re-init everything before calling LoadCheckPoint
      *    call this function when ICommunicator throw an exception out,
@@ -205,9 +200,9 @@ public:
         LOG_F(ERROR, "InitAfterException: not implemented");
     }
     std::unique_ptr<ICommunicator> CreateGroup(
-            const std::vector<int>& ranks,
-            const std::string& group_name) override;
-protected:
+        const std::vector<int>& ranks, const std::string& group_name) override;
+
+   protected:
     /*!
      * \brief initialize connection to the tracker_
      * \return a channel that initializes the connection
@@ -220,24 +215,25 @@ protected:
      */
     void ReConnectLinks(const std::tuple<int, int>& num_conn_accept);
     /*!
-     * \brief perform in-place allreduce, on sendrecvbuf, this function can fail, and will return the cause of failure
+     * \brief perform in-place allreduce, on sendrecvbuf, this function can
+     * fail, and will return the cause of failure
      *
      * \param sendrecvbuf_ buffer for both sending and recving data
      * \param reducer reduce function
-     * \return this function can return Status::kSuccess, kSockError, kGetExcept, see void for details
+     * \return this function can return Status::kSuccess, kSockError,
+     * kGetExcept, see void for details
      */
     void TryAllreduce(Buffer sendrecvbuf_, ReduceFunction reducer);
 
-
     void TryReduceTree(Buffer sendrecvbuf_, Buffer reducebuf_,
-            ReduceFunction reducer, int root);
+                       ReduceFunction reducer, int root);
     /*!
-     * \brief broadcast data from root to all nodes, this function can fail,and will return the cause of failure
-     * \param sendrecvbuf_ buffer for both sending and receiving data
-     * \param size the size of the data to be broadcasted
-     * \param root the root worker id to broadcast the data
-     * \return this function can return Status::kSuccess, kSockError, kGetExcept, see void for details
-     * \sa void
+     * \brief broadcast data from root to all nodes, this function can fail,and
+     * will return the cause of failure \param sendrecvbuf_ buffer for both
+     * sending and receiving data \param size the size of the data to be
+     * broadcasted \param root the root worker id to broadcast the data \return
+     * this function can return Status::kSuccess, kSockError, kGetExcept, see
+     * void for details \sa void
      */
     void TryBroadcast(Buffer sendrecvbuf_, int root);
 
@@ -249,23 +245,22 @@ protected:
      * \param type_nbytes the unit number of bytes the type have
      * \param count number of elements to be reduced
      * \param reducer reduce function
-     * \return this function can return Status::kSuccess, kSockError, kGetExcept, see void for details
-     * \sa void
+     * \return this function can return Status::kSuccess, kSockError,
+     * kGetExcept, see void for details \sa void
      */
     void TryAllreduceTree(Buffer sendrecvbuf_, ReduceFunction reducer);
     /*!
-     * \brief internal Allgather function, each node have a segment of data in the ring of sendrecvbuf,
-     *  the data provided by current node k is [slice_begin, slice_end),
-     *  the next node's segment must start with slice_end
-     *  after the call of Allgather, sendrecvbuf_ contains all the contents including all segments
-     *  use a ring based algorithm
+     * \brief internal Allgather function, each node have a segment of data in
+     * the ring of sendrecvbuf, the data provided by current node k is
+     * [slice_begin, slice_end), the next node's segment must start with
+     * slice_end after the call of Allgather, sendrecvbuf_ contains all the
+     * contents including all segments use a ring based algorithm
      *
-     * \param sendrecvbufs_ buffers for both sending and receiving data, each node holds one chunk of
-     * \buffer at begin, buffers will be passed in the ring
-     * \param type_nbytes the unit number of bytes the type have
-     * \param count counts of type hold in buffers
-     * \return this function can return Status::kSuccess, kSockError, kGetExcept, see void for details
-     * \sa void
+     * \param sendrecvbufs_ buffers for both sending and receiving data, each
+     * node holds one chunk of \buffer at begin, buffers will be passed in the
+     * ring \param type_nbytes the unit number of bytes the type have \param
+     * count counts of type hold in buffers \return this function can return
+     * Status::kSuccess, kSockError, kGetExcept, see void for details \sa void
      */
     void TryAllgatherRing(std::vector<Buffer> sendrecvbufs_);
     /*!
@@ -298,18 +293,14 @@ protected:
      */
     void TryAllreduceRing(Buffer sendrecvbuf_, ReduceFunction reducer);
 
-    std::shared_ptr<TcpSocket> get_trakcer() const {
-        return this->tracker_;
-    }
+    std::shared_ptr<TcpSocket> get_trakcer() const { return this->tracker_; }
     void set_tracker(const std::shared_ptr<TcpSocket>& tracker) {
         this->tracker_ = tracker;
     }
     void set_worker_port(const int& worker_port) {
         this->worker_port_ = worker_port;
     }
-    void set_name(const std::string& name) {
-        this->name_ = name;
-    }
+    void set_name(const std::string& name) { this->name_ = name; }
     //---- data structure related to model ----
     // my name
     std::string name_;
@@ -337,7 +328,7 @@ protected:
     graph::UndirectedGraph<int> tree_map_;
     // all the links in the reduction tree connection
     std::vector<IChannel*> tree_links;
-    // the rank of neighbors 
+    // the rank of neighbors
     std::map<int, int> tree_neighbors_;
     int num_neighbors_;
     // pointer to links in the ring

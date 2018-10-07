@@ -21,7 +21,7 @@ from threading import Thread
 from threading import Lock
 from threading import Condition
 from enum import Enum
-
+import traceback
 from topo import TopoHelper
 """
 Extension of socket to handle recv and send of special data
@@ -94,10 +94,10 @@ class TrackerHandler:
                 self.handle_register()
             elif self.cmd == 'barrier':
                 self.handle_barrier()
-            elif self.cmd == 'lock':
-                self.handle_lock()
-            elif self.cmd == 'unlock':
-                self.handle_unlock()
+            elif self.cmd == 'exclude':
+                self.handle_exclude()
+            elif self.cmd == 'unexclude':
+                self.handle_unexclude()
             elif self.cmd == 'shutdown':
                 return False
             self.state = State.FIN
@@ -189,34 +189,38 @@ class TrackerHandler:
     '''A distributed lock impletentation, only communicator or group
     with same name can continue, otherwise will be blocked
     '''
-    def handle_lock(self):
+    def handle_exclude(self):
         comm = self.recvstr()
-        self.tracker.comm_cond.acquire()
-        while comm != self.tracker.last_comm:
-            if self.tracker.last_comm is None:
+        self.tracker.comm_lock.acquire()
+        if self.tracker.last_comm != comm:
+            if self.tracker.last_comm == None:
                 self.tracker.last_comm = comm
             else:
-                if self.tracker.last_comm != comm:
-                    logging.info(comm)
+                if not self.tracker.comm_added[comm]:
                     self.tracker.pending_comms.add(comm)
-                    self.tracker.comm_cond.wait()
-                else:
-                    break
-        self.tracker.comm_cond.release()
-        self.sendstr('lock_done')
-    def handle_unlock(self):
+                    self.tracker.comm_added[comm] = True
+            self.sendstr('exclude_undone')
+            self.tracker.comm_lock.release()
+        else:
+            self.sendstr('exclude_done')
+            self.tracker.comm_lock.release()
+    def handle_unexclude(self):
         comm = self.recvstr()
         self.tracker.comm_cond.acquire()
         self.tracker.lock_counter += 1
-        if self.tracker.lock_counter != len(\
-                self.tracker.name_to_ranks[comm]):
+        if self.tracker.lock_counter != self.tracker.nworker:
             self.tracker.comm_cond.wait()
         else:
             self.tracker.lock_counter = 0
-            self.tracker.last_comm = None
+            self.tracker.comm_lock.acquire()
+            if len(self.tracker.pending_comms):
+                self.tracker.last_comm = self.tracker.pending_comms.pop()
+            else:
+                self.tracker.last_comm = None
+            self.tracker.comm_lock.release()
             self.tracker.comm_cond.notify_all()
         self.tracker.comm_cond.release()
-        self.sendstr('unlock_done')
+        self.sendstr('unexclude_done')
     def handle_barrier(self):
         name = self.recvstr()
         self.tracker.name_to_barrier_conds[name].acquire()
@@ -224,25 +228,23 @@ class TrackerHandler:
         if self.tracker.name_to_barrier_counter[name] != \
                 self.tracker.nworker:
             self.tracker.name_to_barrier_conds[name].wait()
-            self.sendstr("barrier_done")
         else:
             self.tracker.name_to_barrier_counter[name] = 0
             self.tracker.name_to_barrier_conds[name].notify_all()
-            self.sendstr("barrier_done")
         self.tracker.name_to_barrier_conds[name].release()
+        self.sendstr("barrier_done")
     def handle_register(self):
         name = self.recvstr()
-        self.name = name
+        self.tracker.register_lock.acquire()
         if name not in self.tracker.names:
             self.tracker.names.add(name)
             self.tracker.name_to_ranks[name] = set()
             self.tracker.name_to_barrier_counter[name] = 0
-            self.tracker.name_to_barrier_conds[name] = \
-                    threading.Condition()
-            self.tracker.name_to_barrier_locks[name] = \
-                    threading.Lock()
+            self.tracker.name_to_barrier_conds[name] = Condition()
+            self.tracker.name_to_barrier_locks[name] = Lock()
+            self.tracker.comm_added[name] = False
         self.tracker.name_to_ranks[name].add(self.rank)
-
+        self.tracker.register_lock.release()
     def recvint(self):
         return self.sock.recvint()
     def recvstr(self):
@@ -266,8 +268,10 @@ class Tracker:
         self.addrs = dict()
 
         # communicator name associated members
+        # register related
         self.names = set()
         self.name_to_ranks = dict()
+        self.register_lock = Lock()
         self.last_rank = 0
 
         self.worker_id_to_ranks = dict()
@@ -284,6 +288,9 @@ class Tracker:
         # distributed lock related
         self.last_comm = None
         self.pending_comms = set()
+        self.comm_added = dict()
+        self.comm_lock = Lock()
+
         self.lock_counter = 0
         self.comm_cond = Condition()
         # construct initial tree map
@@ -402,7 +409,8 @@ def config_logger(args):
     if 'log_file' not in args or args.log_file is None:
         logging.basicConfig(format=FORMAT, level = level)
     else:
-        logging.basicConfig(format=FORMAT, level = level, filename = args.log_file)
+        logging.basicConfig(format=FORMAT, level = level, 
+                filename = args.log_file, filemode = 'w')
         console = logging.StreamHandler()
         console.setFormatter(logging.Formatter(FORMAT))
         console.setLevel(level)

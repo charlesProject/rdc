@@ -1,9 +1,9 @@
 #ifdef RDC_USE_RDMA
 #include "transport/rdma/rdma_adapter.h"
-#include "transport/rdma/rdma_utils.h"
-#include "transport/rdma/rdma_memory_mgr.h"
-#include "core/threadpool.h"
 #include "core/logging.h"
+#include "core/threadpool.h"
+#include "transport/rdma/rdma_memory_mgr.h"
+#include "transport/rdma/rdma_utils.h"
 
 namespace rdc {
 
@@ -14,8 +14,7 @@ RdmaAdapter::RdmaAdapter() {
     this->listen_sock_.reset(new TcpSocket);
     this->set_ready(false);
     this->set_finished(false);
-    poll_thread_ = utils::make_unique<std::thread>(
-                  [this] { PollForever(); });
+    poll_thread_ = utils::make_unique<std::thread>([this] { PollForever(); });
 }
 RdmaAdapter::~RdmaAdapter() {
     this->set_finished(true);
@@ -36,21 +35,23 @@ void RdmaAdapter::InitRdmaContext() {
 
     CHECK_NOTNULL(event_channel_ = ibv_create_comp_channel(context_));
 
-    CHECK_NOTNULL(completion_queue_ = ibv_create_cq(context_,
-        kNumCompQueueEntries, context_, event_channel_, 0));
+    CHECK_NOTNULL(completion_queue_ =
+                      ibv_create_cq(context_, kNumCompQueueEntries, context_,
+                                    event_channel_, 0));
     // notify at creation
     CHECK_F(!ibv_req_notify_cq(completion_queue_, 0),
-        "Failed to request CQ notification");
-    //shared queue related
+            "Failed to request CQ notification");
+    // shared queue related
     if (Env::Get()->GetEnv("RDC_RDMA_USE_SRQ", 1)) {
         use_srq_ = true;
         ibv_srq_init_attr sqa;
         std::memset(&sqa, 0, sizeof(ibv_srq_init_attr));
         sqa.srq_context = this->context_;
-        sqa.attr.max_wr = Env::Get()->GetEnv("RDC_RDMA_MAX_WR",
-                                        kNumCompQueueEntries);
+        sqa.attr.max_wr =
+            Env::Get()->GetEnv("RDC_RDMA_MAX_WR", kNumCompQueueEntries);
         sqa.attr.max_sge = 16;
-        this->shared_receive_queue_ = ibv_create_srq(this->protection_domain_, &sqa);
+        this->shared_receive_queue_ =
+            ibv_create_srq(this->protection_domain_, &sqa);
         CHECK_NOTNULL(shared_receive_queue_);
     } else {
         use_srq_ = false;
@@ -72,7 +73,8 @@ void RdmaAdapter::ExitRdmaContext() {
     CHECK_EQ(ibv_close_device(context_), 0);
 }
 void RdmaAdapter::PollForever() {
-    while(!ready()) {}
+    while (!ready()) {
+    }
     for (;;) {
         if (finished()) {
             return;
@@ -90,10 +92,10 @@ void RdmaAdapter::PollForever() {
         CHECK_GE_F(num_entries, 0, "poll CQ failed");
         for (auto i = 0; i < num_entries; i++) {
             auto wc = wcs[i];
-            CHECK_EQ_F(wc.status, IBV_WC_SUCCESS,
-                       "%s %d", ibv_wc_status_str(wc.status),wc.status);
-            auto& work_req = WorkRequestManager::Get()->
-                            GetWorkRequest(wc.wr_id);
+            CHECK_EQ_F(wc.status, IBV_WC_SUCCESS, "%s %d",
+                       ibv_wc_status_str(wc.status), wc.status);
+            auto& work_req =
+                WorkRequestManager::Get()->GetWorkRequest(wc.wr_id);
             LOG(INFO) << GetRank() << " : " << wc.wr_id << " : " << num_entries;
             size_t len = 0;
             if (work_req.work_type() == kRecv) {
@@ -102,11 +104,11 @@ void RdmaAdapter::PollForever() {
                 len = work_req.nbytes();
             }
             if (work_req.AddBytes(len)) {
-                auto channel_info = work_req.template
-                    extra_data<RdmaChannelInfo>();
+                auto channel_info =
+                    work_req.template extra_data<RdmaChannelInfo>();
                 if (channel_info.buf_pinned) {
                     RdmaMemoryMgr::Get()->RemoveMemoryRegion(work_req.ptr(),
-                        work_req.nbytes());
+                                                             work_req.nbytes());
                 }
                 work_req.Notify();
             }
@@ -119,7 +121,6 @@ int RdmaAdapter::Listen(const uint32_t& tcp_port) {
     listen_sock_->Listen();
     return 0;
 }
-
 
 IChannel* RdmaAdapter::Accept() {
     // accept the connection$

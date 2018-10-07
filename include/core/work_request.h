@@ -1,33 +1,40 @@
 #pragma once
 #include <unistd.h>
-#include <cstring>
 #include <atomic>
-#include <thread>
+#include <condition_variable>
+#include <cstring>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
-#include <condition_variable>
-#include "utils/utils.h"
-#include "utils/lock_utils.h"
 #include "core/any.h"
-#include "core/status.h"
 #include "core/logging.h"
+#include "core/status.h"
+#include "utils/lock_utils.h"
+#include "utils/utils.h"
 namespace rdc {
 enum WorkType : uint32_t {
     kSend,
     kRecv,
 };
 struct WorkRequest {
-    WorkRequest(): done_(false), completed_bytes_(0) {};
+    WorkRequest() : done_(false), completed_bytes_(0){};
+    WorkRequest(const uint64_t& req_id, const WorkType& work_type, void* ptr,
+                const size_t& size)
+        : req_id_(req_id),
+          work_type_(work_type),
+          done_(false),
+          ptr_(ptr),
+          size_in_bytes_(size),
+          completed_bytes_(0) {}
     WorkRequest(const uint64_t& req_id, const WorkType& work_type,
-        void* ptr, const size_t& size) :
-            req_id_(req_id), work_type_(work_type), done_(false),
-            ptr_(ptr), size_in_bytes_(size), completed_bytes_(0) {}
-    WorkRequest(const uint64_t& req_id, const WorkType& work_type,
-        const void* ptr, const size_t& size) :
-            req_id_(req_id), work_type_(work_type), done_(false),
-            ptr_(const_cast<void*>(ptr)), size_in_bytes_(size),
-            completed_bytes_(0) {}
+                const void* ptr, const size_t& size)
+        : req_id_(req_id),
+          work_type_(work_type),
+          done_(false),
+          ptr_(const_cast<void*>(ptr)),
+          size_in_bytes_(size),
+          completed_bytes_(0) {}
 
     ~WorkRequest() = default;
 
@@ -51,18 +58,10 @@ struct WorkRequest {
         return *this;
     }
 
-    bool operator()() {
-        return done_;
-    }
-    bool done() {
-        return done_;
-    }
-    void set_done(const bool& done) {
-        done_ = done;
-    }
-    bool status() const {
-        return status_;
-    }
+    bool operator()() { return done_; }
+    bool done() { return done_; }
+    void set_done(const bool& done) { done_ = done; }
+    bool status() const { return status_; }
     void set_status(const bool& status) {
         status_ = status;
         return;
@@ -75,31 +74,19 @@ struct WorkRequest {
         }
         return false;
     }
-    size_t nbytes() const {
-        return size_in_bytes_;
-    }
-    size_t completed_bytes() const {
-        return completed_bytes_;
-    }
-    size_t remain_nbytes() const {
-        return size_in_bytes_ - completed_bytes_;
-    }
-    uint64_t id() const {
-        return req_id_;
-    }
-    WorkType work_type() const {
-        return work_type_;
-    }
-    void* ptr() {
-      return ptr_;
-    }
+    size_t nbytes() const { return size_in_bytes_; }
+    size_t completed_bytes() const { return completed_bytes_; }
+    size_t remain_nbytes() const { return size_in_bytes_ - completed_bytes_; }
+    uint64_t id() const { return req_id_; }
+    WorkType work_type() const { return work_type_; }
+    void* ptr() { return ptr_; }
     template <typename T>
     T* ptr_at(const size_t& pos) {
         return reinterpret_cast<T*>(ptr_) + pos;
     }
     void Wait() {
         std::unique_lock<std::mutex> lock(done_lock_);
-        done_cond_.wait(lock, [this] { return done_;});
+        done_cond_.wait(lock, [this] { return done_; });
     }
     void Notify() {
         done_lock_.lock();
@@ -115,7 +102,8 @@ struct WorkRequest {
     void extra_data() const {
         return any_cast<T>(extra_data_);
     }
-private:
+
+   private:
     uint64_t req_id_;
     WorkType work_type_;
     bool done_;
@@ -131,11 +119,11 @@ private:
 struct WorkRequestManager {
     std::unordered_map<uint64_t, WorkRequest> all_work_reqs;
     WorkRequestManager() {
-       store_lock_ = utils::make_unique<utils::SpinLock>();
-       id_lock_ = utils::make_unique<utils::SpinLock>();
-       cond_lock_ = utils::make_unique<std::mutex>();
-       cond_ = utils::make_unique<std::condition_variable>();
-       cur_req_id_ = 0;
+        store_lock_ = utils::make_unique<utils::SpinLock>();
+        id_lock_ = utils::make_unique<utils::SpinLock>();
+        cond_lock_ = utils::make_unique<std::mutex>();
+        cond_ = utils::make_unique<std::condition_variable>();
+        cur_req_id_ = 0;
     }
     static WorkRequestManager* Get() {
         static WorkRequestManager mgr;
@@ -147,7 +135,7 @@ struct WorkRequestManager {
         store_lock_->unlock();
     }
     uint64_t NewWorkRequest(const WorkType& work_type, void* ptr,
-            const size_t& size) {
+                            const size_t& size) {
         id_lock_->lock();
         cur_req_id_++;
         WorkRequest work_req(cur_req_id_, work_type, ptr, size);
@@ -156,7 +144,7 @@ struct WorkRequestManager {
         return work_req.id();
     }
     uint64_t NewWorkRequest(const WorkType& work_type, const void* ptr,
-            const size_t& size) {
+                            const size_t& size) {
         id_lock_->lock();
         cur_req_id_++;
         WorkRequest work_req(cur_req_id_, work_type, ptr, size);
@@ -167,7 +155,7 @@ struct WorkRequestManager {
 
     template <typename T>
     uint64_t NewWorkRequest(const WorkType& work_type, void* ptr,
-            const size_t& size, const T& extra_data) {
+                            const size_t& size, const T& extra_data) {
         id_lock_->lock();
         cur_req_id_++;
         WorkRequest work_req(cur_req_id_, work_type, ptr, size);
@@ -178,7 +166,7 @@ struct WorkRequestManager {
     }
     template <typename T>
     uint64_t NewWorkRequest(const WorkType& work_type, const void* ptr,
-            const size_t& size, const T& extra_data) {
+                            const size_t& size, const T& extra_data) {
         id_lock_->lock();
         cur_req_id_++;
         WorkRequest work_req(cur_req_id_, work_type, ptr, size);
@@ -195,21 +183,15 @@ struct WorkRequestManager {
     bool AddBytes(const uint64_t& req_id, size_t nbytes) {
         return all_work_reqs[req_id].AddBytes(nbytes);
     }
-    bool Contain(const uint64_t& req_id) {
-        return all_work_reqs.count(req_id);
-    }
+    bool Contain(const uint64_t& req_id) { return all_work_reqs.count(req_id); }
     void Wait(const uint64_t& req_id) {
         store_lock_->lock();
         auto& work_req = all_work_reqs[req_id];
         store_lock_->unlock();
         work_req.Wait();
     }
-    void Notify() {
-        cond_->notify_all();
-    }
-    bool done(const uint64_t& req_id) {
-        return all_work_reqs[req_id].done();
-    }
+    void Notify() { cond_->notify_all(); }
+    bool done(const uint64_t& req_id) { return all_work_reqs[req_id].done(); }
     void set_done(const uint64_t& req_id, const bool& done) {
         all_work_reqs[req_id].set_done(done);
     }
@@ -237,30 +219,27 @@ struct WorkRequestManager {
     std::unique_ptr<std::condition_variable> cond_;
 };
 
-
 class WorkCompletion {
-public:
-    WorkCompletion(const uint64_t& id) : id_(id), done_(false),
-        completed_bytes_(0) {}
+   public:
+    WorkCompletion(const uint64_t& id)
+        : id_(id), done_(false), completed_bytes_(0) {}
     WorkCompletion(const WorkCompletion& other) = default;
-//    WorkCompletion(WorkCompletion&& other) = default;
+    //    WorkCompletion(WorkCompletion&& other) = default;
     uint64_t id_;
     bool done_;
     size_t completed_bytes_;
     bool status_;
     bool is_status_setted_;
-    uint64_t id() const {
-        return id_;
-    }
-    bool done()  {
+    uint64_t id() const { return id_; }
+    bool done() {
         if (!done_) {
-          done_ = WorkRequestManager::Get()->done(id_);
+            done_ = WorkRequestManager::Get()->done(id_);
         }
         return done_;
     }
     bool operator()() {
         if (!done_) {
-          done_ = WorkRequestManager::Get()->done(id_);
+            done_ = WorkRequestManager::Get()->done(id_);
         }
         return done_;
     }
@@ -282,7 +261,7 @@ public:
 };
 
 class ChainWorkCompletion {
-public:
+   public:
     void Push(const WorkCompletion& work_comp) {
         work_comps_.emplace_back(work_comp);
     }
@@ -309,7 +288,8 @@ public:
         }
         return true;
     }
-private:
+
+   private:
     std::vector<WorkCompletion> work_comps_;
 };
-}
+}  // namespace rdc

@@ -1,18 +1,18 @@
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <string.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <unistd.h>
-#include <string.h>
-#include <fcntl.h>
 
 #include <chrono>
 #include <cstring>
 
+#include "core/status.h"
 #include "transport/channel.h"
 #include "transport/tcp/tcp_adapter.h"
 #include "transport/tcp/tcp_channel.h"
-#include "core/status.h"
 
 namespace rdc {
 TcpChannel::TcpChannel() {
@@ -40,7 +40,7 @@ TcpChannel::TcpChannel(TcpAdapter* adapter, const ChannelKind& kind) {
 }
 
 TcpChannel::TcpChannel(TcpAdapter* adapter, const int& sockfd,
-        const ChannelKind& kind) {
+                       const ChannelKind& kind) {
     this->adapter_ = adapter;
     this->sock_ = TcpSocket(sockfd);
     this->set_kind(kind);
@@ -49,7 +49,7 @@ TcpChannel::TcpChannel(TcpAdapter* adapter, const int& sockfd,
     this->adapter_->AddChannel(this);
 }
 TcpChannel::TcpChannel(TcpAdapter* adapter, const TcpSocket& sock,
-        const ChannelKind& kind) {
+                       const ChannelKind& kind) {
     this->adapter_ = adapter;
     this->sock_ = sock;
     this->set_kind(kind);
@@ -84,14 +84,14 @@ bool TcpChannel::Connect(const std::string& hostname, const uint32_t& port) {
 }
 
 WorkCompletion TcpChannel::ISend(const Buffer sendbuf) {
-    uint64_t send_req_id = WorkRequestManager::Get()->
-        NewWorkRequest(kSend, sendbuf.addr(), sendbuf.size_in_bytes());
+    uint64_t send_req_id = WorkRequestManager::Get()->NewWorkRequest(
+        kSend, sendbuf.addr(), sendbuf.size_in_bytes());
     WorkCompletion wc(send_req_id);
-    auto& send_req = WorkRequestManager::Get()->
-        GetWorkRequest(send_req_id);
+    auto& send_req = WorkRequestManager::Get()->GetWorkRequest(send_req_id);
     do {
-        const auto& write_nbytes = sock_.Send(send_req.ptr_at<uint8_t>(
-                    send_req.completed_bytes()), send_req.remain_nbytes());
+        const auto& write_nbytes =
+            sock_.Send(send_req.ptr_at<uint8_t>(send_req.completed_bytes()),
+                       send_req.remain_nbytes());
         if (write_nbytes > 0) {
             if (send_req.AddBytes(write_nbytes)) {
                 send_req.Notify();
@@ -112,8 +112,8 @@ WorkCompletion TcpChannel::ISend(const Buffer sendbuf) {
     return wc;
 }
 WorkCompletion TcpChannel::IRecv(Buffer recvbuf) {
-    uint64_t recv_req_id = WorkRequestManager::Get()->
-        NewWorkRequest(kRecv, recvbuf.addr(), recvbuf.size_in_bytes());
+    uint64_t recv_req_id = WorkRequestManager::Get()->NewWorkRequest(
+        kRecv, recvbuf.addr(), recvbuf.size_in_bytes());
     WorkCompletion wc(recv_req_id);
     if (spin_) {
         recv_reqs_.NoLockPush(recv_req_id);
@@ -129,15 +129,16 @@ void TcpChannel::ReadCallback() {
             return;
         }
     } else {
-        if (!recv_reqs_.WaitAndPeek(recv_req_id,
-                std::chrono::milliseconds(kCommTimeoutMs))) {
+        if (!recv_reqs_.WaitAndPeek(
+                recv_req_id, std::chrono::milliseconds(kCommTimeoutMs))) {
             return;
         }
     }
-    WorkRequest& recv_req = WorkRequestManager::Get()->
-        GetWorkRequest(recv_req_id);
-    auto read_nbytes = sock_.Recv(recv_req.ptr_at<uint8_t>(
-                recv_req.completed_bytes()), recv_req.remain_nbytes());
+    WorkRequest& recv_req =
+        WorkRequestManager::Get()->GetWorkRequest(recv_req_id);
+    auto read_nbytes =
+        sock_.Recv(recv_req.ptr_at<uint8_t>(recv_req.completed_bytes()),
+                   recv_req.remain_nbytes());
     if (read_nbytes <= 0 && errno != EAGAIN) {
         WorkRequestManager::Get()->set_status(recv_req.id(), false);
     }
@@ -158,15 +159,16 @@ void TcpChannel::WriteCallback() {
             return;
         }
     } else {
-        if (!send_reqs_.WaitAndPeek(send_req_id,
-                    std::chrono::milliseconds(kCommTimeoutMs))) {
+        if (!send_reqs_.WaitAndPeek(
+                send_req_id, std::chrono::milliseconds(kCommTimeoutMs))) {
             return;
         }
     }
-    WorkRequest& send_req = WorkRequestManager::Get()->
-        GetWorkRequest(send_req_id);
-    auto write_nbytes = sock_.Send(send_req.ptr_at<uint8_t>(
-                send_req.completed_bytes()), send_req.remain_nbytes());
+    WorkRequest& send_req =
+        WorkRequestManager::Get()->GetWorkRequest(send_req_id);
+    auto write_nbytes =
+        sock_.Send(send_req.ptr_at<uint8_t>(send_req.completed_bytes()),
+                   send_req.remain_nbytes());
     if (write_nbytes <= 0 && errno != EAGAIN) {
         WorkRequestManager::Get()->set_status(send_req.id(), false);
     }
@@ -180,7 +182,6 @@ void TcpChannel::WriteCallback() {
     }
     return;
 }
-
 
 void TcpChannel::DeleteCarefulEvent(const ChannelKind& kind) {
     mu_.lock();
@@ -238,4 +239,4 @@ void TcpChannel::AddCarefulEvent(const ChannelKind& kind) {
     ModifyKind(this->kind());
     mu_.unlock();
 }
-}
+}  // namespace rdc

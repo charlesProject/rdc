@@ -1,29 +1,29 @@
+#include "transport/tcp/tcp_adapter.h"
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <string.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
 #include <unistd.h>
-#include <string.h>
-#include <fcntl.h>
-#include <unordered_map>
-#include <functional>
-#include <vector>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
 #include <algorithm>
 #include <atomic>
-#include "transport/tcp/tcp_adapter.h"
-#include "transport/tcp/tcp_channel.h"
-#include "core/threadpool.h"
+#include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <thread>
+#include <unordered_map>
+#include <vector>
 #include "core/logging.h"
 #include "core/status.h"
+#include "core/threadpool.h"
 #include "sys/error.h"
+#include "transport/tcp/tcp_channel.h"
 static const uint32_t kNumMaxEvents = 1024;
 
 namespace rdc {
 static inline uint32_t channel_kind_to_epoll_event(
-        const ChannelKind& channel_kind) {
-    switch(channel_kind) {
+    const ChannelKind& channel_kind) {
+    switch (channel_kind) {
         case kRead:
             return EPOLLIN;
         case kWrite:
@@ -38,7 +38,7 @@ static inline uint32_t channel_kind_to_epoll_event(
 }
 
 static inline std::string channel_kind_to_string(ChannelKind channel_kind) {
-    switch(channel_kind) {
+    switch (channel_kind) {
         case kRead:
             return "read";
         case kWrite:
@@ -52,13 +52,10 @@ static inline std::string channel_kind_to_string(ChannelKind channel_kind) {
     }
 }
 
-
 static inline bool IsRead(uint32_t events) {
     return (events & EPOLLIN || events & EPOLLPRI);
 }
-static inline bool IsWrite(uint32_t events) {
-    return events & EPOLLOUT;
-}
+static inline bool IsWrite(uint32_t events) { return events & EPOLLOUT; }
 
 static inline bool IsReadOnly(uint32_t events) {
     return IsRead(events) && !IsWrite(events);
@@ -72,8 +69,7 @@ static inline bool IsReadWrite(uint32_t events) {
 }
 
 static inline bool IsError(uint32_t events) {
-    return (events & EPOLLERR || events & EPOLLHUP
-            || events & EPOLLRDHUP);
+    return (events & EPOLLERR || events & EPOLLHUP || events & EPOLLRDHUP);
 }
 TcpAdapter::TcpAdapter() {
     this->set_backend(kTcp);
@@ -85,14 +81,13 @@ TcpAdapter::TcpAdapter() {
 }
 
 void TcpAdapter::PollForever() {
-    loop_thrd = std::unique_ptr<std::thread>(
-        new std::thread([this]() {
-          logging::set_thread_name("tcppoller");
-          LOG_F(INFO, "Tcp poller Started");
-          while (true) {
-              bool ret = Poll();
-              if (ret) break;
-          }
+    loop_thrd = std::unique_ptr<std::thread>(new std::thread([this]() {
+        logging::set_thread_name("tcppoller");
+        LOG_F(INFO, "Tcp poller Started");
+        while (true) {
+            bool ret = Poll();
+            if (ret) break;
+        }
     }));
 }
 TcpAdapter::~TcpAdapter() {
@@ -126,7 +121,7 @@ void TcpAdapter::RemoveChannel(TcpChannel* channel) {
 }
 
 void TcpAdapter::ModifyChannel(TcpChannel* channel,
-        const ChannelKind& target_kind) {
+                               const ChannelKind& target_kind) {
     epoll_event ev;
     std::memset(&ev, 0, sizeof(ev));
     ev.data.fd = channel->sockfd();
@@ -147,21 +142,22 @@ void TcpAdapter::Shutdown() {
         std::memset(&ev, 0, sizeof(ev));
         ev.data.fd = shutdown_fd_;
         ev.events |= flags;
-        epoll_ctl(this->epoll_fd_, EPOLL_CTL_ADD,
-                this->shutdown_fd_, &ev);
+        epoll_ctl(this->epoll_fd_, EPOLL_CTL_ADD, this->shutdown_fd_, &ev);
         write(pipe_fd[1], "shutdown", 9);
     }
     shutdown_lock_.unlock();
 }
 /**
-  * Function which processes the events from epoll_wait and calls the appropriate callbacks
-  * @note only process events once if you need to use an event loop use TcpAdapter_loop
-  * @return shutdown
-*/
+ * Function which processes the events from epoll_wait and calls the appropriate
+ * callbacks
+ * @note only process events once if you need to use an event loop use
+ * TcpAdapter_loop
+ * @return shutdown
+ */
 bool TcpAdapter::Poll() {
     epoll_event events[kNumMaxEvents];
-    int fds = epoll_wait(this->epoll_fd_, events,
-                            kNumMaxEvents, this->timeout_);
+    int fds =
+        epoll_wait(this->epoll_fd_, events, kNumMaxEvents, this->timeout_);
     for (int i = 0; i < fds; i++) {
         TcpChannel* channel = nullptr;
         lock_.lock();
@@ -171,9 +167,8 @@ bool TcpAdapter::Poll() {
             // shutdown or error
             if (IsError(events[i].events)) {
                 int32_t error = GetLastSocketError(events[i].data.fd);
-                LOG(ERROR) << "OOPS";
                 channel->set_error_detected(true);
-                LOG_F(ERROR, "%s",  sys::FormatError(error).c_str());
+                LOG_F(ERROR, "%s", sys::FormatError(error).c_str());
                 return true;
             }
 
@@ -200,12 +195,11 @@ bool TcpAdapter::Poll() {
             // when write possible
             if (IsWrite(events[i].events)) {
                 channel->DeleteCarefulEvent(ChannelKind::kWrite);
-                ThreadPool::Get()->AddTask([channel] {
-                    channel->WriteCallback();
-                });
+                ThreadPool::Get()->AddTask(
+                    [channel] { channel->WriteCallback(); });
             }
-        } // if
-    } // for
+        }  // if
+    }      // for
     if (shutdown_) {
         return true;
     }
@@ -224,4 +218,4 @@ TcpChannel* TcpAdapter::Accept() {
     const auto& sock = listen_sock_.Accept();
     return new TcpChannel(this, sock, kRead);
 }
-}
+}  // namespace rdc

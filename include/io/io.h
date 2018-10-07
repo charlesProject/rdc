@@ -7,13 +7,12 @@
 #include <inttypes.h>
 #include <cstdio>
 #include <cstring>
-#include <string>
-#include <vector>
 #include <istream>
 #include <ostream>
 #include <streambuf>
+#include <string>
+#include <vector>
 #include "core/logging.h"
-
 
 /*! \brief namespace for rdc */
 namespace rdc {
@@ -21,7 +20,7 @@ namespace rdc {
  * \brief interface of stream I/O for serialization
  */
 class Stream {  // NOLINT(*)
-public:
+   public:
     /*!
      * \brief reads data from a stream
      * \param ptr pointer to a memory buffer
@@ -39,16 +38,17 @@ public:
     virtual ~Stream(void) {}
     /*!
      * \brief generic factory function
-     *  create an stream, the stream will close the underlying files upon deletion
+     *  create an stream, the stream will close the underlying files upon
+     * deletion
      *
      * \param uri the uri of the input currently we support
      *            hdfs://, s3://, and file:// by default file:// will be used
      * \param flag can be "w", "r", "a"
      * \param allow_null whether NULL can be returned, or directly report error
-     * \return the created stream, can be NULL when allow_null == true and file do not exist
+     * \return the created stream, can be NULL when allow_null == true and file
+     * do not exist
      */
-    static Stream *Create(const char *uri,
-                          const char* const flag,
+    static Stream *Create(const char *uri, const char *const flag,
                           bool allow_null = false);
     // helper functions to write/read different data structures
     /*!
@@ -61,7 +61,7 @@ public:
      * \param data data to be written
      * \tparam T the data type to be written
      */
-    template<typename T>
+    template <typename T>
     inline void Write(const T &data);
     /*!
      * \brief loads a data from stream.
@@ -73,13 +73,13 @@ public:
      * \param out_data place holder of data to be deserialized
      * \return whether the load was successful
      */
-    template<typename T>
+    template <typename T>
     inline bool Read(T *out_data);
 };
 
 /*! \brief interface of i/o stream that support seek */
-class SeekStream: public Stream {
-public:
+class SeekStream : public Stream {
+   public:
     // virtual destructor
     virtual ~SeekStream(void) {}
     /*! \brief seek to certain position of the file */
@@ -93,26 +93,26 @@ public:
      * \param uri the uri of the input currently we support
      *            hdfs://, s3://, and file:// by default file:// will be used
      * \param allow_null whether NULL can be returned, or directly report error
-     * \return the created stream, can be NULL when allow_null == true and file do not exist
+     * \return the created stream, can be NULL when allow_null == true and file
+     * do not exist
      */
-    static SeekStream *CreateForRead(const char *uri,
-                                     bool allow_null = false);
+    static SeekStream *CreateForRead(const char *uri, bool allow_null = false);
 };
 
 /*! \brief interface for serializable objects */
 class Serializable {
-public:
+   public:
     /*! \brief virtual destructor */
     virtual ~Serializable() {}
     /*!
-    * \brief load the model from a stream
-    * \param fi stream where to load the model from
-    */
+     * \brief load the model from a stream
+     * \param fi stream where to load the model from
+     */
     virtual void Load(Stream *fi) = 0;
     /*!
-    * \brief saves the model to a stream
-    * \param fo stream where to save the model to
-    */
+     * \brief saves the model to a stream
+     * \param fo stream where to save the model to
+     */
     virtual void Save(Stream *fo) const = 0;
 };
 
@@ -124,13 +124,13 @@ public:
  *  see InputSplit::Create for definition of record
  */
 class InputSplit {
-public:
+   public:
     /*! \brief a blob of memory region */
     struct Blob {
-      /*! \brief points to start of the memory region */
-      void *dptr;
-      /*! \brief size of the memory region */
-      size_t size;
+        /*! \brief points to start of the memory region */
+        void *dptr;
+        /*! \brief size of the memory region */
+        size_t size;
     };
     /*!
      * \brief hint the inputsplit how large the chunk size
@@ -198,10 +198,8 @@ public:
      * \param type type of record
      * \return a new input split
      */
-    static InputSplit* Create(const char *uri,
-                              unsigned part_index,
-                              unsigned num_parts,
-                              const char *type);
+    static InputSplit *Create(const char *uri, unsigned part_index,
+                              unsigned num_parts, const char *type);
 };
 
 /*!
@@ -210,21 +208,18 @@ public:
  *
  */
 class ostream : public std::basic_ostream<char> {
-public:
+   public:
     /*!
      * \brief construct std::ostream type
      * \param stream the Stream output to be used
      * \param buffer_size internal streambuf size
      */
-    explicit ostream(Stream *stream,
-                     size_t buffer_size = (1 << 10))
+    explicit ostream(Stream *stream, size_t buffer_size = (1 << 10))
         : std::basic_ostream<char>(NULL), buf_(buffer_size) {
         this->set_stream(stream);
     }
     // explictly synchronize the buffer
-    virtual ~ostream() {
-       buf_.pubsync();
-    }
+    virtual ~ostream() { buf_.pubsync(); }
     /*!
      * \brief set internal stream to be stream, reset states
      * \param stream new stream as output
@@ -235,14 +230,12 @@ public:
     }
 
     /*! \return how many bytes we written so far */
-    inline size_t bytes_written(void) const {
-        return buf_.bytes_out();
-    }
+    inline size_t bytes_written(void) const { return buf_.bytes_out(); }
 
-private:
-  // internal streambuf
+   private:
+    // internal streambuf
     class OutBuf : public std::streambuf {
-    public:
+       public:
         explicit OutBuf(size_t buffer_size)
             : stream_(NULL), buffer_(buffer_size), bytes_out_(0) {
             if (buffer_size == 0) buffer_.resize(2);
@@ -251,7 +244,8 @@ private:
         inline void set_stream(Stream *stream);
 
         inline size_t bytes_out() const { return bytes_out_; }
-    private:
+
+       private:
         /*! \brief internal stream by StreamBuf */
         Stream *stream_;
         /*! \brief internal buffer */
@@ -281,16 +275,15 @@ private:
  * \endcode
  */
 class istream : public std::basic_istream<char> {
- public:
+   public:
     /*!
      * \brief construct std::ostream type
      * \param stream the Stream output to be used
      * \param buffer_size internal buffer size
      */
-    explicit istream(Stream *stream,
-                     size_t buffer_size = (1 << 10))
+    explicit istream(Stream *stream, size_t buffer_size = (1 << 10))
         : std::basic_istream<char>(NULL), buf_(buffer_size) {
-      this->set_stream(stream);
+        this->set_stream(stream);
     }
     virtual ~istream() {}
     /*!
@@ -302,34 +295,30 @@ class istream : public std::basic_istream<char> {
         this->rdbuf(&buf_);
     }
     /*! \return how many bytes we read so far */
-    inline size_t bytes_read(void) const {
-      return buf_.bytes_read();
-    }
+    inline size_t bytes_read(void) const { return buf_.bytes_read(); }
 
    private:
     // internal streambuf
-   class InBuf : public std::streambuf {
-     public:
-      explicit InBuf(size_t buffer_size)
-          : stream_(NULL), bytes_read_(0),
-            buffer_(buffer_size) {
-        if (buffer_size == 0) buffer_.resize(2);
-      }
-      // set stream to the buffer
-      inline void set_stream(Stream *stream);
-      // return how many bytes read so far
-      inline size_t bytes_read(void) const {
-        return bytes_read_;
-      }
-     private:
-      /*! \brief internal stream by StreamBuf */
-      Stream *stream_;
-      /*! \brief how many bytes we read so far */
-      size_t bytes_read_;
-      /*! \brief internal buffer */
-      std::vector<char> buffer_;
-      // override underflow
-      inline int_type underflow();
+    class InBuf : public std::streambuf {
+       public:
+        explicit InBuf(size_t buffer_size)
+            : stream_(NULL), bytes_read_(0), buffer_(buffer_size) {
+            if (buffer_size == 0) buffer_.resize(2);
+        }
+        // set stream to the buffer
+        inline void set_stream(Stream *stream);
+        // return how many bytes read so far
+        inline size_t bytes_read(void) const { return bytes_read_; }
+
+       private:
+        /*! \brief internal stream by StreamBuf */
+        Stream *stream_;
+        /*! \brief how many bytes we read so far */
+        size_t bytes_read_;
+        /*! \brief internal buffer */
+        std::vector<char> buffer_;
+        // override underflow
+        inline int_type underflow();
     };
     /*! \brief input buffer */
     InBuf buf_;
@@ -338,11 +327,11 @@ class istream : public std::basic_istream<char> {
 #include "io/serializer.h"
 namespace rdc {
 // implementations of inline functions
-template<typename T>
+template <typename T>
 inline void Stream::Write(const T &data) {
     serializer::Handler<T>::Write(this, data);
 }
-template<typename T>
+template <typename T>
 inline bool Stream::Read(T *out_data) {
     return serializer::Handler<T>::Read(this, out_data);
 }
@@ -396,37 +385,31 @@ inline int istream::InBuf::underflow() {
 
 /*! \brief fixed size memory buffer */
 struct MemoryFixSizeBuffer : public SeekStream {
-public:
+   public:
     MemoryFixSizeBuffer(void *p_buffer, size_t buffer_size)
-        : p_buffer_(reinterpret_cast<char*>(p_buffer)),
+        : p_buffer_(reinterpret_cast<char *>(p_buffer)),
           buffer_size_(buffer_size) {
-      curr_ptr_ = 0;
+        curr_ptr_ = 0;
     }
     virtual ~MemoryFixSizeBuffer(void) {}
     virtual size_t Read(void *ptr, size_t size) {
-      CHECK_F(curr_ptr_ + size <= buffer_size_,
-                    "read can not have position excceed buffer length");
-      size_t nread = std::min(buffer_size_ - curr_ptr_, size);
-      if (nread != 0) std::memcpy(ptr, p_buffer_ + curr_ptr_, nread);
-      curr_ptr_ += nread;
-      return nread;
+        CHECK_F(curr_ptr_ + size <= buffer_size_,
+                "read can not have position excceed buffer length");
+        size_t nread = std::min(buffer_size_ - curr_ptr_, size);
+        if (nread != 0) std::memcpy(ptr, p_buffer_ + curr_ptr_, nread);
+        curr_ptr_ += nread;
+        return nread;
     }
     virtual void Write(const void *ptr, size_t size) {
-      if (size == 0) return;
-      CHECK_F(curr_ptr_ + size <=  buffer_size_,
-                    "write position exceed fixed buffer size");
-      std::memcpy(p_buffer_ + curr_ptr_, ptr, size);
-      curr_ptr_ += size;
+        if (size == 0) return;
+        CHECK_F(curr_ptr_ + size <= buffer_size_,
+                "write position exceed fixed buffer size");
+        std::memcpy(p_buffer_ + curr_ptr_, ptr, size);
+        curr_ptr_ += size;
     }
-    virtual void Seek(size_t pos) {
-      curr_ptr_ = static_cast<size_t>(pos);
-    }
-    virtual size_t Tell(void) {
-      return curr_ptr_;
-    }
-    virtual bool AtEnd(void) const {
-      return curr_ptr_ == buffer_size_;
-    }
+    virtual void Seek(size_t pos) { curr_ptr_ = static_cast<size_t>(pos); }
+    virtual size_t Tell(void) { return curr_ptr_; }
+    virtual bool AtEnd(void) const { return curr_ptr_ == buffer_size_; }
 
    private:
     /*! \brief in memory buffer */
@@ -437,40 +420,34 @@ public:
     size_t curr_ptr_;
 };  // class MemoryFixSizeBuffer
 
-  /*! \brief a in memory buffer that can be read and write as stream interface */
+/*! \brief a in memory buffer that can be read and write as stream interface */
 struct MemoryBufferStream : public SeekStream {
-public:
-    explicit MemoryBufferStream(std::string *p_buffer)
-        : p_buffer_(p_buffer) {
-      curr_ptr_ = 0;
+   public:
+    explicit MemoryBufferStream(std::string *p_buffer) : p_buffer_(p_buffer) {
+        curr_ptr_ = 0;
     }
     virtual ~MemoryBufferStream(void) {}
     virtual size_t Read(void *ptr, size_t size) {
-      CHECK_F(curr_ptr_ <= p_buffer_->length(),
-                    "read can not have position excceed buffer length");
-      size_t nread = std::min(p_buffer_->length() - curr_ptr_, size);
-      if (nread != 0) std::memcpy(ptr, &(*p_buffer_)[0] + curr_ptr_, nread);
-      curr_ptr_ += nread;
-      return nread;
+        CHECK_F(curr_ptr_ <= p_buffer_->length(),
+                "read can not have position excceed buffer length");
+        size_t nread = std::min(p_buffer_->length() - curr_ptr_, size);
+        if (nread != 0) std::memcpy(ptr, &(*p_buffer_)[0] + curr_ptr_, nread);
+        curr_ptr_ += nread;
+        return nread;
     }
     virtual void Write(const void *ptr, size_t size) {
-      if (size == 0) return;
-      if (curr_ptr_ + size > p_buffer_->length()) {
-        p_buffer_->resize(curr_ptr_+size);
-      }
-      std::memcpy(&(*p_buffer_)[0] + curr_ptr_, ptr, size);
-      curr_ptr_ += size;
+        if (size == 0) return;
+        if (curr_ptr_ + size > p_buffer_->length()) {
+            p_buffer_->resize(curr_ptr_ + size);
+        }
+        std::memcpy(&(*p_buffer_)[0] + curr_ptr_, ptr, size);
+        curr_ptr_ += size;
     }
-    virtual void Seek(size_t pos) {
-      curr_ptr_ = static_cast<size_t>(pos);
-    }
-    virtual size_t Tell(void) {
-      return curr_ptr_;
-    }
-    virtual bool AtEnd(void) const {
-      return curr_ptr_ == p_buffer_->length();
-    }
-private:
+    virtual void Seek(size_t pos) { curr_ptr_ = static_cast<size_t>(pos); }
+    virtual size_t Tell(void) { return curr_ptr_; }
+    virtual bool AtEnd(void) const { return curr_ptr_ == p_buffer_->length(); }
+
+   private:
     /*! \brief in memory buffer */
     std::string *p_buffer_;
     /*! \brief current pointer */
