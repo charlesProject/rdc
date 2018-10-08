@@ -1,18 +1,20 @@
 #pragma once
+#include <algorithm>
+#include <cassert>
 #include <vector>
 std::vector<int> GetNeighbors(const int& rank, const uint32_t& num_workers) {
     auto next = rank + 1;
     std::vector<int> neighbors;
     // parent
     if (next > 1) {
-        neighbors.emplce_back(next / 2 - 1);
+        neighbors.emplace_back(next / 2 - 1);
     }
     // children
     if (next * 2 - 1 < num_workers) {
         neighbors.emplace_back(next * 2 - 1);
     }
     if (next * 2 < num_workers) {
-        neighbors.emplace_back(rank * 2);
+        neighbors.emplace_back(next * 2);
     }
     return neighbors;
 }
@@ -20,7 +22,7 @@ std::vector<int> GetNeighbors(const int& rank, const uint32_t& num_workers) {
 std::tuple<std::unordered_map<int, std::vector<int>>,
            std::unordered_map<int, int>>
 GetTree(const uint32_t& num_workers) {
-    std::unordered_map<int, std::vector<int>> tree_mp;
+    std::unordered_map<int, std::vector<int>> tree_map;
     std::unordered_map<int, int> parent_map;
     for (auto r = 0U; r < num_workers; r++) {
         tree_map[r] = GetNeighbors(r, num_workers);
@@ -30,8 +32,8 @@ GetTree(const uint32_t& num_workers) {
 }
 
 std::vector<int> FindShareRing(
-    const std::unordered_map<int, std::vector<int>>& tree_map,
-    const std::unordered_map<int, int>& parent_map, const int& rank) {
+    std::unordered_map<int, std::vector<int>> tree_map,
+    std::unordered_map<int, int> parent_map, const int& rank) {
     const auto& neighbors = tree_map[rank];
     std::vector<int> children;
     const auto& parent = parent_map[rank];
@@ -61,20 +63,20 @@ std::vector<int> FindShareRing(
     return share_ring;
 }
 
-std::vector<int, std::pair<int, int>> GetRing(
-    const std::unordered_map<int, std::vector<int>>& tree_map,
-    const std::unordered_map<int, int>& parent_map) {
+std::unordered_map<int, std::pair<int, int>> GetRing(
+    std::unordered_map<int, std::vector<int>> tree_map,
+    std::unordered_map<int, int> parent_map) {
     assert(parent_map[0] == -1);
     auto rlist = FindShareRing(tree_map, parent_map, 0);
     assert(rlist.size() == tree_map.size());
-    std::vector<int, std::pair<int>, int> ring_map;
+    std::unordered_map<int, std::pair<int, int>> ring_map;
+    const auto& num_workers = tree_map.size();
     for (auto r = 0U; r < num_workers; r++) {
         auto rprev = (r + num_workers - 1) % num_workers;
         auto rnext = (r + 1) % num_workers;
         ring_map[rlist[r]] = std::make_pair(rlist[rprev], rlist[rnext]);
     }
     return ring_map;
-}
 }
 
 std::tuple<std::unordered_map<int, std::vector<int>>,
@@ -89,7 +91,7 @@ GetLinkMap(const uint32_t& num_workers) {
     rmap[0] = 0;
     int k = 0;
     for (auto i = 0U; i < num_workers - 1; i++) {
-        k = ring_map[k][1];
+        k = ring_map[k].second;
         rmap[k] = i + 1;
     }
     std::unordered_map<int, std::vector<int>> _tree_map;
@@ -101,7 +103,7 @@ GetLinkMap(const uint32_t& num_workers) {
     }
     for (auto item : tree_map) {
         for (auto x : item.second) {
-            _tree_map[rmap[item.first]].emplace_back(x);
+            _tree_map[rmap[item.first]].emplace_back(rmap[x]);
         }
     }
     for (auto item : parent_map) {
