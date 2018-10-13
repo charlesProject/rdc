@@ -62,6 +62,7 @@ class Communicator : public ICommunicator {
      * \param val parameter value
      */
     virtual void SetParam(const char* name, const char* val);
+    void BuildTopology(const int32_t& world_size);
     /*!
      * \brief print the msg in the tracker_,
      *    this function can be used to communicate the information of the
@@ -353,7 +354,7 @@ class Communicator : public ICommunicator {
     // current rank
     int rank_;
     // world size
-    int world_size_;
+    int32_t world_size_;
     // connect retry time
     int connect_retry_;
     // children communicators

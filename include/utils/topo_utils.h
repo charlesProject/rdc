@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cassert>
 #include <vector>
-std::vector<int> GetNeighbors(const int& rank, const uint32_t& num_workers) {
+std::vector<int> GetNeighbors(const int& rank, const int32_t& num_workers) {
     auto next = rank + 1;
     std::vector<int> neighbors;
     // parent
@@ -21,7 +21,7 @@ std::vector<int> GetNeighbors(const int& rank, const uint32_t& num_workers) {
 
 std::tuple<std::unordered_map<int, std::vector<int>>,
            std::unordered_map<int, int>>
-GetTree(const uint32_t& num_workers) {
+GetTree(const int32_t& num_workers) {
     std::unordered_map<int, std::vector<int>> tree_map;
     std::unordered_map<int, int> parent_map;
     for (auto r = 0U; r < num_workers; r++) {
@@ -49,7 +49,7 @@ std::vector<int> FindShareRing(
         return share_ring;
     }
     share_ring.emplace_back(rank);
-    uint32_t counter = 0;
+    int32_t counter = 0;
     for (const auto& child : children) {
         auto vlist = FindShareRing(tree_map, parent_map, child);
         counter++;
@@ -82,7 +82,7 @@ std::unordered_map<int, std::pair<int, int>> GetRing(
 std::tuple<std::unordered_map<int, std::vector<int>>,
            std::unordered_map<int, int>,
            std::unordered_map<int, std::pair<int, int>>>
-GetLinkMap(const uint32_t& num_workers) {
+GetLinkMap(const int32_t& num_workers) {
     auto tree_and_parent_map = GetTree(num_workers);
     auto tree_map = std::get<0>(tree_and_parent_map);
     auto parent_map = std::get<1>(tree_and_parent_map);

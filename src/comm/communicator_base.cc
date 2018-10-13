@@ -16,6 +16,7 @@
 #include "sys/network.h"
 #include "transport/channel.h"
 #include "utils/string_utils.h"
+#include "utils/topo_utils.h"
 #ifdef RDC_USE_RDMA
 #include "transport/rdma/rdma_channel.h"
 #endif
@@ -101,6 +102,7 @@ void Communicator::Init(int argc, char* argv[]) {
     worker_port_ = network::GetAvailablePort();
     this->host_uri_ = ip;
     std::tie(num_conn_, num_accept_) = this->ConnectTracker();
+    this->BuildTopology(world_size_);
     // get information from tracker
     //    conn_lock_.lock();
     this->ReConnectLinks(std::make_tuple(num_conn_, num_accept_));
@@ -123,6 +125,7 @@ void Communicator::NewCommunicator(const std::string& name) {
     // connection in current communicator
     lock.unlock();
     //    conn_lock_.lock();
+    this->BuildTopology(world_size_);
     comm->ReConnectLinks(std::make_tuple(num_conn_, num_accept_));
     //    conn_lock_.unlock();
     // add this communicator to the goverment of main communicator
@@ -232,6 +235,43 @@ void Communicator::SetParam(const char* name, const char* val) {
         connect_retry_ = atoi(val);
     }
 }
+void Communicator::BuildTopology(const int32_t& world_size) {
+    auto link_map = GetLinkMap(world_size);
+    auto tree_map = std::get<0>(link_map);
+    auto parent_map = std::get<1>(link_map);
+    auto ring_map = std::get<2>(link_map);
+    parent_rank_ = parent_map[rank_];
+    VLOG_F(2, "parent rank %d", parent_rank_);
+    auto neighbors = tree_map[rank_];
+    num_neighbors_ = neighbors.size();
+    VLOG_F(2, "number nerighbors %d", num_neighbors_);
+    for (int i = 0; i < num_neighbors_; ++i) {
+        int nrank = neighbors[i];
+        // tracker_->RecvInt(nrank);
+        VLOG_F(2, "neighbor %d", nrank);
+        tree_neighbors_[nrank] = 1;
+    }
+    auto ring = ring_map[rank_];
+    prev_rank_ = ring.first;
+    VLOG_F(2, "previous rank %d", prev_rank_);
+    next_rank_ = ring.second;
+    VLOG_F(2, "next rank %d", next_rank_);
+    // get the global tree map
+    std::vector<int> nodes(world_size);
+    std::vector<std::pair<int, int>> edges;
+    uint32_t node_index = 0;
+    for (const auto& item : tree_map) {
+        int from = item.first;
+        nodes[node_index] = from;
+        int num_neighbors = item.second.size();
+        for (int j = 0; j < num_neighbors; j++) {
+            int to = item.second[j];
+            edges.emplace_back(std::make_pair(from, to));
+        }
+        node_index++;
+    }
+    tree_map_.Create(nodes, edges);
+}
 /*!
  * \brief initialize connection to the tracker
  * \return a socket that initializes the connection
@@ -276,46 +316,14 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd) {
                                             host_uri_.c_str(), worker_port_);
         tracker_->SendStr(host_addr);
 
-        tracker_->RecvInt(world_size_), VLOG_F(2, "workd size %d", world_size_);
+        tracker_->RecvInt(world_size_);
+        VLOG_F(2, "workd size %d", world_size_);
         // recieve my new rank from tracker
         tracker_->RecvInt(rank_);
         VLOG_F(2, "new rank %d", rank_);
         logging::add_file(str_utils::SPrintf("log/%d", rank_).c_str(),
                           logging::Truncate, logging::Verbosity_MAX);
         logging::g_stderr_verbosity = 1;
-        // send back socket listening port to tracker
-        // get new ranks
-        tracker_->RecvInt(parent_rank_);
-        VLOG_F(2, "parent rank %d", parent_rank_);
-        tracker_->RecvInt(num_neighbors_);
-        VLOG_F(2, "number nerighbors %d", num_neighbors_);
-        for (int i = 0; i < num_neighbors_; ++i) {
-            int nrank;
-            tracker_->RecvInt(nrank);
-            VLOG_F(2, "%d", nrank);
-            tree_neighbors_[nrank] = 1;
-        }
-        tracker_->RecvInt(prev_rank_);
-        VLOG_F(2, "previous rank %d", prev_rank_);
-        tracker_->RecvInt(next_rank_);
-
-        VLOG_F(2, "next rank %d", next_rank_);
-        // get the global tree map
-        std::vector<int> nodes(this->world_size_);
-        std::vector<std::pair<int, int>> edges;
-        for (int i = 0; i < this->world_size_; i++) {
-            int from = 0;
-            tracker_->RecvInt(from);
-            nodes[i] = from;
-            int num_neighbors = 0;
-            tracker_->RecvInt(num_neighbors);
-            for (int j = 0; j < num_neighbors; j++) {
-                int to = 0;
-                tracker_->RecvInt(to);
-                edges.emplace_back(std::make_pair(from, to));
-            }
-        }
-        tree_map_.Create(nodes, edges);
         // get number of to connect and number of to accept nodes from tracker
         tracker_->RecvInt(num_conn_);
 
