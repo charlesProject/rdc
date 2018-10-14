@@ -83,10 +83,10 @@ bool TcpChannel::Connect(const std::string& hostname, const uint32_t& port) {
     return true;
 }
 
-WorkCompletion TcpChannel::ISend(const Buffer sendbuf) {
+WorkCompletion* TcpChannel::ISend(const Buffer sendbuf) {
     uint64_t send_req_id = WorkRequestManager::Get()->NewWorkRequest(
         kSend, sendbuf.addr(), sendbuf.size_in_bytes());
-    WorkCompletion wc(send_req_id);
+    auto wc = WorkCompletion::New(send_req_id);
     auto& send_req = WorkRequestManager::Get()->GetWorkRequest(send_req_id);
     do {
         const auto& write_nbytes =
@@ -96,8 +96,7 @@ WorkCompletion TcpChannel::ISend(const Buffer sendbuf) {
             if (send_req.AddBytes(write_nbytes)) {
                 send_req.Notify();
             }
-        } else if (write_nbytes <= 0 && errno == EAGAIN) {
-            LOG(ERROR) << "ERROR";
+        } else if (write_nbytes == -1 && errno == EAGAIN) {
             if (spin_) {
                 send_reqs_.NoLockPush(send_req_id);
             } else {
@@ -107,14 +106,20 @@ WorkCompletion TcpChannel::ISend(const Buffer sendbuf) {
             break;
         } else {
             WorkRequestManager::Get()->set_status(send_req.id(), false);
+            if (spin_) {
+                send_reqs_.NoLockPop();
+            } else {
+                send_req.Notify();
+                send_reqs_.Pop();
+            }
         }
     } while (!send_req.done());
     return wc;
 }
-WorkCompletion TcpChannel::IRecv(Buffer recvbuf) {
+WorkCompletion* TcpChannel::IRecv(Buffer recvbuf) {
     uint64_t recv_req_id = WorkRequestManager::Get()->NewWorkRequest(
         kRecv, recvbuf.addr(), recvbuf.size_in_bytes());
-    WorkCompletion wc(recv_req_id);
+    auto wc = WorkCompletion::New(recv_req_id);
     if (spin_) {
         recv_reqs_.NoLockPush(recv_req_id);
     } else {
@@ -134,16 +139,24 @@ void TcpChannel::ReadCallback() {
             return;
         }
     }
-    WorkRequest& recv_req =
-        WorkRequestManager::Get()->GetWorkRequest(recv_req_id);
+    auto& recv_req = WorkRequestManager::Get()->GetWorkRequest(recv_req_id);
+    if (this->error_detected()) {
+        WorkRequestManager::Get()->set_status(recv_req_id, false);
+        if (spin_) {
+            recv_reqs_.NoLockPop();
+        } else {
+            recv_req.Notify();
+            recv_reqs_.Pop();
+        }
+    }
     auto read_nbytes =
         sock_.Recv(recv_req.ptr_at<uint8_t>(recv_req.completed_bytes()),
                    recv_req.remain_nbytes());
-    if (read_nbytes <= 0 && errno != EAGAIN) {
+    if (read_nbytes == -1 && errno != EAGAIN) {
         WorkRequestManager::Get()->set_status(recv_req.id(), false);
     }
     if (recv_req.AddBytes(read_nbytes)) {
-        if (spin_) {
+        if (this->spin()) {
             recv_reqs_.NoLockPop();
         } else {
             recv_req.Notify();
@@ -153,7 +166,7 @@ void TcpChannel::ReadCallback() {
     return;
 }
 void TcpChannel::WriteCallback() {
-    uint64_t send_req_id;
+    uint64_t send_req_id = -1;
     if (this->spin()) {
         if (!send_reqs_.TryPeek(send_req_id)) {
             return;
@@ -164,12 +177,21 @@ void TcpChannel::WriteCallback() {
             return;
         }
     }
-    WorkRequest& send_req =
-        WorkRequestManager::Get()->GetWorkRequest(send_req_id);
+    auto& send_req = WorkRequestManager::Get()->GetWorkRequest(send_req_id);
+    if (this->error_detected()) {
+        WorkRequestManager::Get()->set_status(send_req_id, false);
+        if (this->spin()) {
+            send_reqs_.NoLockPop();
+        } else {
+            send_req.Notify();
+            send_reqs_.Pop();
+        }
+    }
+
     auto write_nbytes =
         sock_.Send(send_req.ptr_at<uint8_t>(send_req.completed_bytes()),
                    send_req.remain_nbytes());
-    if (write_nbytes <= 0 && errno != EAGAIN) {
+    if (write_nbytes == -1 && errno != EAGAIN) {
         WorkRequestManager::Get()->set_status(send_req.id(), false);
     }
     if (send_req.AddBytes(write_nbytes)) {

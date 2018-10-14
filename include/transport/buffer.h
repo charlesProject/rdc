@@ -3,18 +3,22 @@
 #include <infiniband/verbs.h>
 #include "transport/rdma/rdma_memory_mgr.h"
 #endif
-#include <typeinfo>
 #include "core/env.h"
 #include "core/logging.h"
+#include "core/object_pool.h"
 namespace rdc {
-class Buffer {
-   public:
+class Buffer : public ObjectPoolAllocatable<Buffer> {
+public:
     Buffer(){};
     Buffer(uint64_t size_in_bytes) : size_in_bytes_(size_in_bytes) {}
     Buffer(void* addr, uint64_t size_in_bytes)
         : Buffer(addr, size_in_bytes, 0, size_in_bytes) {}
     Buffer(const void* addr, uint64_t size_in_bytes)
         : Buffer(addr, size_in_bytes, 0, size_in_bytes) {}
+    Buffer(void* addr, uint64_t size_in_bytes, const bool& pinned)
+        : Buffer(addr, size_in_bytes, pinned, 0, size_in_bytes) {}
+    Buffer(const void* addr, uint64_t size_in_bytes, const bool& pinned)
+        : Buffer(addr, size_in_bytes, pinned, 0, size_in_bytes) {}
     Buffer(void* addr, uint64_t size_in_bytes, uint64_t start, uint64_t end)
         : Buffer(addr, size_in_bytes, start, end, false) {}
     Buffer(const void* addr, uint64_t size_in_bytes, uint64_t start,
@@ -126,7 +130,7 @@ class Buffer {
         addr_ = nullptr;
     }
 
-   private:
+private:
     void* addr_;
     uint64_t size_in_bytes_;
     bool is_mutable_;

@@ -22,8 +22,8 @@ public:
                const ChannelKind& type);
     virtual ~TcpChannel() override;
     bool Connect(const std::string& hostname, const uint32_t& port) override;
-    WorkCompletion ISend(Buffer sendbuf) override;
-    WorkCompletion IRecv(Buffer recvbuf) override;
+    WorkCompletion* ISend(Buffer sendbuf) override;
+    WorkCompletion* IRecv(Buffer recvbuf) override;
 
     void Close() override { sock_.Close(); }
 

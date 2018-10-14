@@ -1,19 +1,22 @@
+#pragma once
 #include <cstdlib>
 #include <mutex>
 #include <utility>
 #include <vector>
-
+#include "core/logging.h"
 namespace rdc {
 /*!
  * \brief Object pool for fast allocation and deallocation.
  */
 template <typename T>
 class ObjectPool {
-   public:
+public:
     /*!
      * \brief Destructor.
      */
     ~ObjectPool();
+    ObjectPool(const ObjectPool&) = delete;
+    ObjectPool(ObjectPool&&) = delete;
     /*!
      * \brief Create new object.
      * \return Pointer to the new object.
@@ -40,7 +43,7 @@ class ObjectPool {
      */
     static std::shared_ptr<ObjectPool> _GetSharedRef();
 
-   private:
+private:
     /*!
      * \brief Internal structure to hold pointers.
      */
@@ -81,7 +84,6 @@ class ObjectPool {
      * This function is not protected and must be called with caution.
      */
     void AllocateChunk();
-    DISALLOW_COPY_AND_ASSIGN(ObjectPool);
 };  // class ObjectPool
 
 /*!
@@ -94,14 +96,14 @@ struct ObjectPoolAllocatable {
      * \return Pointer to the new object.
      */
     template <typename... Args>
-    static T* New(Args&&... args);
+    static inline T* New(Args&&... args);
     /*!
      * \brief Delete an existing object.
      * \param ptr The pointer to delete.
      *
      * Make sure the pointer to delete is allocated from this pool.
      */
-    static void Delete(T* ptr);
+    static inline void Delete(T* ptr);
 };  // struct ObjectPoolAllocatable
 
 template <typename T>

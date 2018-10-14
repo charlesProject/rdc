@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include "core/any.h"
 #include "core/logging.h"
+#include "core/object_pool.h"
 #include "core/status.h"
 #include "utils/lock_utils.h"
 #include "utils/utils.h"
@@ -103,7 +104,7 @@ struct WorkRequest {
         return any_cast<T>(extra_data_);
     }
 
-   private:
+private:
     uint64_t req_id_;
     WorkType work_type_;
     bool done_;
@@ -219,12 +220,11 @@ struct WorkRequestManager {
     std::unique_ptr<std::condition_variable> cond_;
 };
 
-class WorkCompletion {
-   public:
+class WorkCompletion : public ObjectPoolAllocatable<WorkCompletion> {
+public:
     WorkCompletion(const uint64_t& id)
         : id_(id), done_(false), completed_bytes_(0) {}
     WorkCompletion(const WorkCompletion& other) = default;
-    //    WorkCompletion(WorkCompletion&& other) = default;
     uint64_t id_;
     bool done_;
     size_t completed_bytes_;
@@ -232,12 +232,6 @@ class WorkCompletion {
     bool is_status_setted_;
     uint64_t id() const { return id_; }
     bool done() {
-        if (!done_) {
-            done_ = WorkRequestManager::Get()->done(id_);
-        }
-        return done_;
-    }
-    bool operator()() {
         if (!done_) {
             done_ = WorkRequestManager::Get()->done(id_);
         }
@@ -260,36 +254,38 @@ class WorkCompletion {
     }
 };
 
-class ChainWorkCompletion {
-   public:
-    void Push(const WorkCompletion& work_comp) {
-        work_comps_.emplace_back(work_comp);
+class ChainWorkCompletion : public ObjectPoolAllocatable<ChainWorkCompletion> {
+public:
+    ~ChainWorkCompletion() {
+        for (auto& work_comp : this->work_comps_) {
+            WorkCompletion::Delete(work_comp);
+        }
     }
-    void operator<<(const WorkCompletion& work_comp) {
+    void Push(WorkCompletion* work_comp) {
         work_comps_.emplace_back(work_comp);
     }
     bool done() {
         bool done = false;
         for (auto& work_comp : work_comps_) {
-            done |= work_comp.done();
+            done |= work_comp->done();
         }
         return done;
     }
     void Wait() {
         for (auto& work_comp : work_comps_) {
-            work_comp.Wait();
+            work_comp->Wait();
         }
     }
     bool status() {
         for (auto& work_comp : work_comps_) {
-            if (work_comp.status() != true) {
-                return work_comp.status();
+            if (work_comp->status() != true) {
+                return work_comp->status();
             }
         }
         return true;
     }
 
-   private:
-    std::vector<WorkCompletion> work_comps_;
+private:
+    std::vector<WorkCompletion*> work_comps_;
 };
 }  // namespace rdc
