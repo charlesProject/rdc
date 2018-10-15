@@ -21,6 +21,11 @@ extern "C" {
  * */
 RDC_DLL void RdcNewBuffer(BufferHandle *buf, void *addr,
                           rdc_ulong size_in_bytes, bool pinned = false);
+
+/*!/breif Del created bufffer
+ *  /param buf handlle for the created buffer
+ * */
+RDC_DLL void RdcDelBuffer(BufferHandle buf);
 /*!/brief Create a new communicator
  * /param comm_name name for this communicator
  * */
