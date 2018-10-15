@@ -33,7 +33,7 @@
 namespace MPI {
 // MPI data type to be compatible with existing MPI interface
 class Datatype {
-   public:
+public:
     size_t type_size;
     explicit Datatype(size_t type_size) : type_size(type_size) {}
 };
@@ -42,18 +42,18 @@ namespace rdc {
 namespace comm {
 /*! \brief implementation of basic Allreduce comm */
 class Communicator : public ICommunicator {
-   public:
+public:
     Communicator();
     Communicator(const std::string& name);
     Communicator(const Communicator& other);
-    virtual ~Communicator() {}
+    virtual ~Communicator();
     // initialize the manager
     virtual void Init(int argc, char* argv[]);
     /*!
      * \brief Create a new communicator which takes its own channels
      * \param name communicator name
      */
-    virtual void NewCommunicator(const std::string& name) override;
+    virtual ICommunicator* NewCommunicator(const std::string& name) override;
     // shutdown the comm
     virtual void Shutdown();
     /*!
@@ -106,12 +106,16 @@ class Communicator : public ICommunicator {
      *  \param dest destination rank
      */
     void Recv(Buffer recvbuf_, int src) override;
-    WorkCompletion ISend(Buffer sendbuf_, int dest) override;
-    WorkCompletion IRecv(Buffer recvbuf_, int src) override;
+    WorkCompletion* ISend(Buffer sendbuf_, int dest) override;
+    WorkCompletion* IRecv(Buffer recvbuf_, int src) override;
     /*! \brief barrier all nodes*/
     void Barrier() override;
+    /*! \brief exclude communications with tracker by other communicator*/
     void Exclude();
+    /*! \brief unexclude communications with tracker by other communicator*/
     void UnExclude();
+    /*! \breif keep hearbeat with tracker*/
+    void Heartbeat();
     /*! \brief register this communicator to tracker */
     void Register();
     /*!
@@ -203,7 +207,7 @@ class Communicator : public ICommunicator {
     std::unique_ptr<ICommunicator> CreateGroup(
         const std::vector<int>& ranks, const std::string& group_name) override;
 
-   protected:
+protected:
     /*!
      * \brief initialize connection to the tracker_
      * \return a channel that initializes the connection
@@ -293,7 +297,7 @@ class Communicator : public ICommunicator {
      * \sa void
      */
     void TryAllreduceRing(Buffer sendrecvbuf_, ReduceFunction reducer);
-
+    // setter and getters
     std::shared_ptr<TcpSocket> get_trakcer() const { return this->tracker_; }
     void set_tracker(const std::shared_ptr<TcpSocket>& tracker) {
         this->tracker_ = tracker;
@@ -302,12 +306,19 @@ class Communicator : public ICommunicator {
         this->worker_port_ = worker_port;
     }
     void set_name(const std::string& name) { this->name_ = name; }
+    bool is_main_comm() const { return this->is_main_comm_; }
+    bool tracker_connected() const {
+        return this->tracker_connected_.load(std::memory_order_acquire);
+    }
+    void set_tracker_connected(const bool& tracker_connected) {
+        this->tracker_connected_.store(tracker_connected, std::memory_order_release);
+    }
     //---- data structure related to model ----
     // my name
     std::string name_;
     // channel for communication with tracker_
     std::shared_ptr<TcpSocket> tracker_;
-    bool tracker_connected_;
+    std::atomic<bool> tracker_connected_;
     bool tracker_closed_;
     std::shared_ptr<std::mutex> tracker_lock_;
     std::mutex conn_lock_;
@@ -364,6 +375,10 @@ class Communicator : public ICommunicator {
     int num_conn_, num_accept_;
     std::mutex comm_lock_;
     std::unordered_map<std::string, std::unique_ptr<Communicator>> sub_comms_;
+    // heartbeat related members
+    std::unique_ptr<std::thread> heartbeat_thrd_;
+    uint64_t last_heartbeat_timepoint_;
+    bool is_main_comm_;
 };
 }  // namespace comm
 }  // namespace rdc

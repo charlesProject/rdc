@@ -27,7 +27,7 @@ Communicator::Communicator(const std::string& name) {
     name_ = name;
     tracker_uri_ = "NULL";
     tracker_port_ = 9000;
-    tracker_connected_ = false;
+    tracker_connected_.store(false);
     tracker_closed_ = false;
     tracker_lock_ = std::make_shared<std::mutex>();
     host_uri_ = "";
@@ -42,6 +42,7 @@ Communicator::Communicator(const std::string& name) {
     // tracker URL
     err_link = nullptr;
     child_counter_ = 0;
+    is_main_comm_ = true;
     this->SetParam("rdc_reduce_buffer", "256MB");
     // setup possible enviroment variable of intrest
     env_vars_.push_back("rdc_reduce_buffer");
@@ -51,6 +52,8 @@ Communicator::Communicator(const std::string& name) {
     env_vars_.push_back("RDC_TRACKER_URI");
     env_vars_.push_back("RDC_TRACKER_PORT");
     env_vars_.push_back("WORKER_CONNECT_RETRY");
+    // heartbeat thread can only reside in main communicator
+    heartbeat_thrd_.reset(new std::thread(&Communicator::Heartbeat, this));
 }
 Communicator::Communicator() : Communicator(kWorldCommName) {}
 Communicator::Communicator(const Communicator& other) {
@@ -68,6 +71,12 @@ Communicator::Communicator(const Communicator& other) {
     num_accept_ = other.num_accept_;
     prev_rank_ = other.prev_rank_;
     next_rank_ = other.next_rank_;
+    is_main_comm_ = false;
+}
+Communicator::~Communicator() {
+    if (is_main_comm_) {
+        heartbeat_thrd_->join();
+    }
 }
 // initialization function
 void Communicator::Init(int argc, char* argv[]) {
@@ -109,19 +118,19 @@ void Communicator::Init(int argc, char* argv[]) {
     //    conn_lock_.unlock();
 }
 
-void Communicator::NewCommunicator(const std::string& name) {
+ICommunicator* Communicator::NewCommunicator(const std::string& name) {
     // increase volumn of threadpool
     if (GetAdapter()->backend() == kTcp) {
         ThreadPool::Get()->AddWorkers(Env::Get()->GetEnv("RDC_NUM_WORKERS", 0));
     }
     std::unique_lock<std::mutex> comm_lock(comm_lock_);
-    if (name == kWorldCommName) return;
-    if (sub_comms_.count(name)) return;
+    if (name == kWorldCommName) return nullptr;
+    if (sub_comms_.count(name)) return nullptr;
     comm_lock.unlock();
     auto comm = utils::make_unique<Communicator>(*this);
     comm->set_name(name);
     std::unique_lock<std::mutex> lock(*tracker_lock_);
-    tracker_cond_.wait(lock, [this] { return tracker_connected_; });
+    tracker_cond_.wait(lock, [this] { return this->tracker_connected(); });
     // connection in current communicator
     lock.unlock();
     //    conn_lock_.lock();
@@ -131,6 +140,7 @@ void Communicator::NewCommunicator(const std::string& name) {
     // add this communicator to the goverment of main communicator
     comm_lock.lock();
     this->sub_comms_[name] = std::move(comm);
+    return this->sub_comms_[name].get();
 }
 // register communicator to tracker
 void Communicator::Register() {
@@ -194,6 +204,20 @@ void Communicator::UnExclude() {
     tracker_lock_->unlock();
 }
 
+void Communicator::Heartbeat() {
+    auto heartbeat_interval = Env::Get()->GetEnv("RDC_HEARTBEAT_INTERVAL", 10);
+    // spin util connected to tracker
+    while (this->tracker_connected()) {
+        tracker_lock_->lock();
+        tracker_->SendStr("heartbeat");
+        std::string heartbeat_token;
+        tracker_->RecvStr(heartbeat_token);
+        std::this_thread::sleep_for(
+            std::chrono::microseconds(heartbeat_interval));
+        CHECK_EQ(heartbeat_token, "heartbeat_done");
+        tracker_lock_->unlock();
+    }
+}
 // util to parse data with unit suffix
 inline size_t ParseUnit(const char* name, const char* val) {
     char unit;
@@ -279,7 +303,7 @@ void Communicator::BuildTopology(const int32_t& world_size) {
 std::tuple<int, int> Communicator::ConnectTracker(const char* cmd) {
     // get information from tracker
     tracker_lock_->lock();
-    if (!tracker_connected_) {
+    if (!tracker_connected()) {
         tracker_ = std::make_shared<TcpSocket>();
         int retry = 0;
         do {
@@ -297,7 +321,7 @@ std::tuple<int, int> Communicator::ConnectTracker(const char* cmd) {
             }
             break;
         } while (true);
-        tracker_connected_ = true;
+        this->set_tracker_connected(true);
         // single node mode
         if (tracker_uri_ == "NULL") {
             rank_ = 0;
@@ -435,17 +459,20 @@ void Communicator::TryReduceTree(Buffer sendrecvbuf, Buffer reducebuf,
             send_to_node = neighbor;
         }
     }
-    ChainWorkCompletion wc;
     for (const auto& recv_from_node : recv_from_nodes) {
-        wc << all_links_[recv_from_node]->IRecv(reducebuf);
+        auto wc = all_links_[recv_from_node]->IRecv(reducebuf);
+        wc->Wait();
         reducer(reducebuf, sendrecvbuf);
+        WorkCompletion::Delete(wc);
     }
 
+    auto chain_wc = ChainWorkCompletion::New();
     if (send_to_node != -1) {
-        wc << all_links_[send_to_node]->ISend(sendrecvbuf);
+        auto wc = all_links_[send_to_node]->ISend(sendrecvbuf);
+        chain_wc->Push(wc);
     }
-    wc.Wait();
-
+    chain_wc->Wait();
+    ChainWorkCompletion::Delete(chain_wc);
     return;
 }
 void Communicator::TryBroadcast(Buffer sendrecvbuf, int root) {
@@ -461,14 +488,17 @@ void Communicator::TryBroadcast(Buffer sendrecvbuf, int root) {
             recv_from_node = neighbor;
         }
     }
-    ChainWorkCompletion wc;
+    auto chain_wc = ChainWorkCompletion::New();
     if (recv_from_node != -1) {
-        wc << all_links_[recv_from_node]->IRecv(sendrecvbuf);
+        auto wc = all_links_[recv_from_node]->IRecv(sendrecvbuf);
+        chain_wc->Push(wc);
     }
     for (const auto& send_to_node : send_to_nodes) {
-        wc << all_links_[send_to_node]->ISend(sendrecvbuf);
+        auto wc = all_links_[send_to_node]->ISend(sendrecvbuf);
+        chain_wc->Push(wc);
     }
-    wc.Wait();
+    chain_wc->Wait();
+    ChainWorkCompletion::Delete(chain_wc);
     return;
 }
 
@@ -501,19 +531,22 @@ void Communicator::TryAllgatherRing(std::vector<Buffer> sendrecvbufs) {
             finished = false;
         }
         if (finished) break;
-        ChainWorkCompletion wc;
+        auto chain_wc = ChainWorkCompletion::New();
         if (write_idx < read_idx && write_idx != stop_write_idx) {
             size_t start = write_idx % count_bufs;
-            wc << prev->ISend(sendrecvbufs[start]);
+            auto wc = prev->ISend(sendrecvbufs[start]);
+            chain_wc->Push(wc);
             write_idx++;
         }
         if (read_idx != stop_read_idx) {
             size_t start = read_idx % count_bufs;
-            wc << next->IRecv(sendrecvbufs[start]);
+            auto wc = next->IRecv(sendrecvbufs[start]);
+            chain_wc->Push(wc);
             //            wc.Wait();
             read_idx++;
         }
-        wc.Wait();
+        chain_wc->Wait();
+        ChainWorkCompletion::Delete(chain_wc);
     }
 }
 void Communicator::TryReduceScatterRing(Buffer sendrecvbuf, Buffer reducebuf,
@@ -547,15 +580,16 @@ void Communicator::TryReduceScatterRing(Buffer sendrecvbuf, Buffer reducebuf,
             finished = false;
         }
         if (finished) break;
-        ChainWorkCompletion wc;
+        auto chain_wc = ChainWorkCompletion::New();
         if (write_idx < reduce_idx && write_idx != stop_write_idx) {
             uint64_t write_pos = write_idx % n;
             uint64_t write_size =
                 (ranges[write_pos].second - ranges[write_pos].first) *
                 type_nbytes;
             uint64_t write_start = ranges[write_pos].first * type_nbytes;
-            wc << prev->ISend(
+            auto wc = prev->ISend(
                 sendrecvbuf.Slice(write_start, write_start + write_size));
+            chain_wc->Push(wc);
             write_idx++;
         }
         if (read_idx != stop_read_idx) {
@@ -564,9 +598,10 @@ void Communicator::TryReduceScatterRing(Buffer sendrecvbuf, Buffer reducebuf,
             uint64_t read_size =
                 (ranges[read_pos].second - ranges[read_pos].first) *
                 type_nbytes;
-            wc << next->IRecv(
+            auto wc = next->IRecv(
                 reducebuf.Slice(read_start, read_start + read_size));
-            wc.Wait();
+            chain_wc->Push(wc);
+            chain_wc->Wait();
             CHECK_F(read_idx <= stop_read_idx, "[%d] read_ptr boundary check",
                     rank_);
             read_idx++;
@@ -580,6 +615,7 @@ void Communicator::TryReduceScatterRing(Buffer sendrecvbuf, Buffer reducebuf,
                 sendrecvbuf.Slice(reduce_start, reduce_start + reduce_size));
             reduce_idx++;
         }
+        ChainWorkCompletion::Delete(chain_wc);
     }
     return;
 }
@@ -611,20 +647,20 @@ std::unique_ptr<ICommunicator> Communicator::CreateGroup(
 }
 void Communicator::Send(Buffer sendbuf, int dest) {
     auto wc = all_links_[dest]->ISend(sendbuf);
-    wc.Wait();
+    wc->Wait();
     return;
 }
 void Communicator::Recv(Buffer recvbuf, int src) {
     auto wc = all_links_[src]->IRecv(recvbuf);
-    wc.Wait();
+    wc->Wait();
     return;
 }
 
-WorkCompletion Communicator::ISend(Buffer sendbuf, int dest) {
+WorkCompletion* Communicator::ISend(Buffer sendbuf, int dest) {
     return all_links_[dest]->ISend(sendbuf);
 }
 
-WorkCompletion Communicator::IRecv(Buffer recvbuf, int src) {
+WorkCompletion* Communicator::IRecv(Buffer recvbuf, int src) {
     return all_links_[src]->IRecv(recvbuf);
 }
 

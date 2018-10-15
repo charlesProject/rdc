@@ -21,14 +21,20 @@ from threading import Thread
 from threading import Lock
 from threading import Condition
 from enum import Enum
+
 import traceback
+import configparser
 from topo import TopoHelper
 """
 Extension of socket to handle recv and send of special data
 """
+
+
 class ExSocket:
+
     def __init__(self, sock):
         self.sock = sock
+
     def recvall(self, nbytes):
         res = []
         sock = self.sock
@@ -38,49 +44,60 @@ class ExSocket:
             nread += len(chunk)
             res.append(chunk)
         return b''.join(res)
+
     def recvint(self):
         return struct.unpack('@i', self.recvall(4))[0]
+
     def sendint(self, n):
         return self.sock.send(struct.pack('@i', n))
+
     def sendstr(self, s):
         size = 0
         size += self.sendint(len(s))
         size += self.sock.send(s.encode())
         return size
+
     def recvstr(self):
         slen = self.recvint()
         return self.recvall(slen).decode()
 
+
 def log_args(level=logging.INFO):
     """Decorator to log arguments passed to func."""
+
     def inner_func(func):
         line_no = inspect.getsourcelines(func)[-1]
 
         @wraps(func)
         def return_func(*args, **kwargs):
             arg_list = list("{!r}".format(arg) for arg in args)
-            arg_list.extend("{}={!r}".format(key, val)
-                            for key, val in kwargs.iteritems())
-            msg = arg_log_fmt.format(name=func.__name__,
-                                     arg_str=", ".join(arg_list))
+            arg_list.extend(
+                "{}={!r}".format(key, val) for key, val in kwargs.iteritems())
+            msg = arg_log_fmt.format(
+                name=func.__name__, arg_str=", ".join(arg_list))
             logging.getLogger('').log(level, msg)
             return func(*args, **kwargs)
+
         return return_func
 
     return inner_func
+
 
 class State(Enum):
     CMD = 1
     FIN = 2
     UNKNOWN = 3
 
+
 class TrackerHandler:
+
     def __init__(self, sock, tracker, worker_id):
         self.sock = sock
         self.tracker = tracker
         self.worker_id = worker_id
         self.state = State.FIN
         self.cmd = None
+
     def handle(self):
         if self.state == State.FIN:
             self.cmd = self.recvstr()
@@ -98,11 +115,14 @@ class TrackerHandler:
                 self.handle_exclude()
             elif self.cmd == 'unexclude':
                 self.handle_unexclude()
+            elif self.cmd == 'heartbeat':
+                self.handle_heartbeat()
             elif self.cmd == 'shutdown':
                 return False
             self.state = State.FIN
             self.cmd = None
         return True
+
     def handle_start(self):
         rank = self.recvint()
         self.tracker.tracker_lock.acquire()
@@ -133,39 +153,6 @@ class TrackerHandler:
         # send rank
         self.tracker.tracker_lock.acquire()
         self.sendint(self.rank)
-        # send the whole tree map
-        tree_map = self.tracker.tree_map
-        parent_map = self.tracker.parent_map
-        ring_map = self.tracker.ring_map
-        nnset = set(tree_map[self.rank])
-        rprev, rnext = ring_map[self.rank]
-
-        # send parent rank
-        self.sendint(parent_map[self.rank])
-
-        # send num neighbors
-        self.sendint(len(nnset))
-        for r in nnset:
-            self.sendint(r)
-        # send prev link$
-        if rprev != -1 and rprev != self.rank:
-            nnset.add(rprev)
-            self.sendint(rprev)
-        else:
-            self.sendint(-1)
-        # send next link
-        if rnext != -1 and rnext != self.rank:
-            nnset.add(rnext)
-            self.sendint(rnext)
-        else:
-            self.sendint(-1)
-        for rank, neighbors in self.tracker.tree_map.items():
-            self.sendint(rank)
-            self.sendint(len(neighbors))
-            for i in range(len(neighbors)):
-                self.sendint(neighbors[i])
-        # send num_conn and num_accept
-        # connnect to node who has rank less than my rank
         num_conn = 0
         num_accept = 0
         for rank, addr in self.tracker.addrs.items():
@@ -186,9 +173,11 @@ class TrackerHandler:
         if self.rank != -1:
             msg = 'rank %d: %s ' % (self.rank, msg.strip())
         logging.info(msg)
+
     '''A distributed lock impletentation, only communicator or group
     with same name can continue, otherwise will be blocked
     '''
+
     def handle_exclude(self):
         comm = self.recvstr()
         self.tracker.comm_lock.acquire()
@@ -204,6 +193,7 @@ class TrackerHandler:
         else:
             self.sendstr('exclude_done')
             self.tracker.comm_lock.release()
+
     def handle_unexclude(self):
         comm = self.recvstr()
         self.tracker.comm_cond.acquire()
@@ -221,6 +211,7 @@ class TrackerHandler:
             self.tracker.comm_cond.notify_all()
         self.tracker.comm_cond.release()
         self.sendstr('unexclude_done')
+
     def handle_barrier(self):
         name = self.recvstr()
         self.tracker.name_to_barrier_conds[name].acquire()
@@ -233,6 +224,7 @@ class TrackerHandler:
             self.tracker.name_to_barrier_conds[name].notify_all()
         self.tracker.name_to_barrier_conds[name].release()
         self.sendstr("barrier_done")
+
     def handle_register(self):
         name = self.recvstr()
         self.tracker.register_lock.acquire()
@@ -243,18 +235,32 @@ class TrackerHandler:
             self.tracker.name_to_barrier_conds[name] = Condition()
             self.tracker.name_to_barrier_locks[name] = Lock()
             self.tracker.comm_added[name] = False
+
         self.tracker.name_to_ranks[name].add(self.rank)
         self.tracker.register_lock.release()
+
+    '''keep heartbeat'''
+
+    def handle_heartbeat(self):
+        self.tracker.last_heartbeat_timepoint[self.worker_id] = time.time()
+        logging.info("oops")
+        self.sendstr('heartbeat_done')
+
     def recvint(self):
         return self.sock.recvint()
+
     def recvstr(self):
         return self.sock.recvstr()
+
     def sendint(self, data):
         return self.sock.sendint(data)
+
     def sendstr(self, data):
         return self.sock.sendstr(data)
 
+
 class Tracker:
+
     def __init__(self, hostIP, port, nworker):
         self.cur_rank = 0
         # trakcer addr
@@ -285,12 +291,14 @@ class Tracker:
         self.name_to_barrier_counter = dict()
         self.name_to_barrier_conds = dict()
         self.name_to_barrier_locks = dict()
-        # distributed lock related
+        # exclude related
         self.last_comm = None
         self.pending_comms = set()
         self.comm_added = dict()
         self.comm_lock = Lock()
-
+        
+        # heartbeat related
+        self.last_heartbeat_timepoint = dict()
         self.lock_counter = 0
         self.comm_cond = Condition()
         # construct initial tree map
@@ -309,7 +317,7 @@ class Tracker:
         logging.info('start listen on %s:%d' % (hostIP, self.port))
         self.threads = dict()
         for worker_id in range(nworker):
-            thread = Thread(target = run, args = (worker_id,))
+            thread = Thread(target=run, args=(worker_id,))
             self.threads[self.cur_rank] = thread
             thread.setDaemon(True)
             thread.start()
@@ -328,13 +336,13 @@ class Tracker:
                     last_rank += 1
                 self.worker_id_to_ranks[worker_id] = last_rank
                 last_rank += 1
+
     def worker_envs(self):
         """
         get enviroment variables for workers
         can be passed in as args or envs
         """
-        return {'RDC_TRACKER_URI': self.hostIP,
-                'RDC_TRACKER_PORT': self.port}
+        return {'RDC_TRACKER_URI': self.hostIP, 'RDC_TRACKER_PORT': self.port}
 
     def join(self):
         for thread in self.threads.values():
@@ -342,7 +350,7 @@ class Tracker:
                 thread.join(100)
 
 
-def submit(nworker, fun_submit, hostIP = 'auto', pscmd = None):
+def submit(nworker, fun_submit, hostIP='auto', pscmd=None):
     """submit job
 
     Paramaters
@@ -377,9 +385,11 @@ def submit(nworker, fun_submit, hostIP = 'auto', pscmd = None):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.bind((hostIP, 0))
     port = s.getsockname()[1]
-    envs = {'RDC_NUM_WORKERS' : nworker,
-            'RDC_BACKEND' : 'TCP',
-            'RDC_RDMA_BUFSIZE' : 1 << 25}
+    envs = {
+        'RDC_NUM_WORKERS': nworker,
+        'RDC_BACKEND': 'TCP',
+        'RDC_RDMA_BUFSIZE': 1 << 25
+    }
 
     # start the root
     tracker = Tracker(hostIP=hostIP, port=port, nworker=nworker)
@@ -392,14 +402,17 @@ def submit(nworker, fun_submit, hostIP = 'auto', pscmd = None):
     # wait the root finished
     tracker.join()
 
+
 def hash_combine(values=[]):
     ret = 0
     for value in values:
-        ret ^= hash(value) + 0x9e3779b9 + (ret << 6) + (ret >>2 )
+        ret ^= hash(value) + 0x9e3779b9 + (ret << 6) + (ret >> 2)
     return ret
+
 
 def build_addr(backend, host, port):
     return "%s:%s:%d" % (backend, host, port)
+
 
 def config_logger(args):
     FORMAT = '[%(asctime)s (%(name)s:%(lineno)s) %(levelname)s] %(message)s'
@@ -407,10 +420,10 @@ def config_logger(args):
     level = args.log_level if 'log_level' in args else 'DEBUG'
     level = eval('logging.' + level)
     if 'log_file' not in args or args.log_file is None:
-        logging.basicConfig(format=FORMAT, level = level)
+        logging.basicConfig(format=FORMAT, level=level)
     else:
-        logging.basicConfig(format=FORMAT, level = level, 
-                filename = args.log_file, filemode = 'w')
+        logging.basicConfig(
+            format=FORMAT, level=level, filename=args.log_file, filemode='w')
         console = logging.StreamHandler()
         console.setFormatter(logging.Formatter(FORMAT))
         console.setLevel(level)
