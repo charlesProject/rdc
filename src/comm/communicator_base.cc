@@ -157,10 +157,11 @@ void Communicator::Shutdown() {
     tracker_lock_->lock();
     tracker_->SendStr(std::string("shutdown"));
     if (!tracker_closed_) {
+        this->set_tracker_connected(false);
         tracker_->Close();
     }
     tracker_lock_->unlock();
-    //    TcpAdapter::Get()->Shutdown();
+    TcpAdapter::Get()->Shutdown();
 }
 void Communicator::TrackerPrint(const std::string& msg) {
     if (tracker_uri_ == "NULL") {
@@ -205,15 +206,20 @@ void Communicator::UnExclude() {
 }
 
 void Communicator::Heartbeat() {
-    auto heartbeat_interval = Env::Get()->GetEnv("RDC_HEARTBEAT_INTERVAL", 10);
+    auto heartbeat_interval =
+        Env::Get()->GetEnv("RDC_HEARTBEAT_INTERVAL", 10000);
     // spin util connected to tracker
+    while (!this->tracker_connected()) {
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(heartbeat_interval));
+    }
     while (this->tracker_connected()) {
         tracker_lock_->lock();
         tracker_->SendStr("heartbeat");
         std::string heartbeat_token;
         tracker_->RecvStr(heartbeat_token);
         std::this_thread::sleep_for(
-            std::chrono::microseconds(heartbeat_interval));
+            std::chrono::milliseconds(heartbeat_interval));
         CHECK_EQ(heartbeat_token, "heartbeat_done");
         tracker_lock_->unlock();
     }

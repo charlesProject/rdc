@@ -75,6 +75,7 @@ TcpAdapter::TcpAdapter() {
     this->set_backend(kTcp);
     this->listen_sock_ = TcpSocket();
     this->shutdown_called_ = false;
+    this->shutdown_fd_ = -1;
     this->timeout_ = -1;
     this->epoll_fd_ = epoll_create(kNumMaxEvents);
     PollForever();
@@ -83,10 +84,10 @@ TcpAdapter::TcpAdapter() {
 void TcpAdapter::PollForever() {
     loop_thrd = std::unique_ptr<std::thread>(new std::thread([this]() {
         logging::set_thread_name("tcppoller");
-        LOG_F(INFO, "Tcp poller Started");
+        LOG_F(2, "Tcp poller Started");
         while (true) {
-            bool ret = Poll();
-            if (ret) break;
+            bool finished = Poll();
+            if (finished) break;
         }
     }));
 }
@@ -99,7 +100,7 @@ TcpAdapter::~TcpAdapter() {
 void TcpAdapter::AddChannel(int32_t fd, TcpChannel* channel) {
     lock_.lock();
     channels_[fd] = channel;
-    LOG_S(INFO) << "Add new channel with fd :" << fd;
+    LOG_F(2, "Add new channel with fd : %d", fd);
     uint32_t flags = channel_kind_to_epoll_event(channel->kind());
     epoll_event ev;
     std::memset(&ev, 0, sizeof(ev));
@@ -144,15 +145,15 @@ void TcpAdapter::Shutdown() {
         ev.events |= flags;
         epoll_ctl(this->epoll_fd_, EPOLL_CTL_ADD, this->shutdown_fd_, &ev);
         write(pipe_fd[1], "shutdown", 9);
+        LOG(INFO) << "OOPS";
     }
     shutdown_lock_.unlock();
 }
-/**
- * Function which processes the events from epoll_wait and calls the appropriate
- * callbacks
- * @note only process events once if you need to use an event loop use
- * TcpAdapter_loop
- * @return shutdown
+/*!
+ * /brief Function which processes the events from epoll_wait and calls the
+ * appropriate callbacks, note only process events once if you need to use an
+ * event loop use TcpAdapter_loop
+ * /return whether poll finished
  */
 bool TcpAdapter::Poll() {
     epoll_event events[kNumMaxEvents];
@@ -174,13 +175,6 @@ bool TcpAdapter::Poll() {
 
             // when data avaliable for read or urgent flag is set
             if (IsRead(events[i].events)) {
-                if (events[i].events & EPOLLIN) {
-                    if (this->shutdown_fd_) {
-                        if (events[i].data.fd == this->shutdown_fd_) {
-                            this->shutdown_ = true;
-                        }
-                    }
-                }
                 channel->DeleteCarefulEvent(ChannelKind::kRead);
                 ThreadPool::Get()->AddTask([channel, this] {
                     channel->ReadCallback();
@@ -198,9 +192,17 @@ bool TcpAdapter::Poll() {
                 ThreadPool::Get()->AddTask(
                     [channel] { channel->WriteCallback(); });
             }
-        }  // if
-    }      // for
-    if (shutdown_) {
+        } else {  // shutdown pipe
+            if (IsRead(events[i].events)) {
+                if (events[i].data.fd == this->shutdown_fd_) {
+                    this->shutdown_ = true;
+                    LOG_F(2, "shutdown");
+                }
+            }
+        }
+    }  // for
+    if (this->shutdown_) {
+        LOG_F(2, "shutdown");
         return true;
     }
     return false;
