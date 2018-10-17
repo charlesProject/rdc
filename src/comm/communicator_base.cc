@@ -151,58 +151,58 @@ void Communicator::Register() {
     tracker_lock_->unlock();
 }
 void Communicator::Shutdown() {
-    if (tracker_uri_ == "NULL") return;
+    if (this->tracker_uri_ == "NULL") return;
     // notify tracker rank i have shutdown
     this->Barrier();
-    tracker_lock_->lock();
-    tracker_->SendStr(std::string("shutdown"));
-    if (!tracker_closed_) {
-        this->set_tracker_connected(false);
-        tracker_->Close();
+    this->tracker_lock_->lock();
+    this->tracker_->SendStr(std::string("shutdown"));
+    this->set_tracker_connected(false);
+    if (!this->tracker_closed_) {
+        this->tracker_->Close();
     }
     tracker_lock_->unlock();
     TcpAdapter::Get()->Shutdown();
 }
 void Communicator::TrackerPrint(const std::string& msg) {
-    if (tracker_uri_ == "NULL") {
+    if (this->tracker_uri_ == "NULL") {
         LOG_F(INFO, "@node[%d] %s", rank_, msg.c_str());
         return;
     }
-    tracker_lock_->lock();
-    tracker_->SendStr(std::string("print"));
-    tracker_->SendStr(msg);
-    tracker_lock_->unlock();
+    this->tracker_lock_->lock();
+    this->tracker_->SendStr(std::string("print"));
+    this->tracker_->SendStr(msg);
+    this->tracker_lock_->unlock();
 }
 void Communicator::Barrier() {
     this->Exclude();
-    tracker_lock_->lock();
-    tracker_->SendStr(std::string("barrier"));
-    tracker_->SendStr(name_);
+    this->tracker_lock_->lock();
+    this->tracker_->SendStr(std::string("barrier"));
+    this->tracker_->SendStr(name_);
     std::string barrier_token;
-    tracker_->RecvStr(barrier_token);
+    this->tracker_->RecvStr(barrier_token);
     CHECK_EQ(barrier_token, "barrier_done");
-    tracker_lock_->unlock();
+    this->tracker_lock_->unlock();
     this->UnExclude();
 }
 void Communicator::Exclude() {
     std::string lock_token;
     do {
-        tracker_lock_->lock();
-        tracker_->SendStr(std::string("exclude"));
-        tracker_->SendStr(name_);
-        tracker_->RecvStr(lock_token);
-        tracker_lock_->unlock();
+        this->tracker_lock_->lock();
+        this->tracker_->SendStr(std::string("exclude"));
+        this->tracker_->SendStr(name_);
+        this->tracker_->RecvStr(lock_token);
+        this->tracker_lock_->unlock();
         std::this_thread::sleep_for(std::chrono::microseconds(10));
     } while (lock_token != "exclude_done");
 }
 void Communicator::UnExclude() {
-    tracker_lock_->lock();
-    tracker_->SendStr(std::string("unexclude"));
-    tracker_->SendStr(name_);
+    this->tracker_lock_->lock();
+    this->tracker_->SendStr(std::string("unexclude"));
+    this->tracker_->SendStr(name_);
     std::string unlock_token;
-    tracker_->RecvStr(unlock_token);
+    this->tracker_->RecvStr(unlock_token);
     CHECK_EQ(unlock_token, "unexclude_done");
-    tracker_lock_->unlock();
+    this->tracker_lock_->unlock();
 }
 
 void Communicator::Heartbeat() {
@@ -214,14 +214,15 @@ void Communicator::Heartbeat() {
             std::chrono::milliseconds(heartbeat_interval));
     }
     while (this->tracker_connected()) {
-        tracker_lock_->lock();
-        tracker_->SendStr("heartbeat");
+        this->tracker_lock_->lock();
+        if (!this->tracker_connected()) break;
+        this->tracker_->SendStr("heartbeat");
         std::string heartbeat_token;
-        tracker_->RecvStr(heartbeat_token);
+        this->tracker_->RecvStr(heartbeat_token);
         std::this_thread::sleep_for(
             std::chrono::milliseconds(heartbeat_interval));
         CHECK_EQ(heartbeat_token, "heartbeat_done");
-        tracker_lock_->unlock();
+        this->tracker_lock_->unlock();
     }
 }
 // util to parse data with unit suffix
@@ -255,14 +256,14 @@ inline size_t ParseUnit(const char* name, const char* val) {
     }
 }
 void Communicator::SetParam(const char* name, const char* val) {
-    if (!strcmp(name, "RDC_TRACKER_URI")) tracker_uri_ = val;
-    if (!strcmp(name, "RDC_TRACKER_PORT")) tracker_port_ = atoi(val);
-    if (!strcmp(name, "rdc_world_size")) world_size_ = atoi(val);
+    if (!strcmp(name, "RDC_TRACKER_URI")) this->tracker_uri_ = val;
+    if (!strcmp(name, "RDC_TRACKER_PORT")) this->tracker_port_ = atoi(val);
+    if (!strcmp(name, "rdc_world_size")) this->world_size_ = atoi(val);
     if (!strcmp(name, "rdc_reduce_ring_mincount")) {
-        reduce_ring_mincount_ = ParseUnit(name, val);
+        this->reduce_ring_mincount_ = ParseUnit(name, val);
     }
     if (!strcmp(name, "RDC_WORKER_CONNECT_RETRY")) {
-        connect_retry_ = atoi(val);
+        this->connect_retry_ = atoi(val);
     }
 }
 void Communicator::BuildTopology(const int32_t& world_size) {
