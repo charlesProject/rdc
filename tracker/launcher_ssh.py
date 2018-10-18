@@ -13,7 +13,8 @@ import tracker
 import logging
 from threading import Thread
 
-from args import parse_args
+from args import parse_args, parse_config_file
+
 
 class SSHLauncher(object):
 
@@ -21,10 +22,14 @@ class SSHLauncher(object):
         self.args = args
         self.cmd = (' '.join(args.command) + ' ' + ' '.join(unknown))
 
-        assert args.hostfile is not None
-        with open(args.hostfile) as f:
-            hosts = f.readlines()
-        assert len(hosts) > 0
+        if args.num_workers is not None:
+            self.num_workers = args.num_workers
+        else:
+            assert args.config_file is not None
+        self.common_envs, self.worker_envs_by_host = parse_config_file(
+            args.config_file)
+        hosts = self.worker_envs_by_host.keys()
+        self.num_workers = len(hosts)
         self.hosts = []
         for h in hosts:
             if len(h.strip()) > 0:
@@ -45,7 +50,7 @@ class SSHLauncher(object):
     def get_env(self, pass_envs):
         envs = []
         # get system envs
-        keys = ['LD_LIBRARY_PATH']
+        keys = ['LD_LIBRARY_PATH', 'TERM']
         for k in keys:
             v = os.getenv(k)
             if v is not None:
@@ -76,7 +81,10 @@ class SSHLauncher(object):
 
             # launch jobs
             for i in range(nworker):
-                node = self.hosts[i % len(self.hosts)]
+                host = self.hosts[i % len(self.hosts)]
+                node = host.split(':')[0]
+                pass_envs.update(self.common_envs)
+                pass_envs.update(self.worker_envs_by_host[host])
                 prog = self.get_env(
                     pass_envs) + ' cd ' + working_dir + '; ' + self.cmd
                 prog = 'ssh -o StrictHostKeyChecking=no ' + node + ' \'' + prog + '\''
@@ -90,9 +98,7 @@ class SSHLauncher(object):
     def run(self):
         tracker.config_logger(self.args)
         tracker.submit(
-            self.args.num_workers,
-            fun_submit=self.submit(),
-            pscmd=self.cmd)
+            self.num_workers, fun_submit=self.submit(), pscmd=self.cmd)
 
 
 def main():

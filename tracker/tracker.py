@@ -296,7 +296,7 @@ class Tracker:
         self.pending_comms = set()
         self.comm_added = dict()
         self.comm_lock = Lock()
-        
+
         # heartbeat related
         self.last_heartbeat_timepoint = dict()
         self.lock_counter = 0
@@ -342,7 +342,12 @@ class Tracker:
         get enviroment variables for workers
         can be passed in as args or envs
         """
-        return {'RDC_TRACKER_URI': self.hostIP, 'RDC_TRACKER_PORT': self.port}
+        common_envs = {
+            'RDC_TRACKER_URI': self.hostIP,
+            'RDC_TRACKER_PORT': self.port,
+            'RDC_HEARTBEAT_INTERVAL': 500,
+        }
+        return common_envs
 
     def join(self):
         for thread in self.threads.values():
