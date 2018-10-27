@@ -1,7 +1,7 @@
 #pragma once
 #include <unistd.h>
 #include <atomic>
-#include "core/threadsafe_queue.h"
+#include "common/threadsafe_queue.h"
 #include "core/work_request.h"
 #include "transport/channel.h"
 #include "transport/tcp/socket.h"
@@ -43,7 +43,7 @@ public:
 
     inline bool spin() const { return spin_.load(std::memory_order_acquire); }
 
-   private:
+private:
     TcpSocket sock_;
     // send recv request queue
     ThreadsafeQueue<uint64_t> send_reqs_;

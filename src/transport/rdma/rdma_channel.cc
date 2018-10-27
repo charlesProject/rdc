@@ -5,13 +5,13 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 
-#include "core/env.h"
+#include "common/env.h"
 #include "core/logging.h"
-#include "core/socket.h"
 #include "transport/rdma/rdma_adapter.h"
 #include "transport/rdma/rdma_channel.h"
 #include "transport/rdma/rdma_memory_mgr.h"
 #include "transport/rdma/rdma_utils.h"
+#include "transport/tcp/socket.h"
 #include "utils/utils.h"
 
 namespace rdc {

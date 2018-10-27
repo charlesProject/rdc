@@ -9,7 +9,7 @@
 #include <memory>
 #include "comm/communicator.h"
 #include "comm/communicator_base.h"
-#include "core/thread_local.h"
+#include "common/thread_local.h"
 namespace rdc {
 namespace comm {
 // singleton sync manager

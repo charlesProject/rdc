@@ -4,7 +4,6 @@
 #include <condition_variable>
 #include <memory>
 #include "utils/lock_utils.h"
-#include "logging.h"
 
 /**
  * \brief thread-safe queue allowing push and waited pop

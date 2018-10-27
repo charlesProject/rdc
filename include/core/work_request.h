@@ -7,10 +7,10 @@
 #include <mutex>
 #include <thread>
 #include <unordered_map>
-#include "core/any.h"
+#include "common/any.h"
 #include "core/logging.h"
-#include "core/object_pool.h"
-#include "core/status.h"
+#include "common/object_pool.h"
+#include "common/status.h"
 #include "utils/lock_utils.h"
 #include "utils/utils.h"
 namespace rdc {

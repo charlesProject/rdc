@@ -16,8 +16,8 @@
 #include <string>
 #include <vector>
 #include "comm/communicator.h"
+#include "common/status.h"
 #include "core/logging.h"
-#include "core/status.h"
 #include "core/work_request.h"
 #include "transport/adapter.h"
 #include "transport/channel.h"
@@ -311,7 +311,8 @@ protected:
         return this->tracker_connected_.load(std::memory_order_acquire);
     }
     void set_tracker_connected(const bool& tracker_connected) {
-        this->tracker_connected_.store(tracker_connected, std::memory_order_release);
+        this->tracker_connected_.store(tracker_connected,
+                                       std::memory_order_release);
     }
     //---- data structure related to model ----
     // my name

@@ -41,7 +41,7 @@ class ICommunicator {
 public:
     /*! \brief virtual destructor */
     virtual ~ICommunicator() {}
-    virtual void NewCommunicator(const std::string& name) = 0;
+    virtual ICommunicator* NewCommunicator(const std::string& name) = 0;
     virtual ICommunicator* GetCommunicator(const std::string& name) = 0;
     virtual void Send(Buffer sendbuf, int dest) = 0;
     virtual void Recv(Buffer recvbuf, int src) = 0;
@@ -53,13 +53,13 @@ public:
         Buffer recvbuf(recvaddr, size_in_bytes);
         return this->Recv(recvbuf, src);
     }
-    virtual WorkCompletion ISend(Buffer sendbuf, int dest) = 0;
-    virtual WorkCompletion IRecv(Buffer recvbuf, int src) = 0;
-    WorkCompletion ISend(void *sendaddr, uint64_t size_in_bytes, int dest) {
+    virtual WorkCompletion* ISend(Buffer sendbuf, int dest) = 0;
+    virtual WorkCompletion* IRecv(Buffer recvbuf, int src) = 0;
+    WorkCompletion* ISend(void *sendaddr, uint64_t size_in_bytes, int dest) {
         Buffer sendbuf(sendaddr, size_in_bytes);
         return this->ISend(sendbuf, dest);
     }
-    WorkCompletion IRecv(void* recvaddr, uint64_t size_in_bytes, int src) {
+    WorkCompletion* IRecv(void* recvaddr, uint64_t size_in_bytes, int src) {
         Buffer recvbuf(recvaddr, size_in_bytes);
         return this->IRecv(recvbuf, src);
     }

@@ -3,9 +3,9 @@
 #include <infiniband/verbs.h>
 #include "transport/rdma/rdma_memory_mgr.h"
 #endif
-#include "core/env.h"
+#include "common/env.h"
 #include "core/logging.h"
-#include "core/object_pool.h"
+#include "common/object_pool.h"
 namespace rdc {
 class Buffer : public ObjectPoolAllocatable<Buffer> {
 public:

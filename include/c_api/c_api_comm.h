@@ -22,10 +22,15 @@ extern "C" {
 RDC_DLL void RdcNewBuffer(BufferHandle *buf, void *addr,
                           rdc_ulong size_in_bytes, bool pinned = false);
 
-/*!/breif Del created bufffer
+/*!/brief Delelete a created bufffer
  *  /param buf handlle for the created buffer
  * */
 RDC_DLL void RdcDelBuffer(BufferHandle buf);
+
+/*!/brief Deleted a created work completion
+ * /param work_comp handle for the created work completion*
+ * */
+RDC_DLL void RdcDelWorkCompletion(WorkCompletionHandle work_comp);
 /*!/brief Create a new communicator
  * /param comm_name name for this communicator
  * */

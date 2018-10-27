@@ -14,8 +14,8 @@
 #include <unordered_map>
 #include <vector>
 #include "core/logging.h"
-#include "core/status.h"
-#include "core/threadpool.h"
+#include "common/status.h"
+#include "common/threadpool.h"
 #include "sys/error.h"
 #include "transport/tcp/tcp_channel.h"
 static const uint32_t kNumMaxEvents = 1024;
@@ -145,7 +145,6 @@ void TcpAdapter::Shutdown() {
         ev.events |= flags;
         epoll_ctl(this->epoll_fd_, EPOLL_CTL_ADD, this->shutdown_fd_, &ev);
         write(pipe_fd[1], "shutdown", 9);
-        LOG(INFO) << "OOPS";
     }
     shutdown_lock_.unlock();
 }

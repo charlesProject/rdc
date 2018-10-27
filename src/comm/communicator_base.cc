@@ -9,9 +9,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
-#include "core/env.h"
+#include "common/env.h"
 #include "core/logging.h"
-#include "core/threadpool.h"
+#include "common/threadpool.h"
 #include "sys/error.h"
 #include "sys/network.h"
 #include "transport/channel.h"

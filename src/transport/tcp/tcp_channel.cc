@@ -9,7 +9,7 @@
 #include <chrono>
 #include <cstring>
 
-#include "core/status.h"
+#include "common/status.h"
 #include "transport/channel.h"
 #include "transport/tcp/tcp_adapter.h"
 #include "transport/tcp/tcp_channel.h"

@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include "core/status.h"
+#include "common/status.h"
 #include "core/work_request.h"
 #include "transport/buffer.h"
 #include "transport/channel.h"
@@ -46,7 +46,7 @@ struct RdmaChannelInfo {
 
 class RdmaAdapter;
 class RdmaChannel : public IChannel {
-   public:
+public:
     RdmaChannel();
     RdmaChannel(RdmaAdapter* adapter, uint64_t buf_size);
     RdmaChannel(RdmaAdapter* adapter);
@@ -69,7 +69,7 @@ class RdmaChannel : public IChannel {
 
     RdmaAddr peer_rdma_addr() const { return peer_rdma_addr_; }
 
-   protected:
+protected:
     void InitRdmaContext();
     void ExitRdmaContext();
     void CreateQueuePair();
@@ -78,7 +78,7 @@ class RdmaChannel : public IChannel {
     void EnableQueuePairForSend();
     void EnableQueuePairForRecv();
 
-   private:
+private:
     RdmaAdapter* adapter_;
     uint8_t* send_buf_;
     uint8_t* recv_buf_;

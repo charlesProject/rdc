@@ -1,14 +1,14 @@
 #pragma once
 
 #include <atomic>
-#include "core/env.h"
-#include "core/socket.h"
+#include "common/env.h"
+#include "transport/tcp/socket.h"
 #include "transport/adapter.h"
 #include "transport/rdma/rdma_channel.h"
 
 namespace rdc {
 class RdmaAdapter : public IAdapter {
-   public:
+public:
     RdmaAdapter();
     static RdmaAdapter* Get() {
         static RdmaAdapter adapter;
@@ -46,11 +46,11 @@ class RdmaAdapter : public IAdapter {
     ibv_srq* shared_receive_queue() { return shared_receive_queue_; }
     bool use_srq() const { return use_srq_; }
 
-   protected:
+protected:
     void InitRdmaContext();
     void ExitRdmaContext();
 
-   private:
+private:
     std::unique_ptr<TcpSocket> listen_sock_;
     uint32_t timeout_;
     // device related

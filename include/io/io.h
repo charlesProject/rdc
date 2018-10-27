@@ -20,7 +20,7 @@ namespace rdc {
  * \brief interface of stream I/O for serialization
  */
 class Stream {  // NOLINT(*)
-   public:
+public:
     /*!
      * \brief reads data from a stream
      * \param ptr pointer to a memory buffer
@@ -79,7 +79,7 @@ class Stream {  // NOLINT(*)
 
 /*! \brief interface of i/o stream that support seek */
 class SeekStream : public Stream {
-   public:
+public:
     // virtual destructor
     virtual ~SeekStream(void) {}
     /*! \brief seek to certain position of the file */
@@ -101,7 +101,7 @@ class SeekStream : public Stream {
 
 /*! \brief interface for serializable objects */
 class Serializable {
-   public:
+public:
     /*! \brief virtual destructor */
     virtual ~Serializable() {}
     /*!
@@ -124,7 +124,7 @@ class Serializable {
  *  see InputSplit::Create for definition of record
  */
 class InputSplit {
-   public:
+public:
     /*! \brief a blob of memory region */
     struct Blob {
         /*! \brief points to start of the memory region */
@@ -208,7 +208,7 @@ class InputSplit {
  *
  */
 class ostream : public std::basic_ostream<char> {
-   public:
+public:
     /*!
      * \brief construct std::ostream type
      * \param stream the Stream output to be used
@@ -232,10 +232,10 @@ class ostream : public std::basic_ostream<char> {
     /*! \return how many bytes we written so far */
     inline size_t bytes_written(void) const { return buf_.bytes_out(); }
 
-   private:
+private:
     // internal streambuf
     class OutBuf : public std::streambuf {
-       public:
+    public:
         explicit OutBuf(size_t buffer_size)
             : stream_(NULL), buffer_(buffer_size), bytes_out_(0) {
             if (buffer_size == 0) buffer_.resize(2);
@@ -245,7 +245,7 @@ class ostream : public std::basic_ostream<char> {
 
         inline size_t bytes_out() const { return bytes_out_; }
 
-       private:
+    private:
         /*! \brief internal stream by StreamBuf */
         Stream *stream_;
         /*! \brief internal buffer */
@@ -275,7 +275,7 @@ class ostream : public std::basic_ostream<char> {
  * \endcode
  */
 class istream : public std::basic_istream<char> {
-   public:
+public:
     /*!
      * \brief construct std::ostream type
      * \param stream the Stream output to be used
@@ -297,10 +297,10 @@ class istream : public std::basic_istream<char> {
     /*! \return how many bytes we read so far */
     inline size_t bytes_read(void) const { return buf_.bytes_read(); }
 
-   private:
+private:
     // internal streambuf
     class InBuf : public std::streambuf {
-       public:
+    public:
         explicit InBuf(size_t buffer_size)
             : stream_(NULL), bytes_read_(0), buffer_(buffer_size) {
             if (buffer_size == 0) buffer_.resize(2);
@@ -310,7 +310,7 @@ class istream : public std::basic_istream<char> {
         // return how many bytes read so far
         inline size_t bytes_read(void) const { return bytes_read_; }
 
-       private:
+    private:
         /*! \brief internal stream by StreamBuf */
         Stream *stream_;
         /*! \brief how many bytes we read so far */
@@ -385,7 +385,7 @@ inline int istream::InBuf::underflow() {
 
 /*! \brief fixed size memory buffer */
 struct MemoryFixSizeBuffer : public SeekStream {
-   public:
+public:
     MemoryFixSizeBuffer(void *p_buffer, size_t buffer_size)
         : p_buffer_(reinterpret_cast<char *>(p_buffer)),
           buffer_size_(buffer_size) {
@@ -411,7 +411,7 @@ struct MemoryFixSizeBuffer : public SeekStream {
     virtual size_t Tell(void) { return curr_ptr_; }
     virtual bool AtEnd(void) const { return curr_ptr_ == buffer_size_; }
 
-   private:
+private:
     /*! \brief in memory buffer */
     char *p_buffer_;
     /*! \brief current pointer */
@@ -422,7 +422,7 @@ struct MemoryFixSizeBuffer : public SeekStream {
 
 /*! \brief a in memory buffer that can be read and write as stream interface */
 struct MemoryBufferStream : public SeekStream {
-   public:
+public:
     explicit MemoryBufferStream(std::string *p_buffer) : p_buffer_(p_buffer) {
         curr_ptr_ = 0;
     }
@@ -447,7 +447,7 @@ struct MemoryBufferStream : public SeekStream {
     virtual size_t Tell(void) { return curr_ptr_; }
     virtual bool AtEnd(void) const { return curr_ptr_ == p_buffer_->length(); }
 
-   private:
+private:
     /*! \brief in memory buffer */
     std::string *p_buffer_;
     /*! \brief current pointer */

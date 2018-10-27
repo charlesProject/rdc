@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 #include "rdc.h"
-#include "core/status.h"
+#include "common/status.h"
 #include "transport/buffer.h"
 #include "transport/adapter.h"
 

@@ -16,7 +16,7 @@
 #include <unordered_set>
 #include "core/base.h"
 #include "core/logging.h"
-#include "core/type_traits.h"
+#include "common/type_traits.h"
 #include "io/io.h"
 namespace rdc {
 /*! \brief internal namespace for serializers */

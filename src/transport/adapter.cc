@@ -3,7 +3,7 @@
 #ifdef RDC_USE_RDMA
 #include "transport/rdma/rdma_adapter.h"
 #endif
-#include "core/env.h"
+#include "common/env.h"
 #include "utils/utils.h"
 
 namespace rdc {
