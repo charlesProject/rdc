@@ -1,36 +1,27 @@
+"""
+Core communicator utilities.
+
+Author: Ankun Zheng
+"""
 import ctypes
+from rdc import _LIB
 
 
-class WorkCompletion(object):
+class WorkComp(object):
     __slots__ = ('handle')
 
     def __init__(self, **kwargs):
-        self.handle = ctypes.c_void_p
+        self.handle = ctypes.c_void_p()
 
-
-class Buffer(object):
-    __slots__ = ('handle')
-
-    def __init__(self, **kwargs):
-        self.handle = ctypes.c_void_p
-        if 'pinned' not in kwargs:
-            _LIB.RdcNewBuffer(
-                ctypes.byref(self.handle), kwargs['addrs'], kwargs['size'],
-                kwargs['pinned'])
-        else:
-            _LIB.RdcNewBuffer(
-                ctypes.byref(self.handle), kwargs['addrs'], kwargs['size'],
-                False)
-
-    def __del__():
-        _LIB.RdcDelBuffer(self.handle)
+    def __del__(self):
+        _LIB.RdcDelWorkCompletion(self.handle)
 
 
 class Comm(object):
     __slots__ = ('handle')
 
     def __init__(self, **kwargs):
-        self.handle = ctypes.c_void_p
+        self.handle = ctypes.c_void_p()
         if len(kwargs) == 0:
             pass
 
