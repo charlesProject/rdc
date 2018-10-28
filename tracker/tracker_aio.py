@@ -9,6 +9,7 @@ AnKun Zheng
 
 import sys
 import os
+import asyncio
 import socket
 import struct
 import subprocess
@@ -24,7 +25,6 @@ from enum import Enum
 
 import traceback
 import configparser
-import utils
 from topo import TopoHelper
 """
 Extension of socket to handle recv and send of special data
@@ -92,8 +92,9 @@ class State(Enum):
 
 class TrackerHandler:
 
-    def __init__(self, sock, tracker, worker_id):
-        self.sock = sock
+    def __init__(self, reader, writer, tracker, worker_id):
+        self.reader = reader
+        self.writer = writer
         self.tracker = tracker
         self.worker_id = worker_id
         self.state = State.FIN
@@ -214,11 +215,10 @@ class TrackerHandler:
         self.sendstr('unexclude_done')
 
     def handle_barrier(self):
-        name = self.recvstr()
+        name = yield from self.recvstr()
         self.tracker.name_to_barrier_conds[name].acquire()
         self.tracker.name_to_barrier_counter[name] += 1
-        if self.tracker.name_to_barrier_counter[name] != \
-                self.tracker.nworker:
+        if self.tracker.name_to_barrier_counter[name] != self.tracker.nworker:
             self.tracker.name_to_barrier_conds[name].wait()
         else:
             self.tracker.name_to_barrier_counter[name] = 0
@@ -227,7 +227,7 @@ class TrackerHandler:
         self.sendstr("barrier_done")
 
     def handle_register(self):
-        name = self.recvstr()
+        name = yield from self.recvstr()
         self.tracker.register_lock.acquire()
         if name not in self.tracker.names:
             self.tracker.names.add(name)
@@ -247,10 +247,14 @@ class TrackerHandler:
         self.sendstr('heartbeat_done')
 
     def recvint(self):
-        return self.sock.recvint()
+        data = yield from seld.reader.read(4)
+        return struct.unpack('@i', data)[0]
 
     def recvstr(self):
-        return self.sock.recvstr()
+        data = yield from self.reader.read(4)
+        length = struct.unpack('@i', data)[0]
+        data = yield from self.reader.read(length)
+        return
 
     def sendint(self, data):
         return self.sock.sendint(data)
@@ -303,56 +307,94 @@ class Tracker:
         self.comm_cond = Condition()
         # construct initial tree map
         self.topohelper = TopoHelper()
-        self.tree_map, self.parent_map, self.ring_map = \
-            self.topohelper.get_link_map(nworker)
+        self.tree_map, self.parent_map, self.ring_map = self.topohelper.get_link_map(
+            nworker)
 
-        def run(worker_id):
-            fd, s_addr = self.sock.accept()
-            sock = ExSocket(fd)
-            handler = TrackerHandler(sock, self, worker_id)
-            ret = True
-            while ret:
-                ret = handler.handle()
+        # assing worker id
+        self.worker_id = 0
+        self.worker_id_lock = Lock()
 
-        logging.info('start listen on %s:%d' % (host_ip, self.port))
-        self.threads = dict()
-        for worker_id in range(nworker):
-            thread = Thread(target=run, args=(worker_id,))
-            self.threads[self.cur_rank] = thread
-            thread.setDaemon(True)
-            thread.start()
+        def start(self, loop):
+            """
+            Starts the TCP server, so that it listens on port 12345.
+            For each worker that connects, the accept_worker method gets
+            called.  This method runs the loop until the server sockets
+            are ready to accept connections.
+            """
+            self.server = loop.run_until_complete(
+                asyncio.streams.start_server(
+                    self._accept_worker, self.host_ip, self.port, loop=loop))
+            logging.info('start listen on %s:%d' % (self.host_ip, self.port))
 
-    def realloc_ranks(self):
-        existing_ranks = set()
-        for worker_id, rank in self.worker_id_to_ranks.items():
-            if rank != -1:
-                existing_ranks.add(rank)
-        last_rank = 0
-        for worker_id, rank in self.worker_id_to_ranks.items():
-            if rank != -1:
-                continue
-            else:
-                while last_rank in existing_ranks:
+        def stop(self, loop):
+            """
+            Stops the TCP server, i.e. closes the listening socket(s).
+            This method runs the loop until the server sockets are closed.
+            """
+            if self.server is not None:
+                self.server.close()
+                loop.run_until_complete(self.server.wait_closed())
+                self.server = None
+
+        def _accept_worker(self, worker_reader, worker_writer):
+            """
+            This method accepts a new worker connection and creates a Task
+            to handle this worker.  self.workers is updated to keep track
+            of the new worker.
+            """
+            with self.worker_id_lock:
+                self.worker_id += 1
+            # start a new Task to handle this specific worker connection
+            task = asyncio.Task(
+                self._handle_worker(self.worker_id, worker_reader,
+                                    worker_writer))
+            self.workers[task] = (worker_reader, worker_writer)
+
+            def worker_done(task):
+                logging.info("worker task done")
+                del self.workers[task]
+
+            task.add_done_callback(worker_done)
+
+        @asyncio.coroutine
+        def _handle_worker(self, worker_id, worker_reader, worker_writer):
+            """
+            This method actually does the work to handle the requests for
+            a specific worker.  The protocol is line oriented, so there is
+            a main loop that reads a line with a request and then sends
+            out one or more lines back to the worker with the result.
+            """
+            handler = TrackerHandler(worker_reader, worker_writer, self,
+                                     worker_id)
+            while True:
+                yield from handler.handle()
+
+        def realloc_ranks(self):
+            existing_ranks = set()
+            for worker_id, rank in self.worker_id_to_ranks.items():
+                if rank != -1:
+                    existing_ranks.add(rank)
+            last_rank = 0
+            for worker_id, rank in self.worker_id_to_ranks.items():
+                if rank != -1:
+                    continue
+                else:
+                    while last_rank in existing_ranks:
+                        last_rank += 1
+                    self.worker_id_to_ranks[worker_id] = last_rank
                     last_rank += 1
-                self.worker_id_to_ranks[worker_id] = last_rank
-                last_rank += 1
 
-    def worker_envs(self):
-        """
-        get enviroment variables for workers
-        can be passed in as args or envs
-        """
-        common_envs = {
-            'RDC_TRACKER_URI': self.host_ip,
-            'RDC_TRACKER_PORT': self.port,
-            'RDC_HEARTBEAT_INTERVAL': 500,
-        }
-        return common_envs
-
-    def join(self):
-        for thread in self.threads.values():
-            while thread.isAlive():
-                thread.join(100)
+        def worker_envs(self):
+            """
+            get enviroment variables for workers
+            can be passed in as args or envs
+            """
+            common_envs = {
+                'RDC_TRACKER_URI': self.host_ip,
+                'RDC_TRACKER_PORT': self.port,
+                'RDC_HEARTBEAT_INTERVAL': 500,
+            }
+            return common_envs
 
 
 def submit(nworker, fun_submit, host_ip='auto', pscmd=None):
@@ -368,14 +410,17 @@ def submit(nworker, fun_submit, host_ip='auto', pscmd=None):
         the host ip of the root node
     pscmd :
     """
-    host_ip, port, envs = utils.basic_tracker_config(host_ip)
     # start the root
+    host_ip, port, envs = utils.basic_tracker_config(host_ip)
     tracker = Tracker(host_ip=host_ip, port=port, nworker=nworker)
-
+    tracker.start(loop)
     envs.update(tracker.worker_envs())
-
     # start the workers
     fun_submit(nworker, envs)
 
     # wait the root finished
-    tracker.join()
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        tracker.stop(loop)
+        loop.close()

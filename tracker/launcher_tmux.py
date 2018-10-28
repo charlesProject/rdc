@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-DMLC submission script, local machine version
+submission script, tmux version, for debugging
 """
 
 import argparse
@@ -14,7 +14,7 @@ import tracker
 import signal
 import logging
 import libtmux
-
+from args import parse_args
 keepalive = """
 nrep=0
 rc=254
@@ -81,19 +81,7 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='DMLC script to submit dmlc jobs as local process')
-
-    parser.add_argument('-n', '--num-workers', required=True, type=int,
-                        help = 'number of worker nodes to be launched')
-    parser.add_argument('--log-level', default='INFO', type=str,
-                        choices=['INFO', 'DEBUG'],
-                        help = 'logging level')
-    parser.add_argument('--log-file', type=str,
-                        help = 'output log to the specific log file')
-    parser.add_argument('command', nargs='+',
-                        help = 'command for launching the program')
-    args, unknown = parser.parse_known_args()
+    args, unknown = parse_args()
     signal.signal(signal.SIGINT, signal_handler)
     global launcher
     launcher = TmuxLauncher(args, unknown)

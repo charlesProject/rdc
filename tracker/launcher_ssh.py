@@ -2,7 +2,7 @@
 """
 submission script by ssh
 
-One need to make sure all slaves machines are ssh-able.
+One need to make sure all wokers machines are ssh-able.
 """
 
 import argparse
@@ -14,7 +14,7 @@ import logging
 from threading import Thread
 
 from args import parse_args, parse_config_file
-
+import utils
 
 class SSHLauncher(object):
 
@@ -35,11 +35,11 @@ class SSHLauncher(object):
             if len(h.strip()) > 0:
                 self.hosts.append(h.strip())
 
-    def sync_dir(self, local_dir, slave_node, slave_dir):
+    def sync_dir(self, local_dir, woker_node, woker_dir):
         """
-        sync the working directory from root node into slave node
+        sync the working directory from root node into woker node
         """
-        remote = slave_node + ':' + slave_dir
+        remote = woker_node + ':' + woker_dir
         logging.info('rsync %s -> %s', local_dir, remote)
 
         # TODO uses multithread
@@ -96,7 +96,7 @@ class SSHLauncher(object):
         return ssh_submit
 
     def run(self):
-        tracker.config_logger(self.args)
+        utils.config_logger(self.args)
         tracker.submit(
             self.num_workers, fun_submit=self.submit(), pscmd=self.cmd)
 
