@@ -1,4 +1,5 @@
 #pragma once
+#include <Python.h>
 #if PY_MAJOR_VERSION >= 3
 
 /***** Python 3 *****/

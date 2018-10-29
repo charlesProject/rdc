@@ -1,17 +1,19 @@
-#include "c_api/c_api_env.h"
+#include "c_api/python.h"
 #include "common/env.h"
 #include "core/logging.h"
-int RdcEnvGetEnv(const char* key, int default_val) {
-    return Env::Get()->GetEnv(key, default_val);
+#ifdef RDC_WITH_PYTHON
+#include "c_api/c_api_env.h"
+int RdcEnvGetEnv(PyObject* key, int default_val) {
+    assert(PyStr_Check(key));
+    return Env::Get()->GetEnv(PyStr_AsString(key), default_val);
 }
-
-void RdcEnvFind(const char* key, char** val) {
-    *val = const_cast<char*>(Env::Get()->Find(key));
-    LOG(INFO) << *val;
-    return;
+PyObject* RdcEnvFind(PyObject* key) {
+    assert(PyStr_Check(key));
+    const char* val = Env::Get()->Find(PyStr_AsString(key));
+    return PyStr_FromString(val);
 }
-
-int RdcEnvGetIntEnv(const char* key) {
-    return Env::Get()->GetIntEnv(key);
+int RdcEnvGetIntEnv(PyObject* key) {
+    assert(PyStr_Check(key));
+    return Env::Get()->GetIntEnv(PyStr_AsString(key));
 }
-
+#endif

@@ -8,16 +8,18 @@ from rdc import _LIB
 
 
 def find(key):
-    val_p = ctypes.c_char_p()
-    key_p = ctypes.cast(key, ctypes.c_char_p)
-    _LIB.RdcEnvFind(key_p, ctypes.byref(val_p))
-    val = str(val_p)
-    return val
+    proto = ctypes.PYFUNCTYPE(ctypes.py_object, ctypes.py_object)
+    func = proto(('RdcEnvFind', _LIB))
+    return func(key)
 
 
 def get_env(key, default_val):
-    return _LIB.RdcEnvGetEnv(key, default_val)
+    proto = ctypes.PYFUNCTYPE(ctypes.c_int, ctypes.py_object, ctypes.c_int)
+    func = proto(('RdcEnvGetEnv', _LIB))
+    return func(key, default_val)
 
 
 def get_int_env(key):
+    proto = ctypes.PYFUNCTYPE(ctypes.c_int, ctypes.py_object)
+    func = proto(('RdcEnvGetIntEnv', _LIB))
     return _LIB.RdcEnvGetIntEnv(key)
