@@ -34,8 +34,14 @@ RDC_DLL void RdcDelWorkCompletion(WorkCompletionHandle work_comp);
 /*!/brief Create a new communicator
  * /param comm_name name for this communicator
  * */
-RDC_DLL void RdcNewCommunicator(ICommunicatorHandle comm,
+RDC_DLL void RdcNewCommunicator(ICommunicatorHandle *comm,
                                 const char *comm_name);
+/*!/brief Get a exsited communicator
+ * /param comm_name name for this communicator
+ * */
+RDC_DLL void RdcGetCommunicator(ICommunicatorHandle *comm,
+                                const char *comm_name);
+
 /*!/brief nonblocking send
  * /param work_comp handle for work completion this function will return
  * /param comm communicator object

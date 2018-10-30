@@ -3,21 +3,28 @@ Reliable Distribution Communication.
 
 Author: Ankun Zheng
 """
-#import cPickle as pickle
 import _pickle as cPickle
 import ctypes
 import os
 import sys
 import warnings
 import numpy as np
-
+from enum import Enum
+from rdc import _LIB
 
 # reduction operators
-MAX = 0
-MIN = 1
-SUM = 2
-BITOR = 3
+class Op(Enum):
+    MAX = 0
+    MIN = 1
+    SUM = 2
+    BITOR = 3
+    def __new__(cls, value):
+        member = object.__new__(cls)
+        member._value_ = value
+        return member
 
+    def __int__(self):
+        return self.value
 
 def init(args=None, lib='standard', lib_dll=None):
     """Intialize the rdc module, call this once before using anything.
@@ -37,7 +44,6 @@ def init(args=None, lib='standard', lib_dll=None):
     """
     if args is None:
         args = [arg.encode() for arg in sys.argv]
-    _loadlib(lib, lib_dll)
     arr = (ctypes.c_char_p * len(args))()
     arr[:] = args
     _LIB.RdcInit(len(args), arr)
@@ -49,7 +55,6 @@ def finalize():
     Call this function after you finished all jobs.
     """
     _LIB.RdcFinalize()
-    _unloadlib()
 
 
 def new_communicator(name):
@@ -198,7 +203,7 @@ def allreduce(data, op, prepare_fun=None):
     if prepare_fun is None:
         _LIB.RdcAllreduce(
             buf.ctypes.data_as(ctypes.c_void_p), buf.size,
-            DTYPE_ENUM__[buf.dtype], op, None, None)
+            DTYPE_ENUM__[buf.dtype], int(op), None, None)
     else:
         func_ptr = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
 
@@ -208,7 +213,7 @@ def allreduce(data, op, prepare_fun=None):
 
         _LIB.RdcAllreduce(
             buf.ctypes.data_as(ctypes.c_void_p), buf.size,
-            DTYPE_ENUM__[buf.dtype], op, func_ptr(pfunc), None)
+            DTYPE_ENUM__[buf.dtype], int(op), func_ptr(pfunc), None)
     return buf
 
 

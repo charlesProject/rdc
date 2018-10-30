@@ -61,6 +61,12 @@ inline void Init(int argc, char* argv[]);
  */
 inline comm::ICommunicator* NewCommunicator(const std::string& name);
 /*!
+ * \breif get a existed communicator with specific name
+ * \param name the communicator name
+ */
+inline comm::ICommunicator* GetCommunicator(const std::string& name);
+
+/*!
  * \brief finalizes the rdc engine, call this function after you finished with
  * all the jobs
  */

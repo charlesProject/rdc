@@ -17,8 +17,13 @@
 namespace rdc {
 // intialize the rdc comm
 inline void Init(int argc, char *argv[]) { comm::Init(argc, argv); }
+// create a new rdc comm
 inline comm::ICommunicator *NewCommunicator(const std::string &name) {
     return comm::GetCommunicator()->NewCommunicator(name);
+}
+// get an existed rdc comm
+inline comm::ICommunicator *GetCommunicator(const std::string &name) {
+    return comm::GetCommunicator(name);
 }
 // finalize the rdc comm
 inline void Finalize() { comm::Finalize(); }

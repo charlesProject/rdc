@@ -8,11 +8,11 @@ from rdc import _LIB
 
 
 class WorkComp(object):
-    __slots__ = ('handle')
+    __slots__ = ('handle', 'own_handle')
 
     def __init__(self, **kwargs):
         self.handle = ctypes.c_void_p()
-        if 'own_handle' in self.own_handle:
+        if 'own_handle' in kwargs:
             self.own_handle = kwargs['own_handle']
         else:
             self.own_handle = False
@@ -29,11 +29,11 @@ class WorkComp(object):
 
 
 class Comm(object):
-    __slots__ = ('handle')
+    __slots__ = ('handle', 'own_handle')
 
     def __init__(self, **kwargs):
         self.handle = ctypes.c_void_p()
-        if 'own_handle' in self.own_handle:
+        if 'own_handle' in kwargs:
             self.own_handle = kwargs['own_handle']
         else:
             self.own_handle = False
@@ -54,7 +54,7 @@ class Comm(object):
 def new_comm(name):
     comm = Comm()
     if isinstance(name, str):
-        _LIB.RdcNewCommunicator(ctypes.byref(comm.handle), name.decode('utf-8'))
+        _LIB.RdcNewCommunicator(ctypes.byref(comm.handle), name.encode('utf-8'))
     elif isinstance(name, bytes):
         _LIB.RdcNewCommunicator(ctypes.byref(comm.handle), name)
     else:
@@ -62,10 +62,10 @@ def new_comm(name):
     return comm
 
 
-def get_comm(name):
+def get_comm(name='main'):
     comm = Comm()
     if isinstance(name, str):
-        _LIB.RdcGetCommunicator(ctypes.byref(comm.handle), name.decode('utf-8'))
+        _LIB.RdcGetCommunicator(ctypes.byref(comm.handle), name.encode('utf-8'))
     elif isinstance(name, bytes):
         _LIB.RdcGetCommunicator(ctypes.byref(comm.handle), name)
     else:

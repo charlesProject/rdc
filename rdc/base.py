@@ -68,6 +68,8 @@ def _unload_lib():
 
 #library instance
 _load_lib()
+import atexit
+atexit.register(_unload_lib)
 # type definitions
 rdc_uint = ctypes.c_uint
 rdc_float = ctypes.c_float

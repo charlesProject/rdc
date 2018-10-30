@@ -18,8 +18,12 @@ void RdcDelWorkCompletion(WorkCompletionHandle work_comp) {
     rdc::WorkCompletion::Delete(static_cast<rdc::WorkCompletion*>(work_comp));
 }
 
-void RdcNewCommunicator(ICommunicatorHandle comm, const char* comm_name) {
-    comm = static_cast<ICommunicatorHandle>(rdc::NewCommunicator(comm_name));
+void RdcNewCommunicator(ICommunicatorHandle* comm, const char* comm_name) {
+    *comm = static_cast<ICommunicatorHandle>(rdc::NewCommunicator(comm_name));
+}
+
+void RdcGetCommunicator(ICommunicatorHandle* comm, const char* comm_name) {
+    *comm = static_cast<ICommunicatorHandle>(rdc::GetCommunicator(comm_name));
 }
 
 void RdcISend(WorkCompletionHandle* work_comp, ICommunicatorHandle comm,
