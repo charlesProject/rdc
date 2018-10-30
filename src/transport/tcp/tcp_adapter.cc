@@ -116,7 +116,7 @@ void TcpAdapter::AddChannel(TcpChannel* channel) {
 
 void TcpAdapter::RemoveChannel(TcpChannel* channel) {
     lock_.lock();
-    channels_.erase(channel->sockfd());
+//    channels_.erase(channel->sockfd());
     epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, channel->sockfd(), nullptr);
     lock_.unlock();
 }
@@ -195,18 +195,19 @@ bool TcpAdapter::Poll() {
             if (IsRead(events[i].events)) {
                 if (events[i].data.fd == this->shutdown_fd_) {
                     this->shutdown_ = true;
-                    LOG_F(2, "shutdown");
+                    VLOG_F(2, "Shutdown adapter");
                 }
             }
         }
     }  // for
     if (this->shutdown_) {
-        LOG_F(2, "shutdown");
+        VLOG_F(2, "Shutdown adapter");
         return true;
     }
     return false;
 }
 void TcpAdapter::Listen(const int& port) {
+    VLOG_F(3, "Listening on port %d ", port);
     listen_sock_.TryBindHost(port);
     listen_sock_.SetReuseAddr(true);
     listen_sock_.Listen(kNumBacklogs);
@@ -216,6 +217,7 @@ void TcpAdapter::Listen(const int& port) {
 TcpChannel* TcpAdapter::Accept() {
     // accept the connection
     // set flags to check
+    VLOG_F(3, "Accpet a new connection");
     const auto& sock = listen_sock_.Accept();
     return new TcpChannel(this, sock, kRead);
 }

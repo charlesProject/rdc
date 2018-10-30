@@ -207,7 +207,7 @@ void Communicator::UnExclude() {
 
 void Communicator::Heartbeat() {
     auto heartbeat_interval =
-        Env::Get()->GetEnv("RDC_HEARTBEAT_INTERVAL", 10000);
+        Env::Get()->GetEnv("RDC_HEARTBEAT_INTERVAL", 1000);
     // spin util connected to tracker
     while (!this->tracker_connected()) {
         std::this_thread::sleep_for(
@@ -215,14 +215,17 @@ void Communicator::Heartbeat() {
     }
     while (this->tracker_connected()) {
         this->tracker_lock_->lock();
-        if (!this->tracker_connected()) break;
+        if (!this->tracker_connected()) {
+            this->tracker_lock_->unlock();
+            break;
+        }
         this->tracker_->SendStr("heartbeat");
         std::string heartbeat_token;
         this->tracker_->RecvStr(heartbeat_token);
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(heartbeat_interval));
         CHECK_EQ(heartbeat_token, "heartbeat_done");
         this->tracker_lock_->unlock();
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(heartbeat_interval));
     }
 }
 // util to parse data with unit suffix

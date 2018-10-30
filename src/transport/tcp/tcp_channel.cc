@@ -71,7 +71,8 @@ void TcpChannel::ModifyKind(const ChannelKind& kind) {
     }
 }
 bool TcpChannel::Connect(const std::string& hostname, const uint32_t& port) {
-    LOG_F(INFO, "%s %d", hostname.c_str(), port);
+    VLOG_F(2, "Trying to connect to process on host %s and port %d",
+           hostname.c_str(), port);
     if (!sock_.Connect(hostname, port)) {
         return false;
     }
@@ -153,7 +154,14 @@ void TcpChannel::ReadCallback() {
         sock_.Recv(recv_req.ptr_at<uint8_t>(recv_req.completed_bytes()),
                    recv_req.remain_nbytes());
     if (read_nbytes == -1 && errno != EAGAIN) {
+        this->set_error_detected(true);
         WorkRequestManager::Get()->set_status(recv_req.id(), false);
+        if (spin_) {
+            recv_reqs_.NoLockPop();
+        } else {
+            recv_req.Notify();
+            recv_reqs_.Pop();
+        }
     }
     if (recv_req.AddBytes(read_nbytes)) {
         if (this->spin()) {
@@ -192,7 +200,14 @@ void TcpChannel::WriteCallback() {
         sock_.Send(send_req.ptr_at<uint8_t>(send_req.completed_bytes()),
                    send_req.remain_nbytes());
     if (write_nbytes == -1 && errno != EAGAIN) {
+        this->set_error_detected(true);
         WorkRequestManager::Get()->set_status(send_req.id(), false);
+        if (spin_) {
+            send_reqs_.NoLockPop();
+        } else {
+            send_req.Notify();
+            send_reqs_.Pop();
+        }
     }
     if (send_req.AddBytes(write_nbytes)) {
         if (spin_) {
