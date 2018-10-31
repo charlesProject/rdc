@@ -4,8 +4,8 @@
 #include "transport/rdma/rdma_memory_mgr.h"
 #endif
 #include "common/env.h"
-#include "core/logging.h"
 #include "common/object_pool.h"
+#include "core/logging.h"
 namespace rdc {
 class Buffer : public ObjectPoolAllocatable<Buffer> {
 public:
@@ -32,7 +32,19 @@ public:
           start_(start),
           end_(end),
           pinned_(pinned) {
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#elif defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-variable"
+#endif
         bool use_rdma = Env::Get()->GetEnv("RDC_USE_RDMA", 0);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 #ifdef RDC_USE_RDMA
         if (pinned && use_rdma) {
             memory_region_ =
@@ -48,7 +60,21 @@ public:
           start_(start),
           end_(end),
           pinned_(pinned) {
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#elif defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-variable"
+#endif
+
         bool use_rdma = Env::Get()->GetEnv("RDC_USE_RDMA", 0);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+
 #ifdef RDC_USE_RDMA
         if (pinned && use_rdma) {
             memory_region_ =

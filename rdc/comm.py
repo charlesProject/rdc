@@ -4,10 +4,11 @@ Core communicator utilities.
 Author: Ankun Zheng
 """
 import ctypes
-from rdc import _LIB
-
+import rdc
+import numpy as np
 
 class WorkComp(object):
+    """WorkComp"""
     __slots__ = ('handle', 'own_handle')
 
     def __init__(self, **kwargs):
@@ -18,14 +19,17 @@ class WorkComp(object):
             self.own_handle = False
 
     def __del__(self):
+        """__del__"""
         if self.own_handle:
-            _LIB.RdcDelWorkCompletion(self.handle)
+            rdc._LIB.RdcDelWorkCompletion(self.handle)
 
     def wait(self):
-        return _LIB.RdcWorkCompletionWait(self.handle)
+        """wait util work is finished"""
+        return rdc._LIB.RdcWorkCompletionWait(self.handle)
 
     def status(self):
-        return _LIB.RdcWorkCompletionStatus(self.handle)
+        """report status of this work"""
+        return rdc._LIB.RdcWorkCompletionStatus(self.handle)
 
 
 class Comm(object):
@@ -39,35 +43,69 @@ class Comm(object):
             self.own_handle = False
 
     def isend(self, buf, dest_rank):
+        """nonblocking send
+
+        :param buf: buffer to send
+        :type buf: rdc.Buffer or numpy.ndarray
+        :param dest_rank: rank of destination process
+        """
         wc = WorkComp(own_handle=True)
-        wc_handle = _LIB.RdcISend(self.handle, buf.handle, dest_rank)
+        if isinstance(buf, rdc.Buffer):
+            wc_handle = rdc._LIB.RdcISend(self.handle, buf.handle, dest_rank)
+        elif isinstance(buf, np.ndarray):
+            rdc_buf = rdc.Buffer(buf=buf)
+            wc_handle = rdc._LIB.RdcISend(self.handle, rdc_buf.handle,
+                                          dest_rank)
+        else:
+            raise TypeError('Unsupported type')
         wc.handle = wc_handle
         return wc
 
     def irecv(self, buf, src_rank):
+        """nonblocking recv
+
+        :param buf: buffer to recv
+        :param src_rank: rank of source process
+        """
         wc = WorkComp(own_handle=True)
-        wc_handle = _LIB.RdcIRecv(self.handle, buf.handle, src_rank)
+        if isinstance(buf, rdc.Buffer):
+            wc_handle = rdc._LIB.RdcIRecv(self.handle, buf.handle, src_rank)
+        elif isinstance(buf, np.ndarray):
+            rdc_buf = rdc.Buffer(buf=buf)
+            wc_handle = rdc._LIB.RdcIRecv(self.handle, rdc_buf.handle, src_rank)
+        else:
+            raise TypeError('Unsupported type')
         wc.handle = wc_handle
         return wc
 
 
 def new_comm(name):
+    """new_comm
+
+    :param name:
+    """
     comm = Comm()
     if isinstance(name, str):
-        _LIB.RdcNewCommunicator(ctypes.byref(comm.handle), name.encode('utf-8'))
+        rdc._LIB.RdcNewCommunicator(
+            ctypes.byref(comm.handle), name.encode('utf-8'))
     elif isinstance(name, bytes):
-        _LIB.RdcNewCommunicator(ctypes.byref(comm.handle), name)
+        rdc._LIB.RdcNewCommunicator(ctypes.byref(comm.handle), name)
     else:
         raise TypeError('name must be a string or bytearray')
     return comm
 
 
 def get_comm(name='main'):
+    """get_comm
+
+    :param name:
+    """
     comm = Comm()
     if isinstance(name, str):
-        _LIB.RdcGetCommunicator(ctypes.byref(comm.handle), name.encode('utf-8'))
+        rdc._LIB.RdcGetCommunicator(
+            ctypes.byref(comm.handle), name.encode('utf-8'))
     elif isinstance(name, bytes):
-        _LIB.RdcGetCommunicator(ctypes.byref(comm.handle), name)
+        rdc._LIB.RdcGetCommunicator(ctypes.byref(comm.handle), name)
     else:
         raise TypeError('name must be a string or bytearray')
     return comm
