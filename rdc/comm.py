@@ -7,6 +7,7 @@ import ctypes
 import rdc
 import numpy as np
 
+
 class WorkComp(object):
     """WorkComp"""
     __slots__ = ('handle', 'own_handle')
@@ -51,14 +52,14 @@ class Comm(object):
         """
         wc = WorkComp(own_handle=True)
         if isinstance(buf, rdc.Buffer):
-            wc_handle = rdc._LIB.RdcISend(self.handle, buf.handle, dest_rank)
+            rdc._LIB.RdcISend(
+                ctypes.byref(wc.handle), self.handle, buf.handle, dest_rank)
         elif isinstance(buf, np.ndarray):
             rdc_buf = rdc.Buffer(buf=buf)
-            wc_handle = rdc._LIB.RdcISend(self.handle, rdc_buf.handle,
-                                          dest_rank)
+            rdc._LIB.RdcISend(
+                ctypes.byref(wc.handle), self.handle, rdc_buf.handle, dest_rank)
         else:
             raise TypeError('Unsupported type')
-        wc.handle = wc_handle
         return wc
 
     def irecv(self, buf, src_rank):

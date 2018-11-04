@@ -31,6 +31,14 @@ RDC_DLL void RdcDelBuffer(BufferHandle buf);
  * /param work_comp handle for the created work completion*
  * */
 RDC_DLL void RdcDelWorkCompletion(WorkCompletionHandle work_comp);
+/*!/brief Wait util work completion is completed
+ * /param work_comp handle for the work completion*
+ * */
+RDC_DLL void RdcWorkCompletionWait(WorkCompletionHandle work_comp);
+/*!/brief get the status of the completed work completion
+ * /param work_comp handle for the work completion*
+ * */
+RDC_DLL bool RdcWorkCompletionStatus(WorkCompletionHandle work_comp);
 /*!/brief Create a new communicator
  * /param comm_name name for this communicator
  * */
