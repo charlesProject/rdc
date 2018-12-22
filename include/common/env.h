@@ -1,52 +1,58 @@
 #pragma once
 #include <cstdlib>
-#include <unordered_map>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 class Env {
 public:
-    static inline Env* Get() {
-       return _GetSharedRef(nullptr).get();
-    }
-    static inline std::shared_ptr<Env> _GetSharedRef() {
-        return _GetSharedRef(nullptr);
-    }
-    static inline Env* Init(
-        const std::unordered_map<std::string, std::string>& envs) {
-        return _GetSharedRef(&envs).get();
-    }
-    const char* Find(const char* k) {
-        std::string key(k);
-        return kvs.find(key) == kvs.end() ? getenv(k) : kvs[key].c_str();
-    }
+    static Env* Get();
+
+    static std::shared_ptr<Env> _GetSharedRef();
+
+    static Env* Init(const std::unordered_map<std::string, std::string>& envs);
+
+    /**
+     * @brief: get all envrioment variables related to this process
+     *
+     * @return all enviroment variables as a vector
+     */
+    std::vector<const char*> ListEnvs();
+
+    /**
+     * @brief: search a environment variable value related to key
+     *
+     * @param key key of environment variable to search
+     *
+     * @return founded value
+     */
+    const char* Find(const char* key);
+
     static std::shared_ptr<Env> _GetSharedRef(
-      const std::unordered_map<std::string, std::string>* envs) {
-        static std::shared_ptr<Env> inst_ptr(new Env(envs));
-        return inst_ptr;
-    }
+        const std::unordered_map<std::string, std::string>* envs);
+
+    /**
+     * @brief: searcch a int enviroment varialbe with int value related to key
+     *
+     * @param key key of environment variable to search
+     *
+     * @return founded value
+     */
+    int32_t GetIntEnv(const char* key);
+
     template <typename V>
-    inline V GetEnv(const char* key, V default_val) {
+    V GetEnv(const char* key, V default_val) {
         const char* val = Find(key);
-        if(val == nullptr) {
+        if (val == nullptr) {
             return default_val;
-        } else {
-            return std::atoi(val);
-        }
-    }
-    inline int32_t GetIntEnv(const char* key) {
-        const char* val = Find(key);
-        if(val == nullptr) {
-            return 0;
         } else {
             return std::atoi(val);
         }
     }
 
 private:
-    explicit Env(const std::unordered_map<std::string, std::string>* envs) {
-        if (envs) kvs = *envs;
-    }
+    explicit Env(const std::unordered_map<std::string, std::string>* envs);
 
     std::unordered_map<std::string, std::string> kvs;
 };
