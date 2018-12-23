@@ -45,9 +45,6 @@ Communicator::~Communicator() {
 }
 // initialization function
 void Communicator::Init(int world_size, int num_conn, int num_accept) {
-    // init logging
-    // logging::init(argc, argv);
-
     // clear the setting before start reconnection
     //---------------------
     // start
@@ -69,16 +66,6 @@ void Communicator::Shutdown() {
     this->Barrier();
     Tracker::Get()->Lock();
     Tracker::Get()->SendStr(std::string("shutdown"));
-    Tracker::Get()->UnLock();
-}
-void Communicator::TrackerPrint(const std::string& msg) {
-    // if (this->tracker_uri_ == "NULL") {
-    //    LOG_F(INFO, "@node[%d] %s", rank_, msg.c_str());
-    //    return;
-    //}
-    Tracker::Get()->Lock();
-    Tracker::Get()->SendStr(std::string("print"));
-    Tracker::Get()->SendStr(msg);
     Tracker::Get()->UnLock();
 }
 void Communicator::Barrier() {
@@ -220,7 +207,7 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>& num_conn_accept) {
             "cannot find prev link in the ring");
     CHECK_F(next_rank_ == -1 || ring_next_ != nullptr,
             "cannot find next link in the ring");
-    this->TrackerPrint("Connected done");
+    Tracker::Get()->TrackerPrint("Connected done");
     this->UnExclude();
 }
 

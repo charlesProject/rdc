@@ -95,11 +95,14 @@ void CommunicatorManager::Init(int argc, char** argv) {
         }
     }
 
+    // note tracker will be connected from here
     logging::set_thread_name("communicator manager");
     logging::add_file(
         str_utils::SPrintf("log/%d", Tracker::Get()->rank()).c_str(),
         logging::Truncate, logging::Verbosity_MAX);
     logging::g_stderr_verbosity = 1;
+
+    deamon_.reset(new Deamon);
 }
 
 void CommunicatorManager::Finalize() {

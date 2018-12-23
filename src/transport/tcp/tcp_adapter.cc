@@ -13,9 +13,9 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
-#include "core/logging.h"
 #include "common/status.h"
 #include "common/threadpool.h"
+#include "core/logging.h"
 #include "sys/error.h"
 #include "transport/tcp/tcp_channel.h"
 static const uint32_t kNumMaxEvents = 1024;
@@ -24,13 +24,13 @@ namespace rdc {
 static inline uint32_t channel_kind_to_epoll_event(
     const ChannelKind& channel_kind) {
     switch (channel_kind) {
-        case kRead:
+        case ChannelKind::kRead:
             return EPOLLIN;
-        case kWrite:
+        case ChannelKind::kWrite:
             return EPOLLOUT;
-        case kReadWrite:
+        case ChannelKind::kReadWrite:
             return EPOLLIN | EPOLLOUT;
-        case kNone:
+        case ChannelKind::kNone:
             return 0;
         default:
             return 0;
@@ -39,36 +39,38 @@ static inline uint32_t channel_kind_to_epoll_event(
 
 static inline std::string channel_kind_to_string(ChannelKind channel_kind) {
     switch (channel_kind) {
-        case kRead:
+        case ChannelKind::kRead:
             return "read";
-        case kWrite:
+        case ChannelKind::kWrite:
             return "write";
-        case kReadWrite:
+        case ChannelKind::kReadWrite:
             return "readwrite";
-        case kNone:
+        case ChannelKind::kNone:
             return "none";
         default:
             return "none";
     }
 }
 
-static inline bool IsRead(uint32_t events) {
+static inline bool IsReadEvent(uint32_t events) {
     return (events & EPOLLIN || events & EPOLLPRI);
 }
-static inline bool IsWrite(uint32_t events) { return events & EPOLLOUT; }
-
-static inline bool IsReadOnly(uint32_t events) {
-    return IsRead(events) && !IsWrite(events);
+static inline bool IsWriteEvent(uint32_t events) {
+    return events & EPOLLOUT;
 }
 
-static inline bool IsWriteOnly(uint32_t events) {
-    return IsWrite(events) && !IsRead(events);
-}
-static inline bool IsReadWrite(uint32_t events) {
-    return IsRead(events) && IsWrite(events);
+static inline bool IsReadEventOnly(uint32_t events) {
+    return IsReadEvent(events) && !IsWriteEvent(events);
 }
 
-static inline bool IsError(uint32_t events) {
+static inline bool IsWriteEventOnly(uint32_t events) {
+    return IsWriteEvent(events) && !IsReadEvent(events);
+}
+static inline bool IsReadEventWrite(uint32_t events) {
+    return IsReadEvent(events) && IsWriteEvent(events);
+}
+
+static inline bool IsErrorEvent(uint32_t events) {
     return (events & EPOLLERR || events & EPOLLHUP || events & EPOLLRDHUP);
 }
 TcpAdapter::TcpAdapter() {
@@ -87,7 +89,8 @@ void TcpAdapter::PollForever() {
         LOG_F(2, "Tcp poller Started");
         while (true) {
             bool finished = Poll();
-            if (finished) break;
+            if (finished)
+                break;
         }
     }));
 }
@@ -116,7 +119,7 @@ void TcpAdapter::AddChannel(TcpChannel* channel) {
 
 void TcpAdapter::RemoveChannel(TcpChannel* channel) {
     lock_.lock();
-//    channels_.erase(channel->sockfd());
+    //    channels_.erase(channel->sockfd());
     epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, channel->sockfd(), nullptr);
     lock_.unlock();
 }
@@ -165,7 +168,7 @@ bool TcpAdapter::Poll() {
         lock_.unlock();
         if (channel) {
             // shutdown or error
-            if (IsError(events[i].events)) {
+            if (IsErrorEvent(events[i].events)) {
                 int32_t error = GetLastSocketError(events[i].data.fd);
                 channel->set_error_detected(true);
                 LOG_F(ERROR, "%s", sys::FormatError(error).c_str());
@@ -173,29 +176,29 @@ bool TcpAdapter::Poll() {
             }
 
             // when data avaliable for read or urgent flag is set
-            if (IsRead(events[i].events)) {
-                channel->DeleteCarefulEvent(ChannelKind::kRead);
+            if (IsReadEvent(events[i].events)) {
+                channel->DeleteEventOfInterest(ChannelKind::kRead);
                 ThreadPool::Get()->AddTask([channel, this] {
                     channel->ReadCallback();
                     this->shutdown_lock_.lock();
                     if (!this->shutdown_called_) {
-                        channel->AddCarefulEvent(ChannelKind::kRead);
+                        CHECK_NOTNULL(channel);
+                        channel->AddEventOfInterest(ChannelKind::kRead);
                     }
                     this->shutdown_lock_.unlock();
                 });
             }
 
             // when write possible
-            if (IsWrite(events[i].events)) {
-                channel->DeleteCarefulEvent(ChannelKind::kWrite);
+            if (IsWriteEvent(events[i].events)) {
+                channel->DeleteEventOfInterest(ChannelKind::kWrite);
                 ThreadPool::Get()->AddTask(
                     [channel] { channel->WriteCallback(); });
             }
         } else {  // shutdown pipe
-            if (IsRead(events[i].events)) {
+            if (IsReadEvent(events[i].events)) {
                 if (events[i].data.fd == this->shutdown_fd_) {
                     this->shutdown_ = true;
-                    VLOG_F(2, "Shutdown adapter");
                 }
             }
         }
@@ -219,6 +222,6 @@ TcpChannel* TcpAdapter::Accept() {
     // set flags to check
     VLOG_F(3, "Accpet a new connection");
     const auto& sock = listen_sock_.Accept();
-    return new TcpChannel(this, sock, kRead);
+    return new TcpChannel(this, sock, ChannelKind::kRead);
 }
 }  // namespace rdc

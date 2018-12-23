@@ -16,7 +16,7 @@
 #pragma GCC diagnostic ignored "-Wunused-macros"
 #pragma GCC diagnostic ignored "-Wzero-as-null-pointer-constant"
 
-#include "logging.h"
+#include "core/logging.h"
 
 #ifndef LOGGING_HAS_BEEN_IMPLEMENTED
 #define LOGGING_HAS_BEEN_IMPLEMENTED

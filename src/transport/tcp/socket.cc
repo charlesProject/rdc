@@ -20,24 +20,29 @@
 #include <string>
 #include "core/base.h"
 #include "core/logging.h"
+#include "transport/tcp/socket.h"
 namespace rdc {
 SockAddr::SockAddr() {
     std::memset(&addr, 0, sizeof(addr));
 }
+
 SockAddr::SockAddr(const char *url, int port) {
     std::memset(&addr, 0, sizeof(addr));
     this->Set(url, port);
 }
+
 SockAddr::SockAddr(std::string host, int port) {
     std::memset(&addr, 0, sizeof(addr));
     this->Set(host.c_str(), port);
 }
+
 std::string SockAddr::GetHostName() {
     std::string buf;
     buf.resize(256);
     CHECK_S(gethostname(&buf[0], 256) != -1) << "fail to get host name";
     return std::string(buf.c_str());
 }
+
 void SockAddr::Set(const char *host, int port) {
     addrinfo hints;
     memset(&hints, 0, sizeof(hints));
@@ -51,9 +56,11 @@ void SockAddr::Set(const char *host, int port) {
     addr.sin_port = htons(port);
     freeaddrinfo(res);
 }
+
 int SockAddr::port() const {
     return ntohs(addr.sin_port);
 }
+
 std::string SockAddr::AddrStr() const {
     std::string buf;
     buf.resize(256);
@@ -67,9 +74,6 @@ std::string SockAddr::AddrStr() const {
     return std::string(s);
 }
 
-operator Socket::SOCKET() const {
-    return sockfd;
-}
 int Socket::GetLastError() {
 #ifdef _WIN32
     return WSAGetLastError();
@@ -77,7 +81,7 @@ int Socket::GetLastError() {
     return errno;
 #endif
 }
-/*! @return whether last error was would block */
+
 bool Socket::LastErrorWouldBlock() {
     int errsv = GetLastError();
 #ifdef _WIN32
@@ -86,6 +90,7 @@ bool Socket::LastErrorWouldBlock() {
     return errsv == EAGAIN || errsv == EWOULDBLOCK;
 #endif
 }
+
 void Socket::Startup() {
 #ifdef _WIN32
     WSADATA wsa_data;
@@ -99,11 +104,13 @@ void Socket::Startup() {
     }
 #endif
 }
+
 void Socket::Finalize() {
 #ifdef _WIN32
     WSACleanup();
 #endif
 }
+
 void Socket::SetNonBlock(bool non_block) {
 #ifdef _WIN32
     u_long mode = non_block ? 1 : 0;
@@ -125,12 +132,14 @@ void Socket::SetNonBlock(bool non_block) {
     }
 #endif
 }
+
 void Socket::Bind(const SockAddr &addr) {
     if (bind(sockfd, reinterpret_cast<const sockaddr *>(&addr.addr),
              sizeof(addr.addr)) == -1) {
         LOGERROR("Bind");
     }
 }
+
 int Socket::TryBindHost(int port) {
     SockAddr addr("0.0.0.0", port);
     addr.addr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -149,6 +158,7 @@ int Socket::TryBindHost(int port) {
 #endif
     return -1;
 }
+
 int Socket::TryBindHost(int start_port, int end_port) {
     for (int port = start_port; port < end_port; ++port) {
         SockAddr addr("0.0.0.0", port);
@@ -169,6 +179,7 @@ int Socket::TryBindHost(int start_port, int end_port) {
 
     return -1;
 }
+
 int Socket::GetSockError() const {
     int error = 0;
     socklen_t len = sizeof(error);
@@ -178,6 +189,7 @@ int Socket::GetSockError() const {
     }
     return error;
 }
+
 bool Socket::BadSocket() const {
     if (IsClosed())
         return true;
@@ -186,10 +198,11 @@ bool Socket::BadSocket() const {
         return true;
     return false;
 }
+
 bool Socket::IsClosed() const {
     return sockfd == INVALID_SOCKET;
 }
-/*! @brief close the socket */
+
 void Socket::Close() {
     if (sockfd != INVALID_SOCKET) {
 #ifdef _WIN32
@@ -204,7 +217,7 @@ void Socket::Close() {
             "create");
     }
 }
-// report an socket error
+
 void Socket::Error(const char *msg) {
 #ifdef _WIN32
     LOG_F(ERROR, "Socket %s Error:WSAError-code=%d", msg, WSAGetLastError());
@@ -216,18 +229,18 @@ void Socket::Error(const char *msg) {
 Socket::Socket(SOCKET sockfd) : sockfd(sockfd) {
 }
 // constructor
-TcpSocket::TcpSocket(bool create = true) : Socket(INVALID_SOCKET) {
+TcpSocket::TcpSocket(bool create) : Socket(INVALID_SOCKET) {
     if (create)
         Create();
 }
 
-TcpSocket::TTcpSocket(SOCKET sockfd, bool create = true) : Socket(sockfd) {
+TcpSocket::TcpSocket(SOCKET sockfd, bool create) : Socket(sockfd) {
     if (create)
         Create();
 }
 
 void TcpSocket::SetKeepAlive(bool keepalive) {
-    int opt = _cast<int>(keepalive);
+    int opt = static_cast<int>(keepalive);
     if (setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE,
                    reinterpret_cast<char *>(&opt), sizeof(opt)) < 0) {
         LOGERROR("SetKeepAlive");
@@ -235,31 +248,33 @@ void TcpSocket::SetKeepAlive(bool keepalive) {
 }
 
 void TcpSocket::SetReuseAddr(bool reuse) {
-    int opt = _cast<int>(reuse);
+    int opt = static_cast<int>(reuse);
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
                    reinterpret_cast<char *>(&opt), sizeof(opt)) < 0) {
         LOGERROR("SetReuseAddr");
     }
 }
 
-void TcpSocket::Create(int af = PF_INET) {
+void TcpSocket::Create(int af) {
     sockfd = socket(af, SOCK_STREAM, 0);
     if (sockfd == INVALID_SOCKET) {
         LOGERROR("Create");
     }
 }
-void TcpSocket::Bind(const SockAddr &addr, bool reuse = true) {
+
+void TcpSocket::Bind(const SockAddr &addr, bool reuse) {
     SetReuseAddr(reuse);
     Socket::Bind(addr);
 }
 
-bool TcpSocket::Listen(int backlog = 128) {
+bool TcpSocket::Listen(int backlog) {
     if (listen(sockfd, backlog) == -1) {
         return false;
     } else {
         return true;
     }
 }
+
 TcpSocket TcpSocket::Accept() {
     SOCKET newfd = accept(sockfd, NULL, NULL);
     if (newfd == INVALID_SOCKET) {
@@ -267,6 +282,7 @@ TcpSocket TcpSocket::Accept() {
     }
     return TcpSocket(newfd, false);
 }
+
 int TcpSocket::AtMark() const {
 #ifdef _WIN32
     unsigned long atmark;  // NOLINT(*)
@@ -277,8 +293,9 @@ int TcpSocket::AtMark() const {
     if (ioctl(sockfd, SIOCATMARK, &atmark) == -1)
         return -1;
 #endif
-    return _cast<int>(atmark);
+    return static_cast<int>(atmark);
 }
+
 bool TcpSocket::Connect(const SockAddr &addr) {
     int ret = connect(sockfd, reinterpret_cast<const sockaddr *>(&addr.addr),
                       sizeof(addr.addr));
@@ -288,23 +305,27 @@ bool TcpSocket::Connect(const SockAddr &addr) {
     }
     return true;
 }
+
 bool TcpSocket::Connect(const std::string &url, int port) {
     SockAddr serv_addr(url, port);
     return Connect(serv_addr);
 }
-ssize_t TcpSocket::Send(const void *buf_, size_t len, int flag = 0) {
+
+ssize_t TcpSocket::Send(const void *buf_, size_t len, int flag) {
     const char *buf = reinterpret_cast<const char *>(buf_);
-    return send(sockfd, buf, _cast<sock_size_t>(len), flag);
+    return send(sockfd, buf, static_cast<sock_size_t>(len), flag);
 }
-ssize_t TcpSocket::Recv(void *buf_, size_t len, int flags = 0) {
+
+ssize_t TcpSocket::Recv(void *buf_, size_t len, int flags) {
     char *buf = reinterpret_cast<char *>(buf_);
-    return recv(sockfd, buf, _cast<sock_size_t>(len), flags);
+    return recv(sockfd, buf, static_cast<sock_size_t>(len), flags);
 }
+
 size_t TcpSocket::SendAll(const void *buf_, size_t len) {
     const char *buf = reinterpret_cast<const char *>(buf_);
     size_t ndone = 0;
     while (ndone < len) {
-        ssize_t ret = send(sockfd, buf, _cast<ssize_t>(len - ndone), 0);
+        ssize_t ret = send(sockfd, buf, static_cast<ssize_t>(len - ndone), 0);
         if (ret == -1) {
             if (LastErrorWouldBlock())
                 return ndone;
@@ -315,12 +336,13 @@ size_t TcpSocket::SendAll(const void *buf_, size_t len) {
     }
     return ndone;
 }
+
 size_t TcpSocket::RecvAll(void *buf_, size_t len) {
     char *buf = reinterpret_cast<char *>(buf_);
     size_t ndone = 0;
     while (ndone < len) {
-        ssize_t ret =
-            recv(sockfd, buf, _cast<sock_size_t>(len - ndone), MSG_WAITALL);
+        ssize_t ret = recv(sockfd, buf, static_cast<sock_size_t>(len - ndone),
+                           MSG_WAITALL);
         if (ret == -1) {
             if (LastErrorWouldBlock())
                 return ndone;
@@ -333,8 +355,9 @@ size_t TcpSocket::RecvAll(void *buf_, size_t len) {
     }
     return ndone;
 }
+
 void TcpSocket::SendStr(const std::string &str) {
-    int32_t len = _cast<int32_t>(str.length());
+    int32_t len = static_cast<int32_t>(str.length());
     CHECK_F(this->SendAll(&len, sizeof(len)) == sizeof(len),
             "error during send SendStr");
     if (len != 0) {
@@ -342,6 +365,7 @@ void TcpSocket::SendStr(const std::string &str) {
                 "error during send SendStr");
     }
 }
+
 void TcpSocket::RecvStr(std::string &out_str) {
     int32_t len;
     CHECK_F(this->RecvAll(&len, sizeof(len)) == sizeof(len),
@@ -352,11 +376,14 @@ void TcpSocket::RecvStr(std::string &out_str) {
                 "error during send SendStr");
     }
 }
+
 void TcpSocket::SendInt(const int32_t &val) {
     CHECK_F(this->SendAll(&val, sizeof(val)) == sizeof(val),
             "error during send SendInt");
 }
+
 void TcpSocket::RecvInt(int32_t &out_val) {
     CHECK_F(this->RecvAll(&out_val, sizeof(out_val)) == sizeof(out_val),
             "error during send RecvInt");
+}
 }  // namespace rdc

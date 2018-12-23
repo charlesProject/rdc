@@ -1,7 +1,8 @@
 #include "core/work_request.h"
 
 namespace rdc {
-WorkRequest::WorkRequest() : status_(kPending), processed_bytes_upto_now_(0) {
+WorkRequest::WorkRequest()
+    : status_(WorkStatus::kPending), processed_bytes_upto_now_(0) {
 }
 
 WorkRequest::WorkRequest(const uint64_t& req_id, const WorkType& work_type,
@@ -57,22 +58,24 @@ void WorkRequest::set_status(const WorkStatus& status) {
 bool WorkRequest::AddBytes(const size_t nbytes) {
     processed_bytes_upto_now_ += nbytes;
     if (processed_bytes_upto_now_ == size_in_bytes_) {
-        status_ = WorkStatus::Finished;
+        status_ = WorkStatus::kFinished;
         return true;
     }
     return false;
 }
 
 void WorkRequest::Wait() {
-    std::unique_lock<std::mutex> lock(done_lock_);
-    done_cond_.wait(lock, [this] { return done_; });
+    if ((status_.load(std::memory_order_acquire) != WorkStatus::kFinished) &&
+           (status_.load(std::memory_order_acquire) != WorkStatus::kError)) {
+        sema_.Wait();
+    }
 }
 
 void WorkRequest::Notify() {
-    done_cond_.notify_one();
+    sema_.Signal();
 }
 
-size_t WorkRequest::nbytes() const {
+size_t WorkRequest::size_in_bytes() const {
     return size_in_bytes_;
 }
 
@@ -155,19 +158,11 @@ void WorkRequestManager::Wait(const uint64_t& req_id) {
     work_req.Wait();
 }
 
-bool WorkRequestManager::done(const uint64_t& req_id) {
-    return all_work_reqs[req_id].done();
-}
-
-void WorkRequestManager::set_done(const uint64_t& req_id, const bool& done) {
-    all_work_reqs[req_id].set_done(done);
-}
-
 size_t WorkRequestManager::processed_bytes_upto_now(const uint64_t& req_id) {
     return all_work_reqs[req_id].processed_bytes_upto_now();
 }
 
-WorkStatus WorkRequestManager::status() {
+WorkStatus WorkRequestManager::status(const uint64_t& req_id) {
     return all_work_reqs[req_id].status();
 }
 
@@ -181,11 +176,11 @@ WorkCompletion::WorkCompletion(const uint64_t& id)
 }
 
 void WorkCompletion::Wait() {
-    CHECK(WorkRequestManager::Get()->Contain(id));
+    CHECK(WorkRequestManager::Get()->Contain(id_));
     WorkRequestManager::Get()->Wait(id_);
 }
 
-WorkStatus WorkCompletion::Status() {
+WorkStatus WorkCompletion::status() {
     // only query once
     if (WorkRequestManager::Get()->Contain(id_)) {
         status_ = WorkRequestManager::Get()->status(id_);
@@ -215,6 +210,6 @@ WorkStatus ChainWorkCompletion::status() {
             return work_comp->status();
         }
     }
-    return true;
+    return WorkStatus::kFinished;
 }
 }  // namespace rdc
