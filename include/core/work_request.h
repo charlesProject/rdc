@@ -15,12 +15,12 @@
 #include "utils/utils.h"
 namespace rdc {
 
-enum WorkType : uint32_t {
+enum class WorkType : uint32_t {
     kSend,
     kRecv,
 };
 
-enum WorkStatus : uint32_t {
+enum class WorkStatus : uint32_t {
     kPending = 1 << 1,
     kRunning = 1 << 2,
     kFinished = 1 << 3,
@@ -29,7 +29,8 @@ enum WorkStatus : uint32_t {
     kError = 1 << 6,
 };
 
-struct WorkRequest {
+class WorkRequest {
+public:
     WorkRequest();
 
     WorkRequest(const uint64_t& req_id, const WorkType& work_type, void* ptr,
@@ -125,9 +126,9 @@ private:
     /*! @underlying type erased pointer*/
     void* ptr_;
     /*! @brief total size to be read/write of current work request*/
-    std::atomic<size_t> size_in_bytes_;
+    size_t size_in_bytes_;
     /*! @brief current readed/written bytes */
-    std::atomic<size_t> processed_bytes_upto_now_;
+    size_t processed_bytes_upto_now_;
     /*! @brief current status of this work request */
     std::atomic<WorkStatus> status_;
     /*! @brief extra data passed to this work requst when created*/

@@ -9,59 +9,74 @@
 // use comm for implementation
 #include <string>
 #include <vector>
+#include "comm/communicator_manager.h"
+#include "comm/tracker.h"
 #include "core/mpi.h"
 #include "io/io.h"
+#include "io/memory_io.h"
 #include "rdc.h"
 #include "utils/utils.h"
-
 namespace rdc {
 // intialize the rdc comm
-inline void Init(int argc, char *argv[]) { comm::Init(argc, argv); }
+inline void Init(int argc, char *argv[]) {
+    comm::CommunicatorManager::Get()->Init(argc, argv);
+}
 // create a new rdc comm
 inline comm::ICommunicator *NewCommunicator(const std::string &name) {
-    return comm::GetCommunicator()->NewCommunicator(name);
+    return comm::CommunicatorManager::Get()->NewCommunicator(name);
 }
 // get an existed rdc comm
 inline comm::ICommunicator *GetCommunicator(const std::string &name) {
-    return comm::GetCommunicator(name);
+    return comm::CommunicatorManager::Get()->GetCommunicator(name);
 }
 // finalize the rdc comm
-inline void Finalize() { comm::Finalize(); }
+inline void Finalize() {
+    comm::CommunicatorManager::Get()->Finalize();
+}
 // get the rank of current process
-inline int GetRank(void) { return comm::GetCommunicator()->GetRank(); }
+inline int GetRank() {
+    return comm::Tracker::Get()->rank();
+}
 // the the size of the world
-inline int GetWorldSize(void) {
-    return comm::GetCommunicator()->GetWorldSize();
+inline int GetWorldSize() {
+    return comm::Tracker::Get()->world_size();
 }
 // whether rdc is distributed
-inline bool IsDistributed(void) {
-    return comm::GetCommunicator()->IsDistributed();
+inline bool IsDistributed() {
+    return comm::Tracker::Get()->IsDistributed();
 }
-// get the name of current processor
-inline std::string GetProcessorName(void) {
-    return comm::GetCommunicator()->GetHost();
+
+// print message to the tracker
+inline void TrackerPrint(const std::string &msg) {
+    comm::Tracker::Get()->TrackerPrint(msg);
 }
 inline void Send(const Buffer &sendbuf, int dest) {
-    comm::GetCommunicator()->Send(sendbuf, dest);
+    comm::CommunicatorManager::Get()->GetCommunicator()->Send(sendbuf, dest);
 }
 inline void Recv(Buffer &recvbuf, int src) {
-    comm::GetCommunicator()->Recv(recvbuf, src);
+    comm::CommunicatorManager::Get()->GetCommunicator()->Recv(recvbuf, src);
 }
 inline void Send(void *send_data, uint64_t size, int dest) {
-    comm::GetCommunicator()->Send(send_data, size, dest);
+    comm::CommunicatorManager::Get()->GetCommunicator()->Send(send_data, size,
+                                                              dest);
 }
 inline void Recv(void *recv_data, uint64_t size, int src) {
-    comm::GetCommunicator()->Recv(recv_data, size, src);
+    comm::CommunicatorManager::Get()->GetCommunicator()->Recv(recv_data, size,
+                                                              src);
 }
-inline void Barrier() { comm::GetCommunicator()->Barrier(); }
+inline void Barrier() {
+    comm::CommunicatorManager::Get()->GetCommunicator()->Barrier();
+}
 // broadcast data to all other nodes from root
 inline void Broadcast(Buffer &sendrecvbuf, int root,
                       const std::string &comm_name) {
-    comm::GetCommunicator(comm_name)->Broadcast(sendrecvbuf, root);
+    comm::CommunicatorManager::Get()->GetCommunicator(comm_name)->Broadcast(
+        sendrecvbuf, root);
 }
 inline void Broadcast(void *sendrecvaddr, uint64_t size, int root,
                       const std::string &comm_name) {
-    comm::GetCommunicator(comm_name)->Broadcast(sendrecvaddr, size, root);
+    comm::CommunicatorManager::Get()->GetCommunicator(comm_name)->Broadcast(
+        sendrecvaddr, size, root);
 }
 template <typename DType>
 inline void Broadcast(std::vector<DType> &sendrecv_data, int root,
@@ -90,7 +105,8 @@ inline void Broadcast(std::string &sendrecv_data, int root,
 }
 inline void Allgather(std::vector<Buffer> &sendrecvbufs,
                       const std::string &comm_name) {
-    comm::GetCommunicator(comm_name)->Allgather(sendrecvbufs);
+    comm::CommunicatorManager::Get()->GetCommunicator(comm_name)->Allgather(
+        sendrecvbufs);
 }
 template <typename DType>
 inline void Allgather(std::vector<std::vector<DType>> &sendrecv_data,
@@ -116,34 +132,6 @@ inline void Allreduce(DType *sendrecvbuf_, uint64_t count,
     };
     comm::Allreduce_(sendrecvbuf, reducer, mpi::GetType<DType>(), OP::kType,
                      comm_name);
-}
-
-// print message to the tracker
-inline void TrackerPrint(const std::string &msg) {
-    comm::GetCommunicator()->TrackerPrint(msg);
-}
-// load latest check point
-inline int LoadCheckPoint(Serializable *global_model,
-                          Serializable *local_model) {
-    return comm::GetCommunicator()->LoadCheckPoint(global_model, local_model);
-}
-// checkpoint the model, meaning we finished a stage of execution
-inline void CheckPoint(const Serializable *global_model,
-                       const Serializable *local_model) {
-    comm::GetCommunicator()->CheckPoint(global_model, local_model);
-}
-// lazy checkpoint the model, only remember the pointer to global_model
-inline void LazyCheckPoint(const Serializable *global_model) {
-    comm::GetCommunicator()->LazyCheckPoint(global_model);
-}
-// return the version number of currently stored model
-inline int VersionNumber(void) {
-    return comm::GetCommunicator()->VersionNumber();
-}
-
-inline std::unique_ptr<comm::ICommunicator> CreateGroup(
-    const std::vector<int> &ranks, const std::string &group_name) {
-    return comm::GetCommunicator()->CreateGroup(ranks, group_name);
 }
 
 // ---------------------------------
@@ -185,8 +173,8 @@ struct SerializeReduceClosure {
     // invoke the closure
     inline void Run(void) {
         for (size_t i = 0; i < count; ++i) {
-            MemoryFixSizeBuffer fs(utils::BeginPtr(*p_buffer) + i * max_nbyte,
-                                   max_nbyte);
+            MemoryFixedSizeStream fs(utils::BeginPtr(*p_buffer) + i * max_nbyte,
+                                     max_nbyte);
             sendrecvobj[i].Save(fs);
         }
     }

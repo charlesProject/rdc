@@ -28,6 +28,13 @@ enum DataType {
     kLongLong = 8,
     kULongLong = 9
 };
+// MPI data type to be compatible with existing MPI interface
+class Datatype {
+public:
+    size_t type_size;
+    explicit Datatype(size_t type_size) : type_size(type_size) {
+    }
+};
 
 // template function to translate type to enum indicator
 template<typename DType>

@@ -53,13 +53,6 @@ public:
      */
     void BuildTopology(const int32_t& world_size);
     /*!
-     * @brief print the msg in the tracker_,
-     *    this function can be used to communicate the information of the
-     * progress to the user who monitors the tracker_ @param msg message to be
-     * printed in the tracker_
-     */
-    void TrackerPrint(const std::string& msg);
-    /*!
      * @brief connect to the tracker_ to fix the the missing links
      *   this function is also used when the comm start up
      * @param cmd possible command to sent to tracker_

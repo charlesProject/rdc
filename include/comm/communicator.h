@@ -116,14 +116,6 @@ public:
     /*! @brief gets the host name of the current node */
     std::string GetHost() const;
     /*!
-     * @brief prints the msg in the tracker,
-     *    this function can be used to communicate progress information to
-     *    the tracker
-     * @param msg message to be printed in the tracker
-     */
-    void TrackerPrint(const std::string& msg) {}
-
-    /*!
      * @brief create a group communicator under this communicator
      * @param ranks ranks of node in this group
      * @param a unique name for this group
