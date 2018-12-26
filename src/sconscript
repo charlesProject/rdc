@@ -1,15 +1,14 @@
 import os
 import glob
+import os.path as osp
 from pathlib import Path
 import subprocess
 
 Import('env')
 Import('with_python')
+Import('bin_dir')
 
 env = env.Clone()
-env.Append(CPPPATH=os.path.join(os.getcwd(), '../include'))
-
-print(env['CPPPATH'])
 
 
 def collect_src_files(root_path):
@@ -17,7 +16,7 @@ def collect_src_files(root_path):
     root = Path(root_path)
     for item in root.iterdir():
         print(item)
-        if item.is_dir() and str(item) != 'frontend':
+        if item.is_dir() and not 'frontend' in str(item):
             for subitem in item.iterdir():
                 if subitem.is_file() and str(subitem).endswith('cc'):
                     src_files.append(str(subitem))
@@ -31,15 +30,19 @@ def collect_src_files(root_path):
 
 srcs = collect_src_files(os.getcwd())
 
-print("oops",srcs)
 if env['LIBRARY_TYPE'] == 'static':
-    env.StaticLibrary('../lib/rdc', srcs)
+    env.StaticLibrary(osp.join(bin_dir, 'lib', 'rdc'), srcs)
 else:
-    env.SharedLibrary('../lib/rdc', srcs)
+    env.SharedLibrary(osp.join(bin_dir, 'lib', 'rdc'), srcs)
 
 if with_python:
     py_ext_suffix = subprocess.check_output(
         ['python-config', '--extension-suffix'])
     py_ext_suffix = py_ext_suffix.decode('utf-8').strip()
     frontend_srcs = Glob(os.path.join(os.getcwd(), 'frontend/*.cc'))
-    env.SharedLibrary('../lib/rdc' + py_ext_suffix, frontend_srcs)
+    env.SharedLibrary(
+        osp.join(bin_dir, 'lib', 'pyrdc' + py_ext_suffix),
+        frontend_srcs,
+        LIBS=['rdc'],
+        LIBPATH=osp.join(bin_dir, 'lib'),
+        SHLIBPREFIX='')
