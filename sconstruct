@@ -64,8 +64,8 @@ env.Append(CXXFLAGS=cxx_flags)
 
 env['ENV']['TERM'] = os.environ['TERM']
 
-env['CC'] = 'clang-6.0'
-env['CXX'] = 'clang++-6.0'
+#env['CC'] = 'clang-6.0'
+#env['CXX'] = 'clang++-6.0'
 
 build_type = env['BUILD_TYPE']
 if build_type == 'debug':

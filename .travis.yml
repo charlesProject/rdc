@@ -24,7 +24,7 @@ install:
   - if [ "$CXX" = "g++" ]; then export CXX="g++-5"; fi
 
   # clang-6.0
-  - if [ "$CXX" == "clang++" ]; then sudo apt-get install --allow-unauthenticated -y clang-6.0; fi
+  - if [ "$CXX" == "clang++" ]; then sudo apt-get install --allow-unauthenticated -yf clang-6.0; fi
   - if [ "$CXX" == "clang++" ]; then export CXX="clang++-6.0"; fi
 
 script:
