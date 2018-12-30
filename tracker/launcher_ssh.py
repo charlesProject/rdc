@@ -13,8 +13,8 @@ import tracker
 import logging
 from threading import Thread
 
-from args import parse_args, parse_config_file
-import utils
+from tracker import utils
+from tracker.args import parse_args, parse_config_file
 
 class SSHLauncher(object):
 

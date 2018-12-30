@@ -65,7 +65,7 @@ public:
     std::string tracker_uri() const {
         return tracker_uri_;
     }
-    
+
     int tracker_port() const {
         return tracker_port_;
     }

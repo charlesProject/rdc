@@ -1,4 +1,3 @@
-#include "core/logging.h"
 #include "utils/string_utils.h"
 namespace rdc {
 namespace str_utils {
@@ -75,7 +74,6 @@ std::string SPrintf(const char* fmt, ...) {
     vsnprintf(&msg[0], kPrintBuffer, fmt, args);
     va_end(args);
     Rtrim(msg, '\0');
-    LOG(INFO) << msg.length();
     return msg;
 }
 

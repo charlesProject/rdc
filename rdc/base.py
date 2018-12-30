@@ -2,8 +2,7 @@ import os
 import sys
 import ctypes
 import numpy as np
-_LIB = None
-
+import subprocess
 
 def _find_lib_path(dll_name):
     """Find the rdc dynamic library files.
@@ -34,57 +33,17 @@ def _find_lib_path(dll_name):
     return lib_path
 
 
-def _load_lib(lib='standard', lib_dll=None):
-    """Load rdc library."""
-    global _LIB
-    if _LIB is not None:
-        warnings.warn('rdc.int call was ignored because it has'\
-                          ' already been initialized', level=2)
-        return
-
-    if lib_dll is not None:
-        _LIB = lib_dll
-        return
-
-    if lib == 'standard':
-        dll_name = 'librdc'
-    else:
-        dll_name = 'librdc_' + lib
-
-    if os.name == 'nt':
-        dll_name += '.dll'
-    else:
-        dll_name += '.so'
-
-    _LIB = ctypes.cdll.LoadLibrary(_find_lib_path(dll_name)[0])
-    _LIB.RdcGetRank.restype = ctypes.c_int
-    _LIB.RdcGetWorldSize.restype = ctypes.c_int
-    _LIB.RdcVersionNumber.restype = ctypes.c_int
+def _load_lib():
+    py_ext_suffix = subprocess.check_output(
+        ['python-config', '--extension-suffix'])
+    py_ext_suffix = py_ext_suffix.decode('utf-8').strip()
+    dll_name = 'pyrdc' + py_ext_suffix
+    sys.path.append(os.path.dirname(_find_lib_path(dll_name)[0]))
 
 
 def _unload_lib():
     """Unload rdc library."""
-    global _LIB
-    del _LIB
-    _LIB = None
-
-
-def cast_ndarray(c_pointer, shape, dtype=np.float64, order='C', own_data=True):
-    arr_size = np.prod(shape[:]) * np.dtype(dtype).itemsize
-    if sys.version_info.major >= 3:
-        buf_from_mem = ctypes.pythonapi.PyMemoryView_FromMemory
-        buf_from_mem.restype = ctypes.py_object
-        buf_from_mem.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.c_int)
-        buffer = buf_from_mem(c_pointer, arr_size, 0x100)
-    else:
-        buf_from_mem = ctypes.pythonapi.PyBuffer_FromMemory
-        buf_from_mem.restype = ctypes.py_object
-        buffer = buf_from_mem(c_pointer, arr_size)
-    arr = np.ndarray(tuple(shape[:]), dtype, buffer, order=order)
-    if own_data and not arr.flags.owndata:
-        return arr.copy()
-    else:
-        return arr
+    pass
 
 
 #library instance

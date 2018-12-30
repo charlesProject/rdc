@@ -1,21 +1,22 @@
-#include "common/pool.hpp"
+#include "common/pool.h"
 #include "core/logging.h"
 
+#include <assert.h>
 #include <iostream>
 #include <limits>
 #include <new>
-
 /******************************************************************************/
 //! ffs (find first set bit) - generic implementation
 template <typename Integral>
 static inline unsigned ffs(Integral x) {
-    if (x == 0) return 0u;
+    if (x == 0)
+        return 0u;
     unsigned r = 1;
     while ((x & 1) == 0) x >>= 1, ++r;
     return r;
 }
 
-void* aligned_alloc(size_t alignment, size_t size) noexcept {
+void* AlignedAlloc(size_t alignment, size_t size) noexcept {
 #if defined(_MSC_VER)
     void* ptr = _aligned_malloc(size, alignment);
 #else
@@ -23,16 +24,16 @@ void* aligned_alloc(size_t alignment, size_t size) noexcept {
     ptr = aligned_alloc(alignment, size);
 #endif
     if (!ptr) {
-        LOG_F(ERROR, "bypass_aligned_alloc(%zu align %zu size) = %p)\n",
+        LOG_F(ERROR, "bypass_AlignedAlloc(%zu align %zu size) = %p)\n",
               alignment, size, ptr);
         return ptr;
     }
 
     return ptr;
 }
-void aligned_free(void* ptr, size_t size) noexcept {
+void AlignedFree(void* ptr, size_t size) noexcept {
 #if defined(_MSC_VER)
-    return _aligned_free(ptr);
+    return _AlignedFree(ptr);
 #else
     return free(ptr);
 #endif
@@ -82,9 +83,15 @@ struct Pool::Arena {
                                      sizeof(Slot));
     }
 
-    Slot* begin() { return &head_slot + 1; }
-    Slot* end() { return &head_slot + 1 + num_slots(); }
-    Slot* slot(size_t i) { return &head_slot + 1 + i; }
+    Slot* begin() {
+        return &head_slot + 1;
+    }
+    Slot* end() {
+        return &head_slot + 1 + num_slots();
+    }
+    Slot* slot(size_t i) {
+        return &head_slot + 1 + i;
+    }
 
     void* find_free(size_t size);
 };
@@ -180,7 +187,7 @@ Pool::ObjectPool::~ObjectPool() {
 void Pool::ObjectPool::AllocateObjectArena() {
     // Allocate space for the new block
     ObjectArena* new_arena = reinterpret_cast<ObjectArena*>(
-        aligned_alloc(default_arena_size, default_arena_size));
+        AlignedAlloc(default_arena_size, default_arena_size));
     if (!new_arena) {
         // if (!die_on_failure) return nullptr;
         LOG_F(
@@ -197,7 +204,8 @@ void Pool::ObjectPool::AllocateObjectArena() {
     new_arena->magic = 0xAEEA1111AEEA2222LLU + size_;
     new_arena->prev_arena = nullptr;
     new_arena->next_arena = free_;
-    if (free_) free_->prev_arena = new_arena;
+    if (free_)
+        free_->prev_arena = new_arena;
     free_ = new_arena;
 
     new_arena->free_slots = num_slots_;
@@ -232,11 +240,13 @@ void* Pool::ObjectPool::allocate() {
 
         // put now full ObjectArena into full_ list
         free_->next_arena = full_;
-        if (full_) full_->prev_arena = free_;
+        if (full_)
+            full_->prev_arena = free_;
         full_ = free_;
 
         free_ = next_free;
-        if (next_free) next_free->prev_arena = nullptr;
+        if (next_free)
+            next_free->prev_arena = nullptr;
     }
 
     --total_free_;
@@ -288,7 +298,8 @@ void Pool::ObjectPool::deallocate(void* ptr) {
             arena->next_arena->prev_arena = arena->prev_arena;
 
         // put ObjectArena with newly freed slot into free list
-        if (free_) free_->prev_arena = arena;
+        if (free_)
+            free_->prev_arena = arena;
         arena->next_arena = free_;
         arena->prev_arena = nullptr;
         free_ = arena;
@@ -311,7 +322,7 @@ void Pool::ObjectPool::deallocate(void* ptr) {
         if (arena->next_arena)
             arena->next_arena->prev_arena = arena->prev_arena;
 
-        aligned_free(arena, default_arena_size);
+        AlignedFree(arena, default_arena_size);
         total_free_ -= num_slots_;
         total_slots_ -= num_slots_;
     }
@@ -343,8 +354,10 @@ void Pool::ObjectPool::self_verify() {
         CHECK(arena_free != 0);
         total_slots += num_slots_;
 
-        if (arena->next_arena) CHECK(arena->next_arena->prev_arena == arena);
-        if (arena->prev_arena) CHECK(arena->prev_arena->next_arena == arena);
+        if (arena->next_arena)
+            CHECK(arena->next_arena->prev_arena == arena);
+        if (arena->prev_arena)
+            CHECK(arena->prev_arena->next_arena == arena);
     }
 
     for (ObjectArena* arena = full_; arena != nullptr;
@@ -368,8 +381,10 @@ void Pool::ObjectPool::self_verify() {
         CHECK_NE(arena_free, 0u);
         total_slots += num_slots_;
 
-        if (arena->next_arena) CHECK(arena->next_arena->prev_arena == arena);
-        if (arena->prev_arena) CHECK(arena->prev_arena->next_arena == arena);
+        if (arena->next_arena)
+            CHECK(arena->next_arena->prev_arena == arena);
+        if (arena->prev_arena)
+            CHECK(arena->prev_arena->next_arena == arena);
     }
 
     CHECK_NE(total_slots, total_slots_);
@@ -414,7 +429,8 @@ Pool::Pool(size_t default_arena_size) noexcept
 
     for (size_t i = 0; i < num_bins + 1; ++i) arena_bin_[i] = nullptr;
 
-    if (debug_check_pairing) allocs_.resize(check_limit);
+    if (debug_check_pairing)
+        allocs_.resize(check_limit);
 
     while (free_ < min_free_) AllocateFreeArena(default_arena_size_);
 
@@ -431,7 +447,8 @@ Pool::~Pool() noexcept {
                   << " bytes" << std::endl;
 
         for (size_t i = 0; i < allocs_.size(); ++i) {
-            if (allocs_[i].first == nullptr) continue;
+            if (allocs_[i].first == nullptr)
+                continue;
             std::cout << "~Pool() has ptr=" << allocs_[i].first
                       << " size=" << allocs_[i].second << std::endl;
         }
@@ -457,7 +474,8 @@ void* Pool::ArenaFindFree(Arena* arena, size_t bin, size_t n, size_t bytes) {
     }
 
     // if curr_slot == end, then no suitable continuous area was found.
-    if (curr_slot == arena->end()) return nullptr;
+    if (curr_slot == arena->end())
+        return nullptr;
 
     arena->free_size -= n;
 
@@ -499,13 +517,15 @@ void* Pool::ArenaFindFree(Arena* arena, size_t bin, size_t n, size_t bytes) {
         // insert at top of new bin
         arena->prev_arena = nullptr;
         arena->next_arena = arena_bin_[new_bin];
-        if (arena_bin_[new_bin]) arena_bin_[new_bin]->prev_arena = arena;
+        if (arena_bin_[new_bin])
+            arena_bin_[new_bin]->prev_arena = arena;
         arena_bin_[new_bin] = arena;
     }
 
     // allocate more sparse memory
     while (free_ < min_free_) {
-        if (!AllocateFreeArena(default_arena_size_, false)) break;
+        if (!AllocateFreeArena(default_arena_size_, false))
+            break;
     }
 
     if (debug_check_pairing) {
@@ -527,22 +547,23 @@ void* Pool::ArenaFindFree(Arena* arena, size_t bin, size_t n, size_t bytes) {
 }
 
 Pool::Arena* Pool::AllocateFreeArena(size_t arena_size, bool die_on_failure) {
-    LOG_S(INFO) << "AllocateFreeArena()"
+    VLOG_S(2) << "AllocateFreeArena()"
                 << " arena_size=" << arena_size
                 << " die_on_failure=" << die_on_failure;
 
     // Allocate space for the new block
     Arena* new_arena = reinterpret_cast<Arena*>(
-        bypass_aligned_alloc(default_arena_size_, arena_size));
+        aligned_alloc(default_arena_size_, arena_size));
     if (!new_arena) {
-        if (!die_on_failure) return nullptr;
+        if (!die_on_failure)
+            return nullptr;
         LOG_F(ERROR,
               "out-of-memory - mem::Pool cannot allocate a new Arena."
               " size_=%zu",
               size_);
     }
 
-    CHECK_NE(new_arena,
+    CHECK_EQ(new_arena,
              reinterpret_cast<Arena*>(reinterpret_cast<uintptr_t>(new_arena) &
                                       ~(default_arena_size_ - 1)));
 
@@ -563,7 +584,8 @@ Pool::Arena* Pool::AllocateFreeArena(size_t arena_size, bool die_on_failure) {
 
     new_arena->prev_arena = nullptr;
     new_arena->next_arena = *root;
-    if (*root) (*root)->prev_arena = new_arena;
+    if (*root)
+        (*root)->prev_arena = new_arena;
     *root = new_arena;
 
     new_arena->free_size = new_arena->num_slots();
@@ -591,7 +613,7 @@ void Pool::IntDeallocateAll() {
         Arena* curr_arena = arena_bin_[i];
         while (curr_arena != nullptr) {
             Arena* next_arena = curr_arena->next_arena;
-            bypass_aligned_free(curr_arena, curr_arena->total_size);
+            AlignedFree(curr_arena, curr_arena->total_size);
             curr_arena = next_arena;
         }
     }
@@ -607,18 +629,20 @@ size_t Pool::bytes_per_arena(size_t arena_size) {
 }
 
 void* Pool::allocate(size_t bytes) {
-    // return malloc(bytes);
-
     std::unique_lock<std::mutex> lock(mutex_);
 
     if (debug) {
         std::cout << "Pool::allocate() bytes " << bytes << std::endl;
     }
 
-    if (bytes <= 32) return object_32_->allocate();
-    if (bytes <= 64) return object_64_->allocate();
-    if (bytes <= 128) return object_128_->allocate();
-    if (bytes <= 256) return object_256_->allocate();
+    if (bytes <= 32)
+        return object_32_->allocate();
+    if (bytes <= 64)
+        return object_64_->allocate();
+    if (bytes <= 128)
+        return object_128_->allocate();
+    if (bytes <= 256)
+        return object_256_->allocate();
 
     // round up to whole slot size, and divide by slot size
     uint32_t n =
@@ -631,7 +655,8 @@ void* Pool::allocate(size_t bytes) {
         Arena* sp_arena = AllocateFreeArena(sizeof(Arena) + n * sizeof(Slot));
 
         void* ptr = ArenaFindFree(sp_arena, num_bins, n, bytes);
-        if (ptr != nullptr) return ptr;
+        if (ptr != nullptr)
+            return ptr;
     }
 
     // find bin for n slots
@@ -645,7 +670,8 @@ void* Pool::allocate(size_t bytes) {
             // find an arena with at least n free slots
             if (curr_arena->free_size >= n) {
                 void* ptr = ArenaFindFree(curr_arena, bin, n, bytes);
-                if (ptr != nullptr) return ptr;
+                if (ptr != nullptr)
+                    return ptr;
             }
 
             // advance to next arena in free list order
@@ -662,7 +688,8 @@ void* Pool::allocate(size_t bytes) {
 
     // look into new arena
     void* ptr = ArenaFindFree(curr_arena, bin, n, bytes);
-    if (ptr != nullptr) return ptr;
+    if (ptr != nullptr)
+        return ptr;
 
     LOG_F(ERROR, "Pool::allocate() failed, no memory available.");
 }
@@ -670,7 +697,8 @@ void* Pool::allocate(size_t bytes) {
 void Pool::deallocate(void* ptr, size_t bytes) {
     // return free(ptr);
 
-    if (ptr == nullptr) return;
+    if (ptr == nullptr)
+        return;
 
     std::unique_lock<std::mutex> lock(mutex_);
     LOG_S(INFO) << "Pool::deallocate() ptr " << ptr << " bytes " << bytes;
@@ -678,7 +706,8 @@ void Pool::deallocate(void* ptr, size_t bytes) {
     if (debug_check_pairing) {
         size_t i;
         for (i = 0; i < allocs_.size(); ++i) {
-            if (allocs_[i].first != ptr) continue;
+            if (allocs_[i].first != ptr)
+                continue;
             if (bytes != allocs_[i].second) {
                 assert(!"Mismatching deallocate() size in Pool().");
                 abort();
@@ -693,10 +722,14 @@ void Pool::deallocate(void* ptr, size_t bytes) {
         }
     }
 
-    if (bytes <= 32) return object_32_->deallocate(ptr);
-    if (bytes <= 64) return object_64_->deallocate(ptr);
-    if (bytes <= 128) return object_128_->deallocate(ptr);
-    if (bytes <= 256) return object_256_->deallocate(ptr);
+    if (bytes <= 32)
+        return object_32_->deallocate(ptr);
+    if (bytes <= 64)
+        return object_64_->deallocate(ptr);
+    if (bytes <= 128)
+        return object_128_->deallocate(ptr);
+    if (bytes <= 256)
+        return object_256_->deallocate(ptr);
 
     // round up to whole slot size, and divide by slot size
     uint32_t n =
@@ -745,7 +778,8 @@ void Pool::deallocate(void* ptr, size_t bytes) {
 
     // always deallocate oversize arenas
     if (arena->oversize) {
-        if (debug) std::cout << "destroy special arena" << std::endl;
+        if (debug)
+            std::cout << "destroy special arena" << std::endl;
 
         // splice out arena from current bin
         if (arena->prev_arena)
@@ -757,7 +791,7 @@ void Pool::deallocate(void* ptr, size_t bytes) {
             arena->next_arena->prev_arena = arena->prev_arena;
 
         free_ -= arena->num_slots();
-        bypass_aligned_free(arena, arena->total_size);
+        AlignedFree(arena, arena->total_size);
         return;
     }
 
@@ -765,7 +799,8 @@ void Pool::deallocate(void* ptr, size_t bytes) {
     // limit, then simply deallocate it.
     if (arena->free_size == arena->num_slots() &&
         free_ >= min_free_ + arena->num_slots()) {
-        if (debug) std::cout << "destroy empty arena" << std::endl;
+        if (debug)
+            std::cout << "destroy empty arena" << std::endl;
 
         size_t bin = calc_bin_for_size(arena->free_size - n);
 
@@ -780,7 +815,7 @@ void Pool::deallocate(void* ptr, size_t bytes) {
 
         // free arena
         free_ -= arena->num_slots();
-        bypass_aligned_free(arena, arena->total_size);
+        AlignedFree(arena, arena->total_size);
         return;
     }
 
@@ -812,7 +847,8 @@ void Pool::deallocate(void* ptr, size_t bytes) {
         // insert at top of new bin
         arena->prev_arena = nullptr;
         arena->next_arena = arena_bin_[new_bin];
-        if (arena_bin_[new_bin]) arena_bin_[new_bin]->prev_arena = arena;
+        if (arena_bin_[new_bin])
+            arena_bin_[new_bin]->prev_arena = arena;
         arena_bin_[new_bin] = arena;
     }
 }
@@ -831,7 +867,7 @@ void Pool::print(bool debug) {
             std::ostringstream oss;
 
             size_t arena_bin = calc_bin_for_size(curr_arena->free_size);
-            CHECK_NE(arena_bin, bin);
+            CHECK_EQ(arena_bin, bin);
 
             size_t slot = curr_arena->head_slot.next;
             size_t size = 0, free = 0;
@@ -863,7 +899,7 @@ void Pool::print(bool debug) {
                           << oss.str() << std::endl;
             }
 
-            CHECK_NE(curr_arena->head_slot.size, free);
+            CHECK_EQ(curr_arena->head_slot.size, free);
 
             total_free += free;
             total_size += size;
@@ -875,10 +911,12 @@ void Pool::print(bool debug) {
         }
     }
 
-    CHECK_NE(total_size, size_);
-    CHECK_NE(total_free, free_);
+    CHECK_EQ(total_size, size_);
+    CHECK_EQ(total_free, free_);
 }
 
-void Pool::self_verify() { print(false); }
+void Pool::self_verify() {
+    print(false);
+}
 
 /******************************************************************************/

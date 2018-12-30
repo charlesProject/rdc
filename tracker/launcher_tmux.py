@@ -14,7 +14,10 @@ import tracker
 import signal
 import logging
 import libtmux
-from args import parse_args
+
+from tracker import utils
+from tracker.args import parse_args
+
 keepalive = """
 nrep=0
 rc=254
@@ -29,17 +32,22 @@ done
 global launcher
 launcher = None
 
+
 class TmuxLauncher(object):
+
     def __init__(self, args, unknown):
         self.args = args
         self.cmd = ' '.join(args.command) + ' ' + ' '.join(unknown)
         self.server = libtmux.Server()
+
     def exec_cmd(self, cmd, window, pass_env):
+
         def export_env(env):
             export_str = ''
             for k, v in env.items():
-                export_str += 'export %s=%s;' % (k ,v)
+                export_str += 'export %s=%s;' % (k, v)
             return export_str
+
         #env = os.environ.copy()
         env = dict()
         for k, v in pass_env.items():
@@ -53,6 +61,7 @@ class TmuxLauncher(object):
         window.panes[0].send_keys(bash)
 
     def submit(self):
+
         def mthread_submit(nworker, envs):
             """
             customized submit script
@@ -61,24 +70,27 @@ class TmuxLauncher(object):
             windows = dict()
             for i in range(nworker):
                 if i == 0:
-                    self.session = self.server.new_session(session_name='tracker')
+                    self.session = self.server.new_session(
+                        session_name='tracker')
                     window = self.session.windows[0]
                 else:
                     window = self.session.new_window()
                 self.exec_cmd(self.cmd, window, envs)
             self.session.attach_session()
+
         return mthread_submit
 
     def run(self):
-        tracker.config_logger(self.args)
-        tracker.submit(self.args.num_workers,
-                       fun_submit = self.submit(),
-                       pscmd = self.cmd)
+        utils.config_logger(self.args)
+        tracker.submit(
+            self.args.num_workers, fun_submit=self.submit(), pscmd=self.cmd)
+
 
 def signal_handler(sig, frame):
     global launcher
     launcher.session.kill_session()
     sys.exit(0)
+
 
 def main():
     args, unknown = parse_args()
@@ -87,6 +99,7 @@ def main():
     launcher = TmuxLauncher(args, unknown)
     launcher.run()
     signal.pause
+
 
 if __name__ == '__main__':
     main()

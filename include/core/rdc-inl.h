@@ -18,7 +18,7 @@
 #include "utils/utils.h"
 namespace rdc {
 // intialize the rdc comm
-inline void Init(int argc, char *argv[]) {
+inline void Init(int argc, char** argv) {
     comm::CommunicatorManager::Get()->Init(argc, argv);
 }
 // create a new rdc comm
@@ -126,7 +126,7 @@ template <typename OP, typename DType>
 inline void Allreduce(DType *sendrecvbuf_, uint64_t count,
                       const std::string &comm_name) {
     Buffer sendrecvbuf(sendrecvbuf_, count * sizeof(DType));
-    sendrecvbuf.set_type_nbytes(sizeof(DType));
+    sendrecvbuf.set_item_size(sizeof(DType));
     auto reducer = [](Buffer src, Buffer dst) {
         op::Reducer<OP, DType>(src.addr(), dst.addr(), src.Count());
     };

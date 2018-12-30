@@ -126,7 +126,7 @@ void Communicator::TryReduceScatterRing(Buffer sendrecvbuf, Buffer reducebuf,
     // position to stop writing
     size_t stop_write_idx = n + GetRank();
     ;
-    const auto& type_nbytes = sendrecvbuf.type_nbytes();
+    const auto& item_size = sendrecvbuf.item_size();
     if (stop_write_idx > stop_read_idx) {
         stop_write_idx -= n;
         CHECK_F(write_idx <= stop_write_idx, "write ptr boundary check");
@@ -146,8 +146,8 @@ void Communicator::TryReduceScatterRing(Buffer sendrecvbuf, Buffer reducebuf,
             uint64_t write_pos = write_idx % n;
             uint64_t write_size =
                 (ranges[write_pos].second - ranges[write_pos].first) *
-                type_nbytes;
-            uint64_t write_start = ranges[write_pos].first * type_nbytes;
+                item_size;
+            uint64_t write_start = ranges[write_pos].first * item_size;
             auto wc = prev->ISend(
                 sendrecvbuf.Slice(write_start, write_start + write_size));
             chain_wc->Push(wc);
@@ -155,10 +155,10 @@ void Communicator::TryReduceScatterRing(Buffer sendrecvbuf, Buffer reducebuf,
         }
         if (read_idx != stop_read_idx) {
             uint64_t read_pos = read_idx % n;
-            uint64_t read_start = ranges[read_pos].first * type_nbytes;
+            uint64_t read_start = ranges[read_pos].first * item_size;
             uint64_t read_size =
                 (ranges[read_pos].second - ranges[read_pos].first) *
-                type_nbytes;
+                item_size;
             auto wc = next->IRecv(
                 reducebuf.Slice(read_start, read_start + read_size));
             chain_wc->Push(wc);
@@ -167,10 +167,10 @@ void Communicator::TryReduceScatterRing(Buffer sendrecvbuf, Buffer reducebuf,
                     GetRank());
             read_idx++;
             size_t reduce_pos = reduce_idx % n;
-            size_t reduce_start = ranges[reduce_pos].first * type_nbytes;
+            size_t reduce_start = ranges[reduce_pos].first * item_size;
             size_t reduce_size =
                 (ranges[reduce_pos].second - ranges[reduce_pos].first) *
-                type_nbytes;
+                item_size;
             reducer(
                 reducebuf.Slice(reduce_start, reduce_start + reduce_size),
                 sendrecvbuf.Slice(reduce_start, reduce_start + reduce_size));
@@ -184,7 +184,7 @@ void Communicator::TryAllreduceRing(Buffer sendrecvbuf,
                                     ReduceFunction reducer) {
     Buffer reducebuf(sendrecvbuf.size_in_bytes());
     reducebuf.AllocTemp(utils::AllocTemp);
-    reducebuf.set_type_nbytes(sendrecvbuf.type_nbytes());
+    reducebuf.set_item_size(sendrecvbuf.item_size());
     TryReduceScatterRing(sendrecvbuf, reducebuf, reducer);
     reducebuf.FreeTemp(utils::Free);
     uint64_t n = static_cast<uint64_t>(GetWorldSize());
@@ -194,10 +194,10 @@ void Communicator::TryAllreduceRing(Buffer sendrecvbuf,
     for (auto i = 0U; i < n; i++) {
         uint64_t begin = ranges[i].first;
         uint64_t end = ranges[i].second;
-        uint64_t size = (end - begin) * sendrecvbuf.type_nbytes();
+        uint64_t size = (end - begin) * sendrecvbuf.item_size();
         sendrecvbufs[i].set_size_in_bytes(size);
         sendrecvbufs[i].set_addr(utils::IncrVoidPtr(
-            sendrecvbuf.addr(), begin * sendrecvbuf.type_nbytes()));
+            sendrecvbuf.addr(), begin * sendrecvbuf.item_size()));
     }
     return TryAllgatherRing(sendrecvbufs);
 }

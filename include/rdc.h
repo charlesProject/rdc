@@ -55,7 +55,7 @@ struct BitOR;
 * @param argc number of arguments in argv
 * @param argv the array of input arguments
 */
-void Init(int argc, char* argv[]);
+void Init();
 /*!
  * @brief create a new communicator with specific name
  * @param name the communicator name

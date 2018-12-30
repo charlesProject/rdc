@@ -218,11 +218,13 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>& num_conn_accept) {
 void Communicator::Send(Buffer sendbuf, int dest) {
     auto wc = all_links_[dest]->ISend(sendbuf);
     wc->Wait();
+    PeekFirstElementAsChar(sendbuf.addr());
     return;
 }
 void Communicator::Recv(Buffer recvbuf, int src) {
     auto wc = all_links_[src]->IRecv(recvbuf);
     wc->Wait();
+    PeekFirstElementAsChar(recvbuf.addr());
     return;
 }
 

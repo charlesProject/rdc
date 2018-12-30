@@ -15,11 +15,11 @@ class TcpAdapter;
 class TcpChannel final : public IChannel {
 public:
     TcpChannel();
-    TcpChannel(const ChannelKind& type);
-    TcpChannel(TcpAdapter* adapter, const ChannelKind& type);
-    TcpChannel(TcpAdapter* adapter, const int& sockfd, const ChannelKind& type);
+    TcpChannel(const ChannelKind& kind);
+    TcpChannel(TcpAdapter* adapter, const ChannelKind& kind);
+    TcpChannel(TcpAdapter* adapter, const int& sockfd, const ChannelKind& kind);
     TcpChannel(TcpAdapter* adapter, const TcpSocket& sock,
-               const ChannelKind& type);
+               const ChannelKind& kind);
     virtual ~TcpChannel() override;
     bool Connect(const std::string& hostname, const uint32_t& port) override;
     WorkCompletion* ISend(Buffer sendbuf) override;
@@ -30,9 +30,9 @@ public:
     void ReadCallback();
     void WriteCallback();
 
-    void AddCarefulEvent(const ChannelKind& type);
-    void DeleteCarefulEvent(const ChannelKind& type);
-    void ModifyKind(const ChannelKind& type);
+    void AddEventOfInterest(const ChannelKind& kind);
+    void DeleteEventOfInterest(const ChannelKind& kind);
+    void ModifyKind(const ChannelKind& kind);
     int sockfd() const { return SOCKET(sock_); }
 
     void set_adapter(TcpAdapter* adapter) { adapter_ = adapter; }
@@ -50,8 +50,7 @@ private:
     ThreadsafeQueue<uint64_t> recv_reqs_;
     /** only used to enable accept and listen callbacks */
     TcpAdapter* adapter_;
-    ChannelKind type_;
-    std::mutex mu_;
+    utils::SpinLock mu_;
     std::atomic<bool> spin_;
 };
 }  // namespace rdc

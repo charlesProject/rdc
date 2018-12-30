@@ -1,11 +1,10 @@
-#!/usr/bin/env python
 """
 basic utilities from tracker and luancher
 """
 
 import logging
 import socket
-
+from loguru import logger
 
 def basic_tracker_config(nworker, host_ip='auto', pscmd=None):
     """basic tracker configurations
@@ -28,7 +27,7 @@ def basic_tracker_config(nworker, host_ip='auto', pscmd=None):
         try:
             host_ip = socket.gethostbyname(socket.getfqdn())
         except gaierror:
-            logging.warn('gethostbyname(socket.getfqdn()) failed...'\
+            logger.warn('gethostbyname(socket.getfqdn()) failed...'\
                     ' trying on hostname()')
             host_ip = socket.gethostbyname(socket.gethostname())
         if host_ip.startswith("127."):
@@ -60,7 +59,6 @@ def build_addr(backend, host, port):
 
 def config_logger(args):
     FORMAT = '[%(asctime)s (%(name)s:%(lineno)s) %(levelname)s] %(message)s'
-    #FORMAT = '%(asctime)s %(levelname)s %(message)s'
     level = args.log_level if 'log_level' in args else 'DEBUG'
     level = eval('logging.' + level)
     if 'log_file' not in args or args.log_file is None:

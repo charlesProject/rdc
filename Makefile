@@ -46,7 +46,7 @@ ifeq ($(USE_SSE), 1)
 endif
 
 ifndef USE_RDMA
-	USE_RDMA = 1
+	USE_RDMA = 0
 endif
 
 ifeq ($(USE_RDMA), 1)
@@ -102,7 +102,7 @@ $(ALIB):
 
 $(SLIB) : $(OBJS)
 	mkdir -p $(@D)
-	$(CXX) $(CFLAGS) -shared -o $@ $(filter %.cpp %.o %.c %.cc %.a, $^) -libverbs
+	$(CXX) $(CFLAGS) -shared -o $@ $(filter %.cpp %.o %.c %.cc %.a, $^)
 
 lint:
 	scripts/lint.py rdc $(LINT_LANG) src include
@@ -111,7 +111,7 @@ doc doxygen:
 	cd include; doxygen ../doc/Doxyfile; cd -
 
 -include build/*.d
-#include test/test.mk
+include test/test.mk
 include perf/perf.mk
 test: $(TESTS)
 perf: $(PERFS)

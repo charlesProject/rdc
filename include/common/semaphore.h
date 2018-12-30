@@ -31,7 +31,6 @@ __declspec(dllimport) int __stdcall ReleaseSemaphore(void* hSemaphore,
 #include <semaphore.h>
 #endif
 
-// Code in the mpmc_sema namespace below is an adaptation of Jeff Preshing's
 // portable + lightweight semaphore implementations, originally from
 // https://github.com/preshing/cpp11-on-multicore/blob/master/common/sema.h
 // LICENSE:
@@ -53,6 +52,7 @@ __declspec(dllimport) int __stdcall ReleaseSemaphore(void* hSemaphore,
 //	misrepresented as being the original software.
 // 3. This notice may not be removed or altered from any source distribution.
 #if defined(_WIN32)
+class Semaphore {
 private:
     void* m_hSema;
 
@@ -60,77 +60,44 @@ private:
     Semaphore& operator=(const Semaphore& other) = delete;
 
 public:
-    Semaphore(int initialCount = 0) {
-        assert(initialCount >= 0);
-        const long maxLong = 0x7fffffff;
-        m_hSema = CreateSemaphoreW(nullptr, initialCount, maxLong, nullptr);
-    }
+    Semaphore(int initialCount = 0);
 
-    ~Semaphore() { CloseHandle(m_hSema); }
+    ~Semaphore();
 
-    void wait() {
-        const unsigned long infinite = 0xffffffff;
-        WaitForSingleObject(m_hSema, infinite);
-    }
+    void Wait();
 
-    bool try_wait() {
-        const unsigned long RC_WAIT_TIMEOUT = 0x00000102;
-        return WaitForSingleObject(m_hSema, 0) != RC_WAIT_TIMEOUT;
-    }
+    bool TryWait();
 
-    bool timed_wait(std::uint64_t usecs) {
-        const unsigned long RC_WAIT_TIMEOUT = 0x00000102;
-        return WaitForSingleObject(m_hSema, (unsigned long)(usecs / 1000)) !=
-               RC_WAIT_TIMEOUT;
-    }
+    bool TimedWait(std::uint64_t usecs);
 
-    void signal(int count = 1) { ReleaseSemaphore(m_hSema, count, nullptr); }
+    void signal(int count = 1);
 };
 #elif defined(__MACH__)
 //---------------------------------------------------------
 // Semaphore (Apple iOS and OSX)
 // Can't use POSIX semaphores due to
-// http://lists.apple.com/archives/darwin-kernel/2009/Apr/msg00010.html
 //---------------------------------------------------------
 class Semaphore {
 private:
     semaphore_t m_sema;
 
-    Semaphore(const Semaphore& other) MOODYCAMEL_DELETE_FUNCTION;
-    Semaphore& operator=(const Semaphore& other) MOODYCAMEL_DELETE_FUNCTION;
+    Semaphore(const Semaphore& other) = delete;
+    Semaphore& operator=(const Semaphore& other) = delete;
 
 public:
-    Semaphore(int initialCount = 0) {
-        assert(initialCount >= 0);
-        semaphore_create(mach_task_self(), &m_sema, SYNC_POLICY_FIFO,
-                         initialCount);
-    }
+    Semaphore(int initialCount = 0);
 
-    ~Semaphore() { semaphore_destroy(mach_task_self(), m_sema); }
+    ~Semaphore();
 
-    void wait() { semaphore_wait(m_sema); }
+    void Wait();
 
-    bool try_wait() { return timed_wait(0); }
+    bool TryWait();
 
-    bool timed_wait(std::uint64_t timeout_usecs) {
-        mach_timespec_t ts;
-        ts.tv_sec = static_cast<unsigned int>(timeout_usecs / 1000000);
-        ts.tv_nsec = (timeout_usecs % 1000000) * 1000;
+    bool TimedWait(std::uint64_t timeout_usecs);
 
-        // added in OSX 10.10:
-        // https://developer.apple.com/library/prerelease/mac/documentation/General/Reference/APIDiffsMacOSX10_10SeedDiff/modules/Darwin.html
-        kern_return_t rc = semaphore_timedwait(m_sema, ts);
+    void Signal();
 
-        return rc != KERN_OPERATION_TIMED_OUT && rc != KERN_ABORTED;
-    }
-
-    void signal() { semaphore_signal(m_sema); }
-
-    void signal(int count) {
-        while (count-- > 0) {
-            semaphore_signal(m_sema);
-        }
-    }
+    void Signal(int count);
 };
 #elif defined(__unix__)
 //---------------------------------------------------------
@@ -144,57 +111,19 @@ private:
     Semaphore& operator=(const Semaphore& other) = delete;
 
 public:
-    Semaphore(int initialCount = 0) {
-        assert(initialCount >= 0);
-        sem_init(&m_sema, 0, initialCount);
-    }
+    Semaphore(int initialCount = 0);
 
-    ~Semaphore() { sem_destroy(&m_sema); }
+    ~Semaphore();
 
-    void wait() {
-        // http://stackoverflow.com/questions/2013181/gdb-causes-sem-wait-to-fail-with-eintr-error
-        int rc;
-        do {
-            rc = sem_wait(&m_sema);
-        } while (rc == -1 && errno == EINTR);
-    }
+    void Wait();
 
-    bool try_wait() {
-        int rc;
-        do {
-            rc = sem_trywait(&m_sema);
-        } while (rc == -1 && errno == EINTR);
-        return !(rc == -1 && errno == EAGAIN);
-    }
+    bool TryWait();
 
-    bool timed_wait(std::uint64_t usecs) {
-        struct timespec ts;
-        const int usecs_in_1_sec = 1000000;
-        const int nsecs_in_1_sec = 1000000000;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_sec += usecs / usecs_in_1_sec;
-        ts.tv_nsec += (usecs % usecs_in_1_sec) * 1000;
-        // sem_timedwait bombs if you have more than 1e9 in tv_nsec
-        // so we have to clean things up before passing it in
-        if (ts.tv_nsec >= nsecs_in_1_sec) {
-            ts.tv_nsec -= nsecs_in_1_sec;
-            ++ts.tv_sec;
-        }
+    bool TimedWait(std::uint64_t usecs);
 
-        int rc;
-        do {
-            rc = sem_timedwait(&m_sema, &ts);
-        } while (rc == -1 && errno == EINTR);
-        return !(rc == -1 && errno == ETIMEDOUT);
-    }
+    void Signal();
 
-    void signal() { sem_post(&m_sema); }
-
-    void signal(int count) {
-        while (count-- > 0) {
-            sem_post(&m_sema);
-        }
-    }
+    void Signal(int count);
 };
 #else
 #error Unsupported platform! (No semaphore wrapper available)
@@ -211,146 +140,29 @@ private:
     std::atomic<ssize_t> m_count;
     Semaphore m_sema;
 
-    bool waitWithPartialSpinning(std::int64_t timeout_usecs = -1) {
-        ssize_t oldCount;
-        // Is there a better way to set the initial spin count?
-        // If we lower it to 1000, testBenaphore becomes 15x slower on my Core
-        // i7-5930K Windows PC, as threads start hitting the kernel semaphore.
-        int spin = 10000;
-        while (--spin >= 0) {
-            oldCount = m_count.load(std::memory_order_relaxed);
-            if ((oldCount > 0) &&
-                m_count.compare_exchange_strong(oldCount, oldCount - 1,
-                                                std::memory_order_acquire,
-                                                std::memory_order_relaxed))
-                return true;
-            std::atomic_signal_fence(
-                std::memory_order_acquire);  // Prevent the compiler from
-                                             // collapsing the loop.
-        }
-        oldCount = m_count.fetch_sub(1, std::memory_order_acquire);
-        if (oldCount > 0) return true;
-        if (timeout_usecs < 0) {
-            m_sema.wait();
-            return true;
-        }
-        if (m_sema.timed_wait((std::uint64_t)timeout_usecs)) return true;
-        // At this point, we've timed out waiting for the semaphore, but the
-        // count is still decremented indicating we may still be waiting on
-        // it. So we have to re-adjust the count, but only if the semaphore
-        // wasn't signaled enough times for us too since then. If it was, we
-        // need to release the semaphore too.
-        while (true) {
-            oldCount = m_count.load(std::memory_order_acquire);
-            if (oldCount >= 0 && m_sema.try_wait()) return true;
-            if (oldCount < 0 &&
-                m_count.compare_exchange_strong(oldCount, oldCount + 1,
-                                                std::memory_order_relaxed,
-                                                std::memory_order_relaxed))
-                return false;
-        }
-    }
+    bool WaitWithPartialSpinning(std::int64_t timeout_usecs = -1);
 
-    ssize_t waitManyWithPartialSpinning(ssize_t max,
-                                        std::int64_t timeout_usecs = -1) {
-        assert(max > 0);
-        ssize_t oldCount;
-        int spin = 10000;
-        while (--spin >= 0) {
-            oldCount = m_count.load(std::memory_order_relaxed);
-            if (oldCount > 0) {
-                ssize_t newCount = oldCount > max ? oldCount - max : 0;
-                if (m_count.compare_exchange_strong(oldCount, newCount,
-                                                    std::memory_order_acquire,
-                                                    std::memory_order_relaxed))
-                    return oldCount - newCount;
-            }
-            std::atomic_signal_fence(std::memory_order_acquire);
-        }
-        oldCount = m_count.fetch_sub(1, std::memory_order_acquire);
-        if (oldCount <= 0) {
-            if (timeout_usecs < 0)
-                m_sema.wait();
-            else if (!m_sema.timed_wait((std::uint64_t)timeout_usecs)) {
-                while (true) {
-                    oldCount = m_count.load(std::memory_order_acquire);
-                    if (oldCount >= 0 && m_sema.try_wait()) break;
-                    if (oldCount < 0 &&
-                        m_count.compare_exchange_strong(
-                            oldCount, oldCount + 1, std::memory_order_relaxed,
-                            std::memory_order_relaxed))
-                        return 0;
-                }
-            }
-        }
-        if (max > 1) return 1 + tryWaitMany(max - 1);
-        return 1;
-    }
+    ssize_t WaitManyWithPartialSpinning(ssize_t max,
+                                        std::int64_t timeout_usecs = -1);
 
 public:
-    LightweightSemaphore(ssize_t initialCount = 0) : m_count(initialCount) {
-        assert(initialCount >= 0);
-    }
+    LightweightSemaphore(ssize_t initialCount = 0);
 
-    bool tryWait() {
-        ssize_t oldCount = m_count.load(std::memory_order_relaxed);
-        while (oldCount > 0) {
-            if (m_count.compare_exchange_weak(oldCount, oldCount - 1,
-                                              std::memory_order_acquire,
-                                              std::memory_order_relaxed))
-                return true;
-        }
-        return false;
-    }
+    bool TryWait();
 
-    void wait() {
-        if (!tryWait()) waitWithPartialSpinning();
-    }
+    void Wait();
 
-    bool wait(std::int64_t timeout_usecs) {
-        return tryWait() || waitWithPartialSpinning(timeout_usecs);
-    }
+    bool Wait(std::int64_t timeout_usecs);
 
     // Acquires between 0 and (greedily) max, inclusive
-    ssize_t tryWaitMany(ssize_t max) {
-        assert(max >= 0);
-        ssize_t oldCount = m_count.load(std::memory_order_relaxed);
-        while (oldCount > 0) {
-            ssize_t newCount = oldCount > max ? oldCount - max : 0;
-            if (m_count.compare_exchange_weak(oldCount, newCount,
-                                              std::memory_order_acquire,
-                                              std::memory_order_relaxed))
-                return oldCount - newCount;
-        }
-        return 0;
-    }
+    ssize_t TryWaitMany(ssize_t max);
 
     // Acquires at least one, and (greedily) at most max
-    ssize_t waitMany(ssize_t max, std::int64_t timeout_usecs) {
-        assert(max >= 0);
-        ssize_t result = tryWaitMany(max);
-        if (result == 0 && max > 0)
-            result = waitManyWithPartialSpinning(max, timeout_usecs);
-        return result;
-    }
+    ssize_t WaitMany(ssize_t max, std::int64_t timeout_usecs);
 
-    ssize_t waitMany(ssize_t max) {
-        ssize_t result = waitMany(max, -1);
-        assert(result > 0);
-        return result;
-    }
+    ssize_t WaitMany(ssize_t max);
 
-    void signal(ssize_t count = 1) {
-        assert(count >= 0);
-        ssize_t oldCount = m_count.fetch_add(count, std::memory_order_release);
-        ssize_t toRelease = -oldCount < count ? -oldCount : count;
-        if (toRelease > 0) {
-            m_sema.signal((int)toRelease);
-        }
-    }
+    void Signal(ssize_t count = 1);
 
-    ssize_t availableApprox() const {
-        ssize_t count = m_count.load(std::memory_order_relaxed);
-        return count > 0 ? count : 0;
-    }
+    ssize_t AvailableApprox() const;
 };

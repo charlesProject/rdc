@@ -40,7 +40,8 @@ recommonmark
 recom
 _*
 # Tests
-tests/test_*
+test/test_*
+perf/perf_*
 # Jetbrain
 .idea
 cmake-build-debug/

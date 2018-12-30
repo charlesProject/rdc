@@ -40,6 +40,12 @@ public:
      * @param msg message to be
      */
     void TrackerPrint(const std::string& msg);
+    void Send(void* buf, size_t size) {
+        tracker_sock_->Send(buf, size);
+    }
+    void Recv(void* buf, size_t size) {
+        tracker_sock_->Recv(buf, size);
+    }
     //---------------------properties-------------------------
     std::string host_uri(void) const {
         return host_uri_;

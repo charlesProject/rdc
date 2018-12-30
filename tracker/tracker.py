@@ -21,7 +21,7 @@ from threading import Thread
 from threading import Lock
 from threading import Condition
 from enum import Enum
-
+from loguru import logger
 import traceback
 import configparser
 import utils
@@ -62,26 +62,6 @@ class ExSocket:
         slen = self.recvint()
         return self.recvall(slen).decode()
 
-
-def log_args(level=logging.INFO):
-    """Decorator to log arguments passed to func."""
-
-    def inner_func(func):
-        line_no = inspect.getsourcelines(func)[-1]
-
-        @wraps(func)
-        def return_func(*args, **kwargs):
-            arg_list = list("{!r}".format(arg) for arg in args)
-            arg_list.extend(
-                "{}={!r}".format(key, val) for key, val in kwargs.iteritems())
-            msg = arg_log_fmt.format(
-                name=func.__name__, arg_str=", ".join(arg_list))
-            logging.getLogger('').log(level, msg)
-            return func(*args, **kwargs)
-
-        return return_func
-
-    return inner_func
 
 
 class State(Enum):
@@ -173,7 +153,7 @@ class TrackerHandler:
         msg = self.recvstr()
         if self.rank != -1:
             msg = 'rank %d: %s ' % (self.rank, msg.strip())
-        logging.info(msg)
+        logger.info(msg)
 
     '''A distributed lock impletentation, only communicator or group
     with same name can continue, otherwise will be blocked
@@ -314,7 +294,7 @@ class Tracker:
             while ret:
                 ret = handler.handle()
 
-        logging.info('start listen on %s:%d' % (host_ip, self.port))
+        logger.info('start listen on %s:%d' % (host_ip, self.port))
         self.threads = dict()
         for worker_id in range(nworker):
             thread = Thread(target=run, args=(worker_id,))
@@ -345,7 +325,7 @@ class Tracker:
         common_envs = {
             'RDC_TRACKER_URI': self.host_ip,
             'RDC_TRACKER_PORT': self.port,
-            'RDC_HEARTBEAT_INTERVAL': 500,
+            'RDC_HEARTBEAT_INTERVAL': 5000,
         }
         return common_envs
 

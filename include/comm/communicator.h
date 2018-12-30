@@ -135,10 +135,6 @@ public:
     std::string name_;
 };
 
-/*! @brief initializes the comm module */
-void Init(int argc, char* argv[]);
-/*! @brief finalizes the comm module */
-void Finalize();
 /*!
  * @brief perform in-place Allreduce, on sendrecvbuf
  *   this is an internal function used by rdc to be able to compile with MPI

@@ -29,12 +29,20 @@ void MemoryFixedSizeStream::Seek(size_t pos) {
     curr_ptr_ = static_cast<size_t>(pos);
 }
 
-size_t MemoryFixedSizeStream::Tell(void) {
+size_t MemoryFixedSizeStream::Tell() {
     return curr_ptr_;
 }
 
-bool MemoryFixedSizeStream::AtEnd(void) const {
+bool MemoryFixedSizeStream::AtEnd() const {
     return curr_ptr_ == buffer_size_;
+}
+
+void* MemoryFixedSizeStream::inner_buffer() const {
+    return p_buffer_;
+}
+
+size_t MemoryFixedSizeStream::inner_buffer_size() const {
+    return buffer_size_;
 }
 
 MemoryUnfixedSizeStream::MemoryUnfixedSizeStream(std::string *p_buffer)

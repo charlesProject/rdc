@@ -28,7 +28,7 @@ typedef int SOCKET;
 typedef size_t sock_size_t;
 const int INVALID_SOCKET = -1;
 #endif
-namespace rdc{
+namespace rdc {
 /*! @brief data structure for network address */
 struct SockAddr {
     sockaddr_in addr;
@@ -47,7 +47,7 @@ struct SockAddr {
     int port() const;
     /*! @return a string representation of the address */
     std::string AddrStr() const;
-};  // namespace rdc
+}; 
 
 /*!
  * @brief base class containing common operations of Tcp and Udp sockets
@@ -57,11 +57,16 @@ public:
     /*! @brief the file descriptor of socket */
     SOCKET sockfd;
     // default conversion to int
-    operator SOCKET() const;
+    operator SOCKET() const {
+        return sockfd;
+    }
     /*!
      * @return last error of socket operation
      */
     static int GetLastError();
+
+    /*! @return whether last error was would block */
+    bool LastErrorWouldBlock();
     /*!
      * @brief start up the socket module
      *   call this before using the sockets

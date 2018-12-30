@@ -25,7 +25,11 @@ std::vector<const char*> Env::ListEnvs() {
 
 const char* Env::Find(const char* k) {
     std::string key(k);
-    return kvs.find(key) == kvs.end() ? getenv(k) : kvs[key].c_str();
+    if (!kvs.empty() && kvs.find(key) != kvs.end()) {
+        return kvs[key].c_str();
+    } else {
+        return getenv(k);
+    }
 }
 
 std::shared_ptr<Env> Env::_GetSharedRef(

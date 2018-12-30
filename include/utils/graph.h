@@ -1,9 +1,9 @@
 #pragma once
-#include <vector>
+#include <iostream>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
-#include <iostream>
+#include <vector>
 namespace rdc {
 namespace graph {
 template <class Node>
@@ -12,22 +12,22 @@ public:
     UndirectedGraph() = default;
     ~UndirectedGraph() = default;
     UndirectedGraph(const std::vector<Node>& nodes,
-            const std::vector<std::pair<Node, Node>>& edges) :
-            nodes_(nodes), edges_(edges) {
+                    const std::vector<std::pair<Node, Node>>& edges)
+        : nodes_(nodes), edges_(edges) {
         _BuildAdjacentList();
     }
     UndirectedGraph(std::vector<Node>&& nodes,
-            std::vector<std::pair<Node, Node>>&& edges) :
-            nodes_(std::move(nodes)), edges_(std::move(edges)) {
+                    std::vector<std::pair<Node, Node>>&& edges)
+        : nodes_(std::move(nodes)), edges_(std::move(edges)) {
         _BuildAdjacentList();
     }
     UndirectedGraph(const UndirectedGraph& other) = default;
     UndirectedGraph(UndirectedGraph&& other) = default;
-    
+
     UndirectedGraph& operator=(const UndirectedGraph& other) = default;
 
     void Create(const std::vector<Node>& nodes,
-          const std::vector<std::pair<Node, Node>>& edges) {
+                const std::vector<std::pair<Node, Node>>& edges) {
         nodes_ = nodes;
         edges_ = edges;
         _BuildAdjacentList();
@@ -40,8 +40,7 @@ public:
     std::unordered_set<Node> GetNeighbors(const Node& node) {
         return adjacent_list_[node];
     }
-    using DistanceDict = std::unordered_map<uint32_t,
-        std::unordered_set<Node>>;
+    using DistanceDict = std::unordered_map<uint32_t, std::unordered_set<Node>>;
     using NodeDists = std::unordered_map<Node, uint32_t>;
     NodeDists ShortestDist(const Node& from) {
         NodeDists node_distances;
@@ -56,7 +55,7 @@ public:
         while (!cand.empty()) {
             const auto& cur_node = cand.front();
             cand.pop();
-            for (const auto& adj_node: adjacent_list_[cur_node]) {
+            for (const auto& adj_node : adjacent_list_[cur_node]) {
                 if (!visited[adj_node]) {
                     visited[adj_node] = true;
                     node_distances[adj_node] = node_distances[cur_node] + 1;
@@ -66,6 +65,7 @@ public:
         }
         return node_distances;
     }
+
 protected:
     void _BuildAdjacentList() {
         for (const auto& e : edges_) {
@@ -81,10 +81,11 @@ protected:
             }
         }
     }
+
 private:
     std::vector<Node> nodes_;
     std::vector<std::pair<Node, Node>> edges_;
     std::unordered_map<Node, std::unordered_set<Node>> adjacent_list_;
 };
-} // namespace graph
-} // namespace rdc
+}  // namespace graph
+}  // namespace rdc

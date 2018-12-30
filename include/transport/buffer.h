@@ -5,25 +5,33 @@
 #endif
 #include "common/env.h"
 #include "common/object_pool.h"
+#include "common/pool.h"
 #include "core/logging.h"
 namespace rdc {
 class Buffer : public ObjectPoolAllocatable<Buffer> {
 public:
     Buffer(){};
-    Buffer(uint64_t size_in_bytes) : size_in_bytes_(size_in_bytes) {}
+    Buffer(uint64_t size_in_bytes) : size_in_bytes_(size_in_bytes) {
+    }
     Buffer(void* addr, uint64_t size_in_bytes)
-        : Buffer(addr, size_in_bytes, 0, size_in_bytes) {}
+        : Buffer(addr, size_in_bytes, 0, size_in_bytes) {
+    }
     Buffer(const void* addr, uint64_t size_in_bytes)
-        : Buffer(addr, size_in_bytes, 0, size_in_bytes) {}
+        : Buffer(addr, size_in_bytes, 0, size_in_bytes) {
+    }
     Buffer(void* addr, uint64_t size_in_bytes, const bool& pinned)
-        : Buffer(addr, size_in_bytes, pinned, 0, size_in_bytes) {}
+        : Buffer(addr, size_in_bytes, pinned, 0, size_in_bytes) {
+    }
     Buffer(const void* addr, uint64_t size_in_bytes, const bool& pinned)
-        : Buffer(addr, size_in_bytes, pinned, 0, size_in_bytes) {}
+        : Buffer(addr, size_in_bytes, pinned, 0, size_in_bytes) {
+    }
     Buffer(void* addr, uint64_t size_in_bytes, uint64_t start, uint64_t end)
-        : Buffer(addr, size_in_bytes, start, end, false) {}
+        : Buffer(addr, size_in_bytes, start, end, false) {
+    }
     Buffer(const void* addr, uint64_t size_in_bytes, uint64_t start,
            uint64_t end)
-        : Buffer(addr, size_in_bytes, start, end, false) {}
+        : Buffer(addr, size_in_bytes, start, end, false) {
+    }
     Buffer(void* addr, uint64_t size_in_bytes, uint64_t start, uint64_t end,
            const bool& pinned)
         : addr_(addr),
@@ -86,7 +94,7 @@ public:
         Buffer subbuffer((void*)((int8_t*)addr_ + start), end - start, start,
                          end);
         subbuffer.set_with_type(with_type_);
-        subbuffer.set_type_nbytes(type_nbytes_);
+        subbuffer.set_item_size(item_size_);
         subbuffer.set_is_mutable(is_mutable_);
         return subbuffer;
     }
@@ -95,14 +103,14 @@ public:
         return reinterpret_cast<DType*>(addr_);
     }
     template <typename DType>
-    DType* At(const uint16_t& index) {
+    DType* At(const uint32_t& index) {
         return reinterpret_cast<DType*>(addr_) + index;
     }
     template <typename DType>
     std::string DebugString() const {
         CHECK(std::is_pod<DType>::value);
-        const auto& type_nbytes = sizeof(DType);
-        const auto& count = size_in_bytes_ / type_nbytes;
+        const auto& item_size = sizeof(DType);
+        const auto& count = size_in_bytes_ / item_size;
         DType* typed_addr = this->template As<DType>();
         std::string debug_string;
         for (auto i = 0U; i < count; i++) {
@@ -113,7 +121,9 @@ public:
         }
         return debug_string;
     }
-    void* addr() const { return addr_; }
+    void* addr() const {
+        return addr_;
+    }
     void set_addr(void* addr) {
         addr_ = addr;
         is_mutable_ = true;
@@ -122,37 +132,81 @@ public:
         addr_ = const_cast<void*>(addr);
         is_mutable_ = false;
     }
-    uint64_t size_in_bytes() const { return size_in_bytes_; }
+    uint64_t size_in_bytes() const {
+        return size_in_bytes_;
+    }
     void set_size_in_bytes(const uint64_t& size_in_bytes) {
         size_in_bytes_ = size_in_bytes;
     }
-    bool is_mutable() const { return is_mutable_; }
-    void set_is_mutable(const bool& is_mutable) { is_mutable_ = is_mutable; }
+    bool is_mutable() const {
+        return is_mutable_;
+    }
+    void set_is_mutable(const bool& is_mutable) {
+        is_mutable_ = is_mutable;
+    }
 #ifdef RDC_USE_RDMA
-    ibv_mr* memory_region() const { return memory_region_; }
+    ibv_mr* memory_region() const {
+        return memory_region_;
+    }
 #endif
     uint64_t Count() const {
-        CHECK(with_type_ && (size_in_bytes_ % type_nbytes_ == 0));
-        return size_in_bytes_ / type_nbytes_;
+        CHECK(with_type_ && (size_in_bytes_ % item_size_ == 0));
+        return size_in_bytes_ / item_size_;
     }
-    bool with_type() const { return with_type_; }
-    void set_with_type(const bool& with_type) { with_type_ = with_type; }
-    uint64_t type_nbytes() const { return type_nbytes_; }
-    void set_type_nbytes(const uint64_t& type_nbytes) {
+    bool with_type() const {
+        return with_type_;
+    }
+    void set_with_type(const bool& with_type) {
+        with_type_ = with_type;
+    }
+    uint64_t item_size() const {
+        return item_size_;
+    }
+    void set_item_size(const uint64_t& item_size) {
         with_type_ = true;
-        type_nbytes_ = type_nbytes;
+        item_size_ = item_size;
     }
-    void set_start(const uint64_t start) { start_ = start; }
-    void set_end(const uint64_t end) { end_ = end; }
+    void set_start(const uint64_t start) {
+        start_ = start;
+    }
+    void set_end(const uint64_t end) {
+        end_ = end;
+    }
+#if RDC_WITH_PYTHON
+    std::string format() const {
+        return format_;
+    }
+    void set_format(const std::string format) {
+        format_ = format;
+    }
+    uint64_t stride() const {
+        return stride_;
+    }
+    void set_stride(const uint64_t& stride) {
+        stride_ = stride;
+    }
+#endif
     void AllocTemp(const std::function<void*(const uint64_t&)>& alloc_func) {
         own_data_ = true;
         temp_ = true;
         addr_ = alloc_func(size_in_bytes_);
     }
+
     void FreeTemp(const std::function<void(void*)>& free_func) {
         own_data_ = false;
         temp_ = false;
         free_func(addr_);
+        addr_ = nullptr;
+    }
+    void Alloc() {
+        own_data_ = true;
+        temp_ = true;
+        addr_ = GPool().allocate(size_in_bytes_);
+    }
+    void Free() {
+        own_data_ = false;
+        temp_ = false;
+        GPool().deallocate(addr_, size_in_bytes_);
         addr_ = nullptr;
     }
 
@@ -162,12 +216,16 @@ private:
     bool is_mutable_;
     bool temp_;
     bool with_type_;
-    uint64_t type_nbytes_;
+    uint64_t item_size_;
     std::string data_type_;
     bool own_data_;
     uint64_t start_;
     uint64_t end_;
     bool pinned_;
+#if RDC_WITH_PYTHON
+    std::string format_;
+    uint64_t stride_;
+#endif
 #ifdef RDC_USE_RDMA
     ibv_mr* memory_region_;
 #endif

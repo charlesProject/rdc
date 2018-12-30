@@ -17,11 +17,11 @@ a = np.zeros(n)
 for i in range(n):
     a[i] = rank + n + i
 print('@node[%d] before-allreduce: a=%s' % (rank, str(a)))
-a = rdc.allreduce(a, rdc.MAX)
+a = rdc.allreduce(a, rdc.Op.MAX)
 print('@node[%d] after-allreduce-max: a=%s' % (rank, str(a)))
 
 for i in range(n):
     a[i] = rank + n + i
-a = rdc.allreduce(a, rdc.SUM)
+a = rdc.allreduce(a, rdc.Op.SUM)
 print('@node[%d] after-allreduce-sum: a=%s' % (rank, str(a)))
 rdc.finalize()

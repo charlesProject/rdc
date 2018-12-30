@@ -10,7 +10,9 @@
 using namespace rdc;
 int main(int argc, char *argv[]) {
     rdc::Init(argc, argv);
-    int N = atoi(argv[1]);
+    rdc::NewCommunicator(rdc::kMainCommName);
+    int N = 3;
+    if (argc >= 2) N = atoi(argv[1]);
     std::vector<int> a(N);
     // test allreduce max
     for (int i = 0; i < N; ++i) {

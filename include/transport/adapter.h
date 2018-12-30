@@ -1,10 +1,9 @@
 #pragma once
-#include <tuple>
 #include <string>
-#include "utils/string_utils.h"
+#include <tuple>
 #include "core/logging.h"
+#include "utils/string_utils.h"
 namespace rdc {
-
 
 const uint32_t kNumBacklogs = 128;
 
@@ -16,47 +15,13 @@ enum Backend {
 /* !\brief parse a address before connecting, a valid address is represented
  * as a tuple (backend, host, port) and will be represented as a string like
  * "tcp:127.0.0.1:8000"*/
-inline std::tuple<std::string, std::string, uint32_t> ParseAddress(
-        const std::string& addr_str) {
-    auto addr_parts = str_utils::Split(addr_str, ':');
-    std::string backend = addr_parts[0];
-    std::string host = addr_parts[1];
-    uint32_t port = std::atoi(addr_parts[2].c_str());
-    return std::make_tuple(backend, host, port);
-}
+std::tuple<std::string, std::string, uint32_t> ParseAddress(
+    const std::string& addr_str);
 
-inline std::tuple<Backend, std::string, uint32_t> ParseAddr(
-        const std::string& addr_str) {
-    std::string backend_str;
-    std::string host;
-    uint32_t port;
-    std::tie(backend_str, host, port) = ParseAddress(addr_str);
-    Backend backend;
-    if (backend_str == "tcp") {
-        backend = kTcp;
-    } else if (backend_str == "rdma") {
-        backend = kRdma;
-    } else if (backend_str == "ipc"){
-        backend = kIpc;
-    } else {
-        backend = kTcp;
-    }
-    return std::make_tuple(backend, host, port);
-}
+std::tuple<Backend, std::string, uint32_t> ParseAddr(
+    const std::string& addr_str);
 
-inline std::string GetBackendString(const Backend& backend) {
-    std::string backend_str;
-    if (backend == kTcp) {
-        backend_str = "tcp";
-    } else if (backend == kRdma) {
-        backend_str = "rdma";
-    } else if (backend == kIpc) {
-        backend_str = "ipc";
-    } else {
-        backend_str = "tcp";
-    }
-    return backend_str;
-}
+std::string GetBackendString(const Backend& backend);
 
 class IChannel;
 class IAdapter {
@@ -72,9 +37,10 @@ public:
     std::string backend_str() const {
         return GetBackendString(backend_);
     }
+
 private:
     Backend backend_;
 };
 
 IAdapter* GetAdapter();
-} // namespace rdc
+}  // namespace rdc

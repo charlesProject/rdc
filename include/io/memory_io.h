@@ -14,9 +14,13 @@ public:
     void Write(const void *ptr, size_t size);
 
     void Seek(size_t pos);
-    size_t Tell(void);
+    size_t Tell();
 
-    bool AtEnd(void) const;
+    bool AtEnd() const;
+
+    void *inner_buffer() const;
+
+    size_t inner_buffer_size() const;
 
 private:
     /*! @brief in memory buffer */

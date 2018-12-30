@@ -10,15 +10,15 @@
 namespace rdc {
 
 /*
- * ProducerConsumerQueue is a one producer and one consumer queue
+ * SPSCQueue is a one producer and one consumer queue
  * without locks.
  */
 template <class T>
-struct ProducerConsumerQueue {
+struct SPSCQueue {
     typedef T value_type;
 
     // size must be >= 1.
-    explicit ProducerConsumerQueue(uint32_t size)
+    explicit SPSCQueue(uint32_t size)
         : size_(size + 1)  // +1 because one slot is always empty
           ,
           records_(static_cast<T*>(std::malloc(sizeof(T) * (size + 1)))),
@@ -30,7 +30,7 @@ struct ProducerConsumerQueue {
         }
     }
 
-    ~ProducerConsumerQueue() {
+    ~SPSCQueue() {
         // We need to destruct anything that may still exist in our queue.
         // (No real synchronization needed at destructor time: only one
         // thread can be doing this.)
@@ -65,6 +65,7 @@ struct ProducerConsumerQueue {
         return false;
     }
 
+    
     // move (or copy) the value at the front of the queue to given variable
     bool TryDequeue(T& record) {
         auto const current_read = read_index_.load(std::memory_order_relaxed);
@@ -82,7 +83,13 @@ struct ProducerConsumerQueue {
         read_index_.store(next_record, std::memory_order_release);
         return true;
     }
-
+    
+    bool WaitDequeue(T& record) {
+        sema_->Wait();
+        while this->TryEnqueue(record);
+        assert(success);
+        return success;
+    }
     // pointer to the value at the front of the queue (for use in-place) or
     // nullptr if empty.
     T* FrontPtr() {
