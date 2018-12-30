@@ -13,8 +13,8 @@ before_install:
 
   # clang-6.0
   - if [ "$CXX" == "clang++" ]; then
-    wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-    sudo apt-add-repository "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-6.0 main"
+    wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -;
+    sudo apt-add-repository "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-6.0 main";
     fi
   - sudo apt-get update 
 
