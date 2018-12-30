@@ -1,5 +1,6 @@
 import os
 import os.path as osp
+import subprocess
 use_rdma = False
 with_fpic = True
 with_python = True
@@ -73,6 +74,11 @@ library_type = env['LIBRARY_TYPE']
 env.Append(CPPDEFINES=[build_type.upper()])
 
 build_dir = osp.join(os.getcwd(), 'build')
+#force duplicate
+subprocess.call(
+    ['cp', '-r',
+     osp.join(os.getcwd(), 'src'),
+     osp.join(build_dir, build_type)])
 env.VariantDir(osp.join(build_dir, build_type, 'src'), 'src', duplicate=1)
 env.VariantDir(osp.join(build_dir, build_type, 'test'), 'test', duplicate=1)
 env.VariantDir(osp.join(build_dir, build_type, 'perf'), 'perf', duplicate=1)
