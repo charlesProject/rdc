@@ -1,8 +1,6 @@
-#include "comm/checkpointer.cc"
+#include "comm/checkpointer.h"
 
 namespace rdc {
 namespace comm {
-LocalState::DoCheckpoint() {
-}
 }
 }
