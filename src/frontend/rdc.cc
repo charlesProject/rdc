@@ -43,10 +43,11 @@ PYBIND11_MODULE(pyrdc, m) {
         .def("send", (void (comm::ICommunicator::*)(Buffer, int)) &
                          comm::ICommunicator::Send)
         .def("recv", (void (comm::ICommunicator::*)(void*, uint64_t, int)) &
-                         comm::ICommunicator::Send)
+                         comm::ICommunicator::Recv)
         .def("recv", (void (comm::ICommunicator::*)(Buffer, int)) &
-                         comm::ICommunicator::Send);
+                         comm::ICommunicator::Recv);
     m.def("new_comm", &NewCommunicator);
     m.def("init", [] { Init(0, nullptr); });
+    m.def("finalize", [] { Finalize(); });
     m.def("get_rank", &GetRank);
 }
