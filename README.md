@@ -1,4 +1,5 @@
-eliable Distributed Communication  
+# RDC
+Reliable Distributed Communication  
 RDC-CI Status: [![Travis-CI Status](https://travis-ci.org/akkaze/rdc.svg?branch=master)](https://travis-ci.org/akkaze/rdc)  
 RDC 是一个实验性质的基于C++的通用分布式计算框架。RDC采用MPI类型的接口，但是旨在提供MPI不提供的容错以及动态节点增删功能。RDC使用共享内存，RDMA（包括Infiniband跟Roce两种硬件实现），tcp以及cuda（未来提供支持）作为 通信 后端，使用checkpoint机制来提供容错跟动态节点功能。  
 ### RDC的可能应用场景  
