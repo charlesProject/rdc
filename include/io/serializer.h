@@ -14,17 +14,17 @@
 #include "core/logging.h"
 #include "io/io.h"
 namespace rdc {
-/*! \brief internal namespace for serializers */
+/*! @brief internal namespace for serializers */
 namespace serializer {
 /*!
- * \brief generic serialization handler
- * \tparam T the type to be serialized
+ * @brief generic serialization handler
+ * @tparam T the type to be serialized
  */
 template <typename T>
 struct Handler;
 
 /**
- * @brief:Serializer that redirect calls by condition  
+ * @brief:Serializer that redirect calls by condition
  *
  * @tparam cond cond the condition
  * @tparam Then Then the serializer used for then condition
@@ -67,8 +67,12 @@ struct PODHandler {
 // serializer for class that have save/load function
 template <typename T>
 struct SaveLoadClassHandler {
-    inline static void Write(Stream *strm, const T &data) { data.Save(strm); }
-    inline static bool Read(Stream *strm, T *data) { return data->Load(strm); }
+    inline static void Write(Stream *strm, const T &data) {
+        data.Save(strm);
+    }
+    inline static bool Read(Stream *strm, T *data) {
+        return data->Load(strm);
+    }
 };
 
 /*!
@@ -210,7 +214,6 @@ struct ListHandler {
         return true;
     }
 };
-
 
 /*!
  * @brief generic serialization handler for type T
