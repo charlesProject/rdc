@@ -1,7 +1,9 @@
 #pragma once
+#include "comm/checkpointer.h"
 #include "comm/communicator.h"
 #include "comm/deamon.h"
 #include "comm/tracker.h"
+
 #include "utils/lock_utils.h"
 namespace rdc {
 namespace comm {
@@ -55,6 +57,12 @@ public:
 
     void CreateDeamon();
 
+    void AddGlobalState(const std::string& name, void* ptr, size_t size);
+    void AddLocalState(const std::string& name, void* ptr, size_t size);
+
+    void CheckPoint();
+    int LoadCheckPoint();
+
     std::unordered_map<std::string, std::shared_ptr<ICommunicator>>
     communicators() const;
 
@@ -84,6 +92,8 @@ private:
     std::string tracker_uri_;
     // port of tracker address
     int tracker_port_;
+
+    std::unique_ptr<CheckPointer> checkpointer_;
     int world_size_;
     int connect_retry_;
     utils::SpinLock comm_lock_;

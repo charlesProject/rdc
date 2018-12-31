@@ -18,7 +18,7 @@
 #include "utils/utils.h"
 namespace rdc {
 // intialize the rdc comm
-inline void Init(int argc, char** argv) {
+inline void Init(int argc, char **argv) {
     comm::CommunicatorManager::Get()->Init(argc, argv);
 }
 // create a new rdc comm
@@ -193,5 +193,21 @@ inline void SerializeReducer<DType>::Allreduce(DType *sendrecvobj,
                                                size_t max_nbytes,
                                                size_t count) {
     this->Allreduce(sendrecvobj, max_nbytes, count);
+}
+
+inline void AddGlobalState(const std::string &name, void *ptr, size_t size) {
+    comm::CommunicatorManager::Get()->AddGlobalState(name, ptr, size);
+}
+
+inline void AddLocalState(const std::string &name, void *ptr, size_t size) {
+    comm::CommunicatorManager::Get()->AddLocalState(name, ptr, size);
+}
+
+inline int LoadCheckPoint() {
+    return comm::CommunicatorManager::Get()->LoadCheckPoint();
+}
+
+inline void CheckPoint() {
+    comm::CommunicatorManager::Get()->LoadCheckPoint();
 }
 }  // namespace rdc

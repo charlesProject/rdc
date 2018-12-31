@@ -104,7 +104,7 @@ void CommunicatorManager::Init(int argc, char** argv) {
 
     deamon_.reset(new Deamon);
 
-    checkpointer_.reset(new Checkpointer);
+    checkpointer_.reset(new CheckPointer);
 }
 
 void CommunicatorManager::Finalize() {
@@ -136,8 +136,7 @@ ICommunicator* CommunicatorManager::NewCommunicator(const std::string& name) {
         ThreadPool::Get()->AddWorkers(Env::Get()->GetEnv("RDC_NUM_WORKERS", 0));
     }
     std::unique_lock<utils::SpinLock> comm_lock(comm_lock_);
-    if (communicators_.count(name))
-        return nullptr;
+    if (communicators_.count(name)) return nullptr;
     comm_lock.unlock();
     auto comm = utils::make_unique<Communicator>();
     comm->set_name(name);
@@ -169,6 +168,23 @@ void CommunicatorManager::AddCommunicator(
     const std::string& name,
     const std::shared_ptr<ICommunicator>& communicator) {
     communicators_[name] = communicator;
+}
+
+void CommunicatorManager::AddGlobalState(const std::string& name, void* ptr,
+                                         size_t size) {
+    checkpointer_->AddGlobalState(name, ptr, size);
+}
+void CommunicatorManager::AddLocalState(const std::string& name, void* ptr,
+                                        size_t size) {
+    checkpointer_->AddLocalState(name, ptr, size);
+}
+
+void CommunicatorManager::CheckPoint() {
+    checkpointer_->CheckPoint();
+}
+
+int CommunicatorManager::LoadCheckPoint() {
+    return checkpointer_->LoadCheckPoint();
 }
 }  // namespace comm
 }  // namespace rdc

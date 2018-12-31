@@ -2,12 +2,12 @@
 
 #include "comm/communicator_base.h"
 #include "common/bitmask.h"
+#include "common/env.h"
 #include "common/pool.h"
 #include "io/file_io.h"
 #include "io/memory_io.h"
 #include "transport/buffer.h"
 #include "utils/topo_utils.h"
-
 namespace rdc {
 namespace comm {
 /*!
@@ -42,26 +42,32 @@ enum class StateKind : uint32_t {
  */
 class BaseState {
 public:
-    BaseState() {
-        checkpoint_behavior_ = 0;
+    BaseState() = default;
+    BaseState(const std::string& name) {
+        checkpoint_behavior_ = CheckPointBehavior::InMemory;
+        state_name_ = name;
     }
     ~BaseState() = default;
-    BaseState(const std::vector<CheckPointBehavior>& checkpoint_behaviors)
-        : BaseState() {
+    BaseState(const std::string& name,
+              const std::vector<CheckPointBehavior>& checkpoint_behaviors)
+        : BaseState(name) {
         for (auto&& checkpoint_behavior : checkpoint_behaviors) {
             checkpoint_behavior_ |= checkpoint_behavior;
         }
     }
-    BaseState(const CheckPointBehavior& checkpoint_behavior,
-              const std::string& filepath) {
+    BaseState(const std::string& name,
+              const CheckPointBehavior& checkpoint_behavior,
+              const std::string& filepath)
+        : state_name_(name) {
         CHECK(checkpoint_behavior_ | CheckPointBehavior::OnDisk);
         filepath_ = filepath;
         checkpoint_behavior_ = checkpoint_behavior;
         on_disk_holder_.reset(new FileStream(filepath));
     }
-    BaseState(const CheckPointBehavior& checkpoint_behavior, void* ptr,
+    BaseState(const std::string& name,
+              const CheckPointBehavior& checkpoint_behavior, void* ptr,
               const size_t& size)
-        : state_size_(size) {
+        : state_size_(size), state_name_(name) {
         CHECK(checkpoint_behavior_ | ~CheckPointBehavior::OnDisk);
         checkpoint_behavior_ = checkpoint_behavior;
         if (checkpoint_behavior_ | CheckPointBehavior::InMemory) {
@@ -69,6 +75,9 @@ public:
         } else if (checkpoint_behavior_ | CheckPointBehavior::OnDevice) {
             on_device_holder_.reset(new Buffer(ptr, size));
         }
+    }
+    BaseState(const std::string& name, void* ptr, const size_t& size)
+        : BaseState(name, CheckPointBehavior::InMemory, ptr, size) {
     }
     /*---------------------------peoperties-----------------------------*/
     uint64_t version_number() const {
@@ -123,7 +132,12 @@ private:
  */
 class LocalState : public BaseState {
 public:
+    using BaseState::BaseState;
     LocalState() : replica_strategy_(0) {
+    }
+    LocalState(const std::string& name, void* ptr, const size_t& size)
+        : BaseState(name, ptr, size) {
+        replica_strategy_ = 0;
     }
     LocalState(const std::vector<ReplicaStrategy>& replica_strategies)
         : LocalState() {
@@ -131,26 +145,26 @@ public:
             replica_strategy_ |= replica_strategy;
         }
     }
-    void DoCheckpoint() {
+    void DoCheckPoint() {
         Tracker::Get()->SendStr("checkpoint");
         Tracker::Get()->SendInt(in_memory_holder()->size_in_bytes());
         Tracker::Get()->Send(in_memory_holder()->addr(),
                              in_memory_holder()->size_in_bytes());
         auto&& rank = Tracker::Get()->rank();
         auto&& neighbors = GetNeighbors(rank, num_replicas_);
-        for (auto&& i = 0; i < num_replicas_; i++) {
+        for (auto&& i = 0U; i < num_replicas_; i++) {
             comm_->Send(in_memory_holder()->addr(),
                         in_memory_holder()->size_in_bytes(), neighbors[i]);
         }
     }
-    void LoadCheckpoint() {
+    void LoadCheckPoint() {
         Tracker::Get()->SendStr("loadcheckpoint");
         Tracker::Get()->Recv(in_memory_holder()->addr(),
                              in_memory_holder()->size_in_bytes());
         if (replica_strategy_ | ReplicaStrategy::WithPeers) {
             auto&& rank = Tracker::Get()->rank();
             auto&& neighbors = GetNeighbors(rank, num_replicas_);
-            for (auto&& i = 0; i < num_replicas_; i++) {
+            for (auto&& i = 0U; i < num_replicas_; i++) {
                 comm_->Recv(in_memory_holder()->addr(),
                             in_memory_holder()->size_in_bytes(), neighbors[i]);
             }
@@ -169,12 +183,24 @@ private:
  */
 class GlobalState : public BaseState {
 public:
-    GlobalState();
+    using BaseState::BaseState;
+    GlobalState() = default;
+    void DoCheckPoint() {
+        Tracker::Get()->SendStr("checkpoint");
+        Tracker::Get()->SendInt(in_memory_holder()->size_in_bytes());
+        Tracker::Get()->Send(in_memory_holder()->addr(),
+                             in_memory_holder()->size_in_bytes());
+    }
+    void LoadCheckPoint() {
+        Tracker::Get()->SendStr("loadcheckpoint");
+        Tracker::Get()->Recv(in_memory_holder()->addr(),
+                             in_memory_holder()->size_in_bytes());
+    }
 };
-class Checkpointer {
+class CheckPointer {
 public:
-    Checkpointer() = default;
-    std::vector<GlobalState> states() const {
+    CheckPointer() = default;
+    std::unordered_map<std::string, GlobalState> states() const {
         return global_states_;
     }
     /**
@@ -183,18 +209,46 @@ public:
      * @tparam StateTy state type, either LocalState or Global State
      * @param state state to be appended
      */
-    void AddGlobalState(const GlobalState& global_state) {
-        global_states_.emplace_back(global_state);
+    void AddGlobalState(const std::string name,
+                        const GlobalState& global_state) {
+        global_states_[name] = global_state;
     }
 
-    void AddLocalState(const LocalState& local_state) {
-        local_states_.emplace_back(local_state);
+    void AddGlobalState(const std::string name, void* ptr, size_t size) {
+        GlobalState global_state(name, ptr, size);
+        global_states_[name] = global_state;
+    }
+    void AddLocalState(const std::string name, const LocalState& local_state) {
+        local_states_[name] = local_state;
+    }
+
+    void AddLocalState(const std::string name, void* ptr, size_t size) {
+        LocalState local_state(name, ptr, size);
+        local_states_[name] = local_state;
+    }
+    void CheckPoint() {
+        for (auto&& global_state_with_name : global_states_) {
+            global_state_with_name.second.DoCheckPoint();
+        }
+        for (auto&& local_state_with_name : local_states_) {
+            local_state_with_name.second.DoCheckPoint();
+        }
+    }
+
+    int LoadCheckPoint() {
+        for (auto&& global_state_with_name : global_states_) {
+            global_state_with_name.second.LoadCheckPoint();
+        }
+        for (auto&& local_state_with_name : local_states_) {
+            local_state_with_name.second.LoadCheckPoint();
+        }
+        return 0;
     }
 
 private:
     /* @brief: all states need to be */
-    std::vector<GlobalState> global_states_;
-    std::vector<LocalState> local_states_;
+    std::unordered_map<std::string, GlobalState> global_states_;
+    std::unordered_map<std::string, LocalState> local_states_;
     uint64_t seq_counter_;
     /* @brief: when enable double buffer, state transport will use another
      * buffer, after transport, all states will be updated togather*/
