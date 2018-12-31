@@ -6,9 +6,10 @@
  *
  * \author Ankun Zheng
  */
-#include "comm/communicator.h"
 #include <memory>
+#include "comm/communicator.h"
 #include "comm/communicator_base.h"
+#include "comm/communicator_manager.h"
 #include "common/thread_local.h"
 namespace rdc {
 namespace comm {
@@ -22,7 +23,8 @@ typedef Communicator Comm;
 // perform in-place allreduce, on sendrecvbuf
 void Allreduce_(Buffer sendrecvbuf, ReduceFunction red, mpi::DataType dtype,
                 mpi::OpType op, const std::string& name) {
-    GetCommunicator(name)->Allreduce(sendrecvbuf, red);
+    CommunicatorManager::Get()->GetCommunicator(name)->Allreduce(sendrecvbuf,
+                                                                 red);
 }
 
 }  // namespace comm

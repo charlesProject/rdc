@@ -1,6 +1,7 @@
 import os
 import os.path as osp
 import subprocess
+import shutil
 use_rdma = False
 with_fpic = True
 with_python = True
@@ -64,8 +65,8 @@ env.Append(CXXFLAGS=cxx_flags)
 
 env['ENV']['TERM'] = os.environ['TERM']
 
-#env['CC'] = 'clang-6.0'
-#env['CXX'] = 'clang++-6.0'
+env['CC'] = 'clang-6.0'
+env['CXX'] = 'clang++-6.0'
 
 build_type = env['BUILD_TYPE']
 if build_type == 'debug':
@@ -73,12 +74,21 @@ if build_type == 'debug':
 library_type = env['LIBRARY_TYPE']
 env.Append(CPPDEFINES=[build_type.upper()])
 
+env['VARIANT_DIR'] = Dir("build")
+env['SOURCE_DIR'] = Dir("src")
+def copytree(src, dst, symlinks=False, ignore=None):
+    for item in os.listdir(src):
+        s = os.path.join(src, item)
+        d = os.path.join(dst, item)
+        if os.path.isdir(s):
+            shutil.copytree(s, d, symlinks, ignore)
+        else:
+            shutil.copy2(s, d)
+
+root_dir = os.getcwd()
 build_dir = osp.join(os.getcwd(), 'build')
 #force duplicate
-subprocess.call(
-    ['cp', '-r',
-     osp.join(os.getcwd(), 'src'),
-     osp.join(build_dir, build_type)])
+#copytree(osp.join(os.getcwd(), 'src'), osp.join(build_dir, build_type, 'src'))
 env.VariantDir(osp.join(build_dir, build_type, 'src'), 'src', duplicate=1)
 env.VariantDir(osp.join(build_dir, build_type, 'test'), 'test', duplicate=1)
 env.VariantDir(osp.join(build_dir, build_type, 'perf'), 'perf', duplicate=1)
@@ -90,7 +100,8 @@ env.SConscript(
     exports={
         'env': env,
         'with_python': with_python,
-        'bin_dir': bin_dir
+        'bin_dir': bin_dir,
+        'root_dir': root_dir
     })
 env.SConscript(
     osp.join(bin_dir, 'test', 'sconscript'),

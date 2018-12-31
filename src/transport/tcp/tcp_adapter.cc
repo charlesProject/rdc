@@ -217,7 +217,7 @@ void TcpAdapter::Listen(const int& port) {
     return;
 }
 
-TcpChannel* TcpAdapter::Accept() {
+IChannel* TcpAdapter::Accept() {
     // accept the connection
     // set flags to check
     VLOG_F(3, "Accpet a new connection");

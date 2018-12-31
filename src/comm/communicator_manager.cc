@@ -103,6 +103,8 @@ void CommunicatorManager::Init(int argc, char** argv) {
     logging::g_stderr_verbosity = 1;
 
     deamon_.reset(new Deamon);
+
+    checkpointer_.reset(new Checkpointer);
 }
 
 void CommunicatorManager::Finalize() {
