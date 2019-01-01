@@ -36,6 +36,7 @@ RDC提供tracker来启动节点并监视节点的。提供三种launcher来启�
 如果要以ssh方式运行，需要一个配置文件，最简单的配置文件如下  
 ```python
 [common]
+init='source ~/.zshrc'
 [localhost:1]
 [localhost:2]
 ```

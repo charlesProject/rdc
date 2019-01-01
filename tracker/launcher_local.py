@@ -9,18 +9,17 @@ import os
 import signal
 import subprocess
 from threading import Thread
-import tracker
 import signal
 import logging
 
-from tracker import utils
+from tracker import tracker
 from tracker.args import parse_args
 keepalive = """
 nrep=0
 rc=254
 while [ $rc -eq 254 ];
 do
-    export DMLC_NUM_ATTEMPT=$nrep
+    export RDC_NUM_ATTEMPT=$nrep
     %s
     rc=$?;
     nrep=$((nrep+1));
@@ -42,7 +41,7 @@ class LocalLauncher(object):
         ntrial = 0
         while True:
             if os.name == 'nt':
-                env['DMLC_NUM_ATTEMPT'] = str(ntrial)
+                env['RDC_NUM_ATTEMPT'] = str(ntrial)
                 ret = subprocess.call(cmd, shell=True, env=env)
                 if ret == 254:
                     ntrial += 1
@@ -75,7 +74,6 @@ class LocalLauncher(object):
         return mthread_submit
 
     def run(self):
-        utils.config_logger(self.args)
         tracker.submit(
             self.args.num_workers, fun_submit=self.submit(), pscmd=self.cmd)
 

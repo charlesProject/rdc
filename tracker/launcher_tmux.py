@@ -10,12 +10,11 @@ import signal
 
 import subprocess
 from threading import Thread
-import tracker
 import signal
 import logging
 import libtmux
 
-from tracker import utils
+from tracker import tracker
 from tracker.args import parse_args
 
 keepalive = """
@@ -81,7 +80,6 @@ class TmuxLauncher(object):
         return mthread_submit
 
     def run(self):
-        utils.config_logger(self.args)
         tracker.submit(
             self.args.num_workers, fun_submit=self.submit(), pscmd=self.cmd)
 

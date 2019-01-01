@@ -9,12 +9,12 @@ import argparse
 import sys
 import os
 import subprocess
-import tracker
 import logging
 from threading import Thread
 
-from tracker import utils
+from tracker import tracker
 from tracker.args import parse_args, parse_config_file
+
 
 class SSHLauncher(object):
 
@@ -26,7 +26,7 @@ class SSHLauncher(object):
             self.num_workers = args.num_workers
         else:
             assert args.config_file is not None
-        self.common_envs, self.worker_envs_by_host = parse_config_file(
+        self.init_cmds, self.common_envs, self.worker_envs_by_host = parse_config_file(
             args.config_file)
         hosts = self.worker_envs_by_host.keys()
         self.num_workers = len(hosts)
@@ -85,7 +85,8 @@ class SSHLauncher(object):
                 node = host.split(':')[0]
                 pass_envs.update(self.common_envs)
                 pass_envs.update(self.worker_envs_by_host[host])
-                prog = self.get_env(
+                prog = self.init_cmds + ';'
+                prog += self.get_env(
                     pass_envs) + ' cd ' + working_dir + '; ' + self.cmd
                 prog = 'ssh -o StrictHostKeyChecking=no ' + node + ' \'' + prog + '\''
 
@@ -96,7 +97,6 @@ class SSHLauncher(object):
         return ssh_submit
 
     def run(self):
-        utils.config_logger(self.args)
         tracker.submit(
             self.num_workers, fun_submit=self.submit(), pscmd=self.cmd)
 
