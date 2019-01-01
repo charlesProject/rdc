@@ -46,6 +46,8 @@ public:
 
     void Init(int world_size, int num_conn, int num_accept);
 
+    virtual void Shutdown() = 0;
+
     virtual void Send(Buffer sendbuf, int dest) = 0;
 
     virtual void Recv(Buffer recvbuf, int src) = 0;
@@ -82,20 +84,23 @@ public:
      * @param count number of elements to be reduced
      * @param reducer reduce function
      */
-    void Allreduce(Buffer sendrecvbuf, ReduceFunction reducer) {}
+    void Allreduce(Buffer sendrecvbuf, ReduceFunction reducer) {
+    }
     /*!
      * @brief broadcasts data from root to every other node
      * @param sendrecvbuf_ buffer for both sending and receiving data
      * @param size the size of the data to be broadcasted
      * @param root the root worker id to broadcast the data
      */
-    void Broadcast(Buffer sendrecvbuf, int root) {}
+    void Broadcast(Buffer sendrecvbuf, int root) {
+    }
 
     void Broadcast(void* sendrecvaddr, uint64_t size, int root) {
         Buffer sendrecvbuf(sendrecvaddr, size);
         Broadcast(sendrecvbuf, root);
     }
-    void Allgather(std::vector<Buffer> sendrecvbufs) {}
+    void Allgather(std::vector<Buffer> sendrecvbufs) {
+    }
 
     void Allgather(std::vector<void*> sendrecvbufs_,
                    std::vector<uint64_t> sizes) {

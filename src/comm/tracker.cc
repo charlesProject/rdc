@@ -9,8 +9,9 @@
 namespace rdc {
 namespace comm {
 
-std::atomic<Tracker*> Tracker::instance;
+std::atomic<Tracker*> Tracker::instance(nullptr);
 std::mutex Tracker::create_mutex;
+std::atomic<bool> Tracker::created(false);
 
 Tracker::Tracker() {
     rank_ = -1;
@@ -33,32 +34,40 @@ Tracker::Tracker(const std::string& tracker_uri, const int& tracker_port)
 }
 
 Tracker::~Tracker() {
-    if (!this->tracker_closed_) {
+    if (!this->tracker_closed_.load(std::memory_order_acquire)) {
+        Lock();
+        this->tracker_closed_.store(true, std::memory_order_release);
         this->tracker_sock_->Close();
+        UnLock();
     }
 }
 
 Tracker* Tracker::Get() {
-    Tracker* tmp = instance.load(std::memory_order_acquire);
-    if (tmp == nullptr) {
+    bool created_ = created.load(std::memory_order_acquire);
+    Tracker* instance_ = instance.load(std::memory_order_relaxed);
+    if (created_ == false) {
         std::lock_guard<std::mutex> lock(create_mutex);
-        tmp = instance.load(std::memory_order_relaxed);
-        if (tmp == nullptr) {
+        created_ = created.load(std::memory_order_relaxed);
+        //instance_ = instance.load(std::memory_order_acquire);
+        if (created_ == false) {
             auto&& tracker_uri = CommunicatorManager::Get()->tracker_uri();
             auto&& tracker_port = CommunicatorManager::Get()->tracker_port();
-            tmp = new Tracker(tracker_uri, tracker_port);
-            instance.store(tmp, std::memory_order_release);
+            instance_ = new Tracker(tracker_uri, tracker_port);
+            instance.store(instance_, std::memory_order_relaxed);
+            created.store(true, std::memory_order_release);
         }
     }
-    return tmp;
+    return instance_;
 }
 
 void Tracker::Release() {
-    Tracker* tmp = nullptr;
-    while ((tmp = instance.load(std::memory_order_acquire)) == nullptr) {
+    bool created_ = false;
+    while ((created_ = created.load(std::memory_order_acquire)) == false) {
         continue;
     }
-    instance.store(nullptr, std::memory_order_release);
+    Tracker* instance_ = instance.load(std::memory_order_relaxed);
+    delete instance_;
+    instance.store(nullptr, std::memory_order_relaxed);
 }
 
 void Tracker::Lock() const {
@@ -77,12 +86,20 @@ void Tracker::SendStr(const std::string& str) {
     tracker_sock_->SendStr(str);
 }
 
+void Tracker::SendBytes(void* buf, int32_t size) {
+    tracker_sock_->SendBytes(buf, size);
+}
+
 void Tracker::RecvInt(int32_t& value) {
     tracker_sock_->RecvInt(value);
 }
 
 void Tracker::RecvStr(std::string& str) {
     tracker_sock_->RecvStr(str);
+}
+
+void Tracker::RecvBytes(void* buf, int32_t& size) {
+    tracker_sock_->RecvBytes(buf, size);
 }
 
 std::tuple<int, int> Tracker::Connect(const char* cmd) {

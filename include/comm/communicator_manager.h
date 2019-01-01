@@ -106,6 +106,7 @@ private:
 
     static std::mutex create_mutex;
     static std::atomic<CommunicatorManager*> instance;
+    static std::atomic<bool> created;
 };
 
 }  // namespace comm

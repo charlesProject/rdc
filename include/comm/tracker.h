@@ -26,9 +26,13 @@ public:
 
     void SendStr(const std::string& str);
 
+    void SendBytes(void* buf, int32_t size);
+
     void RecvInt(int32_t& value);
 
     void RecvStr(std::string& str);
+
+    void RecvBytes(void* buf, int32_t& size);
 
     bool IsDistributed() const {
         return true;
@@ -111,12 +115,13 @@ private:
     std::unordered_map<int, std::string> peer_addrs_;
     std::atomic<bool> tracker_connected_;
 
-    bool tracker_closed_;
+    std::atomic<bool> tracker_closed_;
     std::shared_ptr<std::mutex> tracker_lock_;
     LightweightSemaphore tracker_sema_;
 
     static std::mutex create_mutex;
     static std::atomic<Tracker*> instance;
+    static std::atomic<bool> created;
 };
 }  // namespace comm
 }  // namespace rdc

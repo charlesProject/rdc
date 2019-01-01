@@ -13,6 +13,9 @@ Deamon::Deamon() {
 }
 
 Deamon::~Deamon() {
+}
+
+void Deamon::Shutdown() {
     heartbeat_thrd_->join();
 }
 

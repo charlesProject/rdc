@@ -6,8 +6,8 @@
  *
  * \author Ankun Zheng
  */
-#include <memory>
 #include "comm/communicator.h"
+#include <memory>
 #include "comm/communicator_base.h"
 #include "comm/communicator_manager.h"
 #include "common/thread_local.h"

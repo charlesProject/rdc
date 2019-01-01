@@ -45,7 +45,7 @@ public:
     ~Communicator();
     void Init(int world_size, int num_conn, int num_accept);
     /*! @brief shutdown the comm */
-    void Shutdown();
+    void Shutdown() override;
     /**
      * @brief:
      *

@@ -7,7 +7,8 @@
 namespace rdc {
 namespace comm {
 
-std::atomic<CommunicatorManager*> CommunicatorManager::instance;
+std::atomic<CommunicatorManager*> CommunicatorManager::instance(nullptr);
+std::atomic<bool> CommunicatorManager::created(false);
 std::mutex CommunicatorManager::create_mutex;
 // util to parse data with unit suffix
 inline size_t ParseUnit(const char* name, const char* val) {
@@ -55,26 +56,30 @@ CommunicatorManager::CommunicatorManager() {
     this->SetParam("rdc_reduce_buffer", "256MB");
 }
 CommunicatorManager* CommunicatorManager::Get() {
+    bool created_ = created.load(std::memory_order_relaxed);
     CommunicatorManager* tmp = instance.load(std::memory_order_relaxed);
     std::atomic_thread_fence(std::memory_order_acquire);
-    if (tmp == nullptr) {
+    if (created_ == false) {
         std::lock_guard<std::mutex> lock(create_mutex);
-        tmp = instance.load(std::memory_order_relaxed);
-        if (tmp == nullptr) {
+        created_ = created.load(std::memory_order_relaxed);
+        if (created_ == false) {
             tmp = new CommunicatorManager;
             std::atomic_thread_fence(std::memory_order_release);
             instance.store(tmp, std::memory_order_relaxed);
+            created.store(true, std::memory_order_relaxed);
         }
     }
     return tmp;
 }
 
 void CommunicatorManager::Release() {
-    CommunicatorManager* tmp = nullptr;
-    while ((tmp = instance.load(std::memory_order_acquire)) == nullptr) {
+    bool created_ = false;
+    while ((created_ = created.load(std::memory_order_acquire)) == false) {
         continue;
     }
-    instance.store(nullptr, std::memory_order_release);
+    auto&& instance_ = instance.load(std::memory_order_relaxed);
+    delete instance_;
+    instance.store(nullptr, std::memory_order_relaxed);
 }
 
 void CommunicatorManager::Init(int argc, char** argv) {
@@ -108,8 +113,14 @@ void CommunicatorManager::Init(int argc, char** argv) {
 }
 
 void CommunicatorManager::Finalize() {
-    Tracker::Get()->Release();
+    for (auto&& comm : communicators_) {
+        comm.second->Shutdown();
+    }
+
     TcpAdapter::Get()->Shutdown();
+    Tracker::Get()->set_tracker_connected(false);
+    deamon_->Shutdown();
+    Tracker::Get()->Release();
 }
 
 void CommunicatorManager::SetParam(const char* name, const char* val) {
