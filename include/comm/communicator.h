@@ -45,7 +45,9 @@ public:
     virtual ~ICommunicator() = default;
 
     void Init(int world_size, int num_conn, int num_accept);
-
+    
+    virtual void ReConnectLinks(const std::tuple<int, int>& num_conn_accept) = 0;
+    
     virtual void Shutdown() = 0;
 
     virtual void Send(Buffer sendbuf, int dest) = 0;

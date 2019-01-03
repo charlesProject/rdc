@@ -23,7 +23,7 @@ inline void Init(int argc, char **argv) {
 }
 // create a new rdc comm
 inline comm::ICommunicator *NewCommunicator(const std::string &name) {
-    return comm::CommunicatorManager::Get()->NewCommunicator(name);
+    return comm::CommunicatorManager::Get()->NewCommunicator(name).get();
 }
 // get an existed rdc comm
 inline comm::ICommunicator *GetCommunicator(const std::string &name) {
@@ -208,6 +208,19 @@ inline int LoadCheckPoint() {
 }
 
 inline void CheckPoint() {
-    comm::CommunicatorManager::Get()->LoadCheckPoint();
+    comm::CommunicatorManager::Get()->CheckPoint();
+}
+
+inline bool DetectDeadNodes() {
+    return comm::Tracker::Get()->num_dead_nodes() > 0;
+}
+
+inline bool DetectPendingNodes() {
+    return comm::Tracker::Get()->num_pending_nodes() > 0;
+}
+
+inline bool Reset() {
+    comm::Tracker::Get()->Connect("start");
+    comm::CommunicatorManager::Get()->ResetAllCommunicators();
 }
 }  // namespace rdc

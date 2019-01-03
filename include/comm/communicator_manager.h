@@ -3,8 +3,8 @@
 #include "comm/communicator.h"
 #include "comm/deamon.h"
 #include "comm/tracker.h"
-
 #include "utils/lock_utils.h"
+
 namespace rdc {
 namespace comm {
 class CommunicatorManager {
@@ -21,6 +21,8 @@ public:
 
     /*! @brief finalizes the comm module */
     void Finalize();
+    /*! @*brief rest all communicators*/
+    void ResetAllCommunicators();
     /*!
      * @brief explicitly re-initialize everything before calling LoadCheckPoint
      *    call this function when ICommunicator throws an exception,
@@ -44,7 +46,7 @@ public:
      *
      * @return created new commnicator
      */
-    ICommunicator* NewCommunicator(const std::string& name);
+    std::shared_ptr<ICommunicator> NewCommunicator(const std::string& name);
 
     /**
      * @brief: gets a created communicator by name
@@ -81,7 +83,12 @@ public:
     size_t reduce_ring_mincount() const {
         return reduce_ring_mincount_;
     }
-
+    int heartbeat_interval() const {
+        return heartbeat_interval_;
+    }
+    bool restart() const {
+        return restart_;
+    }
 private:
     // all communicators managed
     std::unordered_map<std::string, std::shared_ptr<ICommunicator>>
@@ -104,6 +111,8 @@ private:
     std::thread demaon_thrd_;
     LightweightSemaphore tracker_sema_;
 
+    int heartbeat_interval_;
+    bool restart_ = false;
     static std::mutex create_mutex;
     static std::atomic<CommunicatorManager*> instance;
     static std::atomic<bool> created;

@@ -10,7 +10,7 @@ import signal
 import subprocess
 from threading import Thread
 import signal
-import logging
+from loguru import logger
 
 from tracker import tracker
 from tracker.args import parse_args
@@ -34,6 +34,7 @@ class LocalLauncher(object):
         self.cmd = ' '.join(args.command) + ' ' + ' '.join(unknown)
 
     def exec_cmd(self, cmd, pass_env):
+        #logger.info('execute command {}'.format(cmd))
         env = os.environ.copy()
         for k, v in pass_env.items():
             env[k] = str(v)
@@ -51,7 +52,7 @@ class LocalLauncher(object):
                 ret = subprocess.call(
                     bash, shell=True, executable='bash', env=env)
             if ret == 0:
-                logging.debug('Thread %d exit with 0')
+                logger.debug('Thread %d exit with 0')
                 return
             else:
                 if os.name == 'nt':
@@ -61,7 +62,7 @@ class LocalLauncher(object):
 
     def submit(self):
 
-        def mthread_submit(nworker, envs):
+        def mthread_submit(nworker, envs, new_worker=False):
             """
             customized submit script
             """
@@ -75,7 +76,12 @@ class LocalLauncher(object):
 
     def run(self):
         tracker.submit(
-            self.args.num_workers, fun_submit=self.submit(), pscmd=self.cmd)
+            self.args.num_workers,
+            fun_submit=self.submit(),
+            new_worker=self.args.new_worker,
+            host_ip=self.args.host_ip,
+            port=self.args.port,
+            pscmd=self.cmd)
 
 
 def signal_handler(sig, frame):

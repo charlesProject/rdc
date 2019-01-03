@@ -2,6 +2,7 @@
 #include <atomic>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 #include "common/semaphore.h"
 #include "transport/tcp/socket.h"
 namespace rdc {
@@ -87,13 +88,29 @@ public:
     std::unordered_map<int, std::string> peer_addrs() const {
         return peer_addrs_;
     }
+    int num_dead_nodes() const {
+        return num_dead_nodes_;
+    }
 
-protected:
+    int num_pending_nodes() const {
+        return num_pending_nodes_;
+    }
+    void set_dead_nodes(const std::vector<int>& dead_nodes) {
+        dead_nodes_ = dead_nodes;
+    }
+    void set_num_dead_nodes(const int& num_dead_nodes) {
+        num_dead_nodes_ = num_dead_nodes;
+    }
+    void set_num_pending_nodes(const int& num_pending_nodes) {
+        num_pending_nodes_ = num_pending_nodes;
+    }
+
     /*!
      * @brief initialize connection to the tracker
      * @return a channel that initializes the connection
      */
     std::tuple<int, int> Connect(const char* cmd = "start");
+protected:
 
 private:
     // uri of tracker
@@ -119,6 +136,9 @@ private:
     std::shared_ptr<std::mutex> tracker_lock_;
     LightweightSemaphore tracker_sema_;
 
+    int num_pending_nodes_;
+    int num_dead_nodes_;
+    std::vector<int> dead_nodes_;
     static std::mutex create_mutex;
     static std::atomic<Tracker*> instance;
     static std::atomic<bool> created;

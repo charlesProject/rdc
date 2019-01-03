@@ -52,6 +52,8 @@ CommunicatorManager::CommunicatorManager() {
     env_vars_.push_back("RDC_NUM_ATTEMPT");
     env_vars_.push_back("RDC_TRACKER_URI");
     env_vars_.push_back("RDC_TRACKER_PORT");
+    env_vars_.push_back("RDC_HEARTBEAT_INTERVAL");
+    env_vars_.push_back("RDC_RESTART");
     env_vars_.push_back("WORKER_CONNECT_RETRY");
     this->SetParam("rdc_reduce_buffer", "256MB");
 }
@@ -85,6 +87,7 @@ void CommunicatorManager::Release() {
 void CommunicatorManager::Init(int argc, char** argv) {
     // setup from enviroment variables
     // handler to get variables from env
+    LOG_F(INFO, "Initialize");
     for (size_t i = 0; i < env_vars_.size(); ++i) {
         const char* value = Env::Get()->Find(env_vars_[i].c_str());
         if (value != nullptr) {
@@ -123,12 +126,24 @@ void CommunicatorManager::Finalize() {
     Tracker::Get()->Release();
 }
 
+void CommunicatorManager::ResetAllCommunicators() {
+    for (auto&& comm : communicators_) {
+        comm.second->ReConnectLinks(std::make_tuple(
+            Tracker::Get()->num_conn(), Tracker::Get()->num_accept()));
+    }
+}
 void CommunicatorManager::SetParam(const char* name, const char* val) {
     if (!strcmp(name, "RDC_TRACKER_URI")) {
         this->tracker_uri_ = val;
     }
     if (!strcmp(name, "RDC_TRACKER_PORT")) {
         this->tracker_port_ = atoi(val);
+    }
+    if (!strcmp(name, "RDC_HEARTBEAT_INTERVAL")) {
+        this->heartbeat_interval_ = atoi(val);
+    }
+    if (!strcmp(name, "RDC_RESTART")) {
+        this->restart_ = atoi(val);
     }
     if (!strcmp(name, "rdc_world_size")) {
         this->world_size_ = atoi(val);
@@ -141,7 +156,8 @@ void CommunicatorManager::SetParam(const char* name, const char* val) {
     }
 }
 
-ICommunicator* CommunicatorManager::NewCommunicator(const std::string& name) {
+std::shared_ptr<ICommunicator> CommunicatorManager::NewCommunicator(
+    const std::string& name) {
     // increase volumn of threadpool
     if (GetAdapter()->backend() == kTcp) {
         ThreadPool::Get()->AddWorkers(Env::Get()->GetEnv("RDC_NUM_WORKERS", 0));
@@ -149,7 +165,7 @@ ICommunicator* CommunicatorManager::NewCommunicator(const std::string& name) {
     std::unique_lock<utils::SpinLock> comm_lock(comm_lock_);
     if (communicators_.count(name)) return nullptr;
     comm_lock.unlock();
-    auto comm = utils::make_unique<Communicator>();
+    auto comm = std::make_shared<Communicator>();
     comm->set_name(name);
     // std::unique_lock<utils::SpinLock> lock(*tracker_lock_);
     while (!Tracker::Get()->tracker_connected()) {
@@ -161,8 +177,8 @@ ICommunicator* CommunicatorManager::NewCommunicator(const std::string& name) {
     //    conn_lock_.unlock();
     // add this communicator to the goverment of main communicator
     comm_lock.lock();
-    this->communicators_[name] = std::move(comm);
-    return this->communicators_[name].get();
+    this->communicators_[name] = comm;
+    return comm;
 }
 
 ICommunicator* CommunicatorManager::GetCommunicator(const std::string& name) {
