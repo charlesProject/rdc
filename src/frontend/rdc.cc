@@ -2,12 +2,18 @@
 #include <pybind11/pybind11.h>
 #include <functional>
 #include "comm/communicator.h"
+#include "core/work_request.h"
 #include "transport/buffer.h"
 
 namespace py = pybind11;
 using namespace rdc;
 
 PYBIND11_MODULE(pyrdc, m) {
+    py::class_<WorkCompletion> wc(m, "WorkCompletion");
+    wc.def("wait", &WorkCompletion::Wait);
+    py::class_<ChainWorkCompletion> cwc(m, "ChainWorkCompletion");
+    cwc.def("add", &ChainWorkCompletion::Add)
+        .def("wait", &ChainWorkCompletion::Wait);
     py::class_<Buffer> buffer(m, "Buffer", py::buffer_protocol());
     buffer.def(py::init<>())
         .def(py::init<void*, uint64_t>())
@@ -38,15 +44,40 @@ PYBIND11_MODULE(pyrdc, m) {
                              buf.size_in_bytes());
         });
     py::class_<comm::ICommunicator> comm(m, "Comm");
-    comm.def("send", (void (comm::ICommunicator::*)(void*, uint64_t, int)) &
-                         comm::ICommunicator::Send)
+    comm.def("send",
+             [](comm::ICommunicator* communicator, uintptr_t addr,
+                uint64_t size, int rank) {
+                 return communicator->Send(reinterpret_cast<void*>(addr), size,
+                                           rank);
+             })
         .def("send", (void (comm::ICommunicator::*)(Buffer, int)) &
                          comm::ICommunicator::Send)
-        .def("recv", (void (comm::ICommunicator::*)(void*, uint64_t, int)) &
-                         comm::ICommunicator::Recv)
+        .def("recv",
+
+             [](comm::ICommunicator* communicator, uintptr_t addr,
+                uint64_t size, int rank) {
+                 return communicator->Recv(reinterpret_cast<void*>(addr), size,
+                                           rank);
+             })
         .def("recv", (void (comm::ICommunicator::*)(Buffer, int)) &
-                         comm::ICommunicator::Recv);
-    m.def("new_comm", &NewCommunicator);
+                         comm::ICommunicator::Recv)
+        .def("isend",
+
+             [](comm::ICommunicator* communicator, uintptr_t addr,
+                uint64_t size, int rank) -> WorkCompletion* {
+                 return communicator->ISend(reinterpret_cast<void*>(addr), size,
+                                            rank);
+             })
+
+        .def("irecv",
+
+             [](comm::ICommunicator* communicator, uintptr_t addr,
+                uint64_t size, int rank) -> WorkCompletion* {
+                 return communicator->IRecv(reinterpret_cast<void*>(addr), size,
+                                            rank);
+             });
+
+    m.def("new_comm", &NewCommunicator, py::return_value_policy::reference);
     m.def("init", [] { Init(0, nullptr); });
     m.def("finalize", [] { Finalize(); });
     m.def("get_rank", &GetRank);
