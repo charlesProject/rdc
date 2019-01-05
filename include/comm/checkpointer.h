@@ -146,29 +146,34 @@ public:
         }
     }
     void DoCheckPoint() {
+        Tracker::Get()->Lock();
         Tracker::Get()->SendStr("checkpoint");
-        Tracker::Get()->SendInt(in_memory_holder()->size_in_bytes());
-        Tracker::Get()->Send(in_memory_holder()->addr(),
-                             in_memory_holder()->size_in_bytes());
-        auto&& rank = Tracker::Get()->rank();
-        auto&& neighbors = GetNeighbors(rank, num_replicas_);
-        for (auto&& i = 0U; i < num_replicas_; i++) {
-            comm_->Send(in_memory_holder()->addr(),
-                        in_memory_holder()->size_in_bytes(), neighbors[i]);
-        }
+        Tracker::Get()->SendBytes(in_memory_holder()->addr(),
+                                  in_memory_holder()->size_in_bytes());
+        Tracker::Get()->UnLock();
+        // auto&& rank = Tracker::Get()->rank();
+        // auto&& neighbors = GetNeighbors(rank, num_replicas_);
+        // for (auto&& i = 0U; i < num_replicas_; i++) {
+        //    comm_->Send(in_memory_holder()->addr(),
+        //                in_memory_holder()->size_in_bytes(), neighbors[i]);
+        //}
     }
     void LoadCheckPoint() {
-        Tracker::Get()->SendStr("loadcheckpoint");
-        Tracker::Get()->Recv(in_memory_holder()->addr(),
-                             in_memory_holder()->size_in_bytes());
-        if (replica_strategy_ | ReplicaStrategy::WithPeers) {
-            auto&& rank = Tracker::Get()->rank();
-            auto&& neighbors = GetNeighbors(rank, num_replicas_);
-            for (auto&& i = 0U; i < num_replicas_; i++) {
-                comm_->Recv(in_memory_holder()->addr(),
-                            in_memory_holder()->size_in_bytes(), neighbors[i]);
-            }
-        }
+        Tracker::Get()->Lock();
+        Tracker::Get()->SendStr("load_checkpoint");
+        int checkpoint_size = 0;
+        Tracker::Get()->RecvBytes(in_memory_holder()->addr(), checkpoint_size);
+        Tracker::Get()->UnLock();
+        CHECK_EQ(checkpoint_size, in_memory_holder()->size_in_bytes());
+        // if (replica_strategy_ | ReplicaStrategy::WithPeers) {
+        //    auto&& rank = Tracker::Get()->rank();
+        //    auto&& neighbors = GetNeighbors(rank, num_replicas_);
+        //    for (auto&& i = 0U; i < num_replicas_; i++) {
+        //        comm_->Recv(in_memory_holder()->addr(),
+        //                    in_memory_holder()->size_in_bytes(),
+        //                    neighbors[i]);
+        //    }
+        //}
     }
 
 private:
@@ -187,22 +192,20 @@ public:
     GlobalState() = default;
     void DoCheckPoint() {
         Tracker::Get()->SendStr("checkpoint");
-        Tracker::Get()->SendInt(in_memory_holder()->size_in_bytes());
-        Tracker::Get()->Send(in_memory_holder()->addr(),
-                             in_memory_holder()->size_in_bytes());
+        Tracker::Get()->SendBytes(in_memory_holder()->addr(),
+                                  in_memory_holder()->size_in_bytes());
     }
     void LoadCheckPoint() {
-        Tracker::Get()->SendStr("loadcheckpoint");
-        Tracker::Get()->Recv(in_memory_holder()->addr(),
-                             in_memory_holder()->size_in_bytes());
+        Tracker::Get()->SendStr("load_checkpoint");
+        int checkpoint_size = 0;
+        Tracker::Get()->RecvBytes(in_memory_holder()->addr(), checkpoint_size);
+        CHECK_EQ(checkpoint_size, in_memory_holder()->size_in_bytes());
     }
 };
 class CheckPointer {
 public:
-    CheckPointer() = default;
-    std::unordered_map<std::string, GlobalState> states() const {
-        return global_states_;
-    }
+    CheckPointer();
+    std::unordered_map<std::string, GlobalState> states() const;
     /**
      * @brief: move state the the government of checkpointer
      *
@@ -210,40 +213,16 @@ public:
      * @param state state to be appended
      */
     void AddGlobalState(const std::string name,
-                        const GlobalState& global_state) {
-        global_states_[name] = global_state;
-    }
+                        const GlobalState& global_state);
 
-    void AddGlobalState(const std::string name, void* ptr, size_t size) {
-        GlobalState global_state(name, ptr, size);
-        global_states_[name] = global_state;
-    }
-    void AddLocalState(const std::string name, const LocalState& local_state) {
-        local_states_[name] = local_state;
-    }
+    void AddGlobalState(const std::string name, void* ptr, size_t size);
 
-    void AddLocalState(const std::string name, void* ptr, size_t size) {
-        LocalState local_state(name, ptr, size);
-        local_states_[name] = local_state;
-    }
-    void CheckPoint() {
-        for (auto&& global_state_with_name : global_states_) {
-            global_state_with_name.second.DoCheckPoint();
-        }
-        for (auto&& local_state_with_name : local_states_) {
-            local_state_with_name.second.DoCheckPoint();
-        }
-    }
+    void AddLocalState(const std::string name, const LocalState& local_state);
 
-    int LoadCheckPoint() {
-        for (auto&& global_state_with_name : global_states_) {
-            global_state_with_name.second.LoadCheckPoint();
-        }
-        for (auto&& local_state_with_name : local_states_) {
-            local_state_with_name.second.LoadCheckPoint();
-        }
-        return 0;
-    }
+    void AddLocalState(const std::string name, void* ptr, size_t size);
+    void CheckPoint();
+
+    int LoadCheckPoint();
 
 private:
     /* @brief: all states need to be */
