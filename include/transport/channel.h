@@ -1,10 +1,9 @@
 #pragma once
 #include <string>
 #include "common/status.h"
-#include "rdc.h"
 #include "transport/adapter.h"
 #include "transport/buffer.h"
-
+#include "core/work_request.h"
 namespace rdc {
 const uint32_t kCommTimeoutMs = 600;
 
@@ -46,10 +45,14 @@ public:
 
     WorkStatus RecvStr(std::string& str);
 
+    WorkStatus SendBytes(void* ptr, const int32_t& sendbytes);
+    
+    WorkStatus RecvBytes(void* ptr, int32_t& recvbytes);
+    
     bool CheckError() const;
-    
+
     bool CanRead() const;
-    
+
     bool CanWrite() const;
     //---------------------------properties--------------------------------
     void set_error_detected(const bool& error_detected);
@@ -57,7 +60,7 @@ public:
     bool error_detected() const;
 
     ChannelKind kind() const;
-    
+
     void set_kind(const ChannelKind& kind);
 
 private:

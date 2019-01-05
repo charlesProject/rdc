@@ -48,9 +48,21 @@ WorkStatus IChannel::SendStr(std::string str) {
     int32_t size = static_cast<int32_t>(str.size());
     auto chain_wc = ChainWorkCompletion::New();
     auto wc = this->ISend(&size, sizeof(size));
-    chain_wc->Push(wc);
+    chain_wc->Add(wc);
     wc = this->ISend(utils::BeginPtr(str), str.size());
-    chain_wc->Push(wc);
+    chain_wc->Add(wc);
+    chain_wc->Wait();
+    auto status = chain_wc->status();
+    ChainWorkCompletion::Delete(chain_wc);
+    return status;
+}
+
+WorkStatus IChannel::SendBytes(void* ptr, const int32_t& sendbytes) {
+    auto chain_wc = ChainWorkCompletion::New();
+    auto wc = this->ISend(&sendbytes, sizeof(sendbytes));
+    chain_wc->Add(wc);
+    wc = this->ISend(ptr, sendbytes);
+    chain_wc->Add(wc);
     chain_wc->Wait();
     auto status = chain_wc->status();
     ChainWorkCompletion::Delete(chain_wc);
@@ -76,6 +88,20 @@ WorkStatus IChannel::RecvStr(std::string& str) {
     }
     str.resize(size);
     wc = this->IRecv(utils::BeginPtr(str), str.size());
+    status = wc->status();
+    WorkCompletion::Delete(wc);
+    return status;
+}
+
+WorkStatus IChannel::RecvBytes(void* ptr, int32_t& recvbytes) {
+    auto wc = this->IRecv(&recvbytes, sizeof(int32_t));
+    wc->Wait();
+    auto status = wc->status();
+    if (status != WorkStatus::kFinished) {
+        WorkCompletion::Delete(wc);
+        return status;
+    }
+    wc = this->IRecv(ptr, recvbytes);
     status = wc->status();
     WorkCompletion::Delete(wc);
     return status;
