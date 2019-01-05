@@ -61,7 +61,7 @@ class TmuxLauncher(object):
 
     def submit(self):
 
-        def mthread_submit(nworker, envs):
+        def mthread_submit(nworker, envs, new_worker=False):
             """
             customized submit script
             """
@@ -81,7 +81,10 @@ class TmuxLauncher(object):
 
     def run(self):
         tracker.submit(
-            self.args.num_workers, fun_submit=self.submit(), pscmd=self.cmd)
+            self.args.num_workers,
+            fun_submit=self.submit(),
+            new_worker=self.args.new_worker,
+            pscmd=self.cmd)
 
 
 def signal_handler(sig, frame):

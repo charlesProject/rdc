@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include "core/logging.h"
 
 #define THROW_EXCEPTION(name, msg)                                       \
     {                                                                    \
@@ -19,16 +20,6 @@
             std::string(__FILE__ " (" + std::to_string(__LINE__) + ")"); \
         throw ex;                                                        \
     }
-
-inline void PrintException(const std::exception& e, int level = 0) {
-    LOG_S(ERROR) << std::string(level, ' ') << "exception: " << e.what();
-    try {
-        std::rethrow_if_nested(e);
-    } catch (const std::exception& e) {
-        PrintException(e, level + 1);
-    } catch (...) {
-    }
-}
 
 class Exception {
 protected:
@@ -71,4 +62,14 @@ class NullPointerException : public Exception {};
 class AmbiguousMatched : public Exception {};
 class TypeAlreadyExists : public Exception {};
 class NoDefualtConstructor : public Exception {};
-class SocketError: public Exception {};
+class SocketError : public Exception {};
+inline void PrintException(const Exception& e, int level = 0) {
+    LOG_S(ERROR) << std::string(level, ' ') << "exception: " << e.What()
+                 << " at:" << e.Where();
+    try {
+        std::rethrow_if_nested(e);
+    } catch (const Exception& e) {
+        PrintException(e, level + 1);
+    } catch (...) {
+    }
+}

@@ -37,7 +37,6 @@ void Deamon::Heartbeat() {
         CHECK_EQ(heartbeat_token, "heartbeat_done");
         Tracker::Get()->RecvInt(num_dead_nodes_);
         if (num_dead_nodes_ > 0) {
-            LOG_F(INFO, "detect %d dead nodes", num_dead_nodes_);
             Tracker::Get()->set_num_dead_nodes(num_dead_nodes_);
             dead_nodes_.clear();
             dead_nodes_.resize(num_dead_nodes_);
@@ -47,6 +46,14 @@ void Deamon::Heartbeat() {
             Tracker::Get()->set_dead_nodes(dead_nodes_);
         }
         Tracker::Get()->RecvInt(num_pending_nodes_);
+        if (CommunicatorManager::Get()->restart()) {
+            num_pending_nodes_ = 0;
+            num_dead_nodes_ = 0;
+            dead_nodes_.clear();
+        }
+        if (num_pending_nodes_ > 0) {
+            LOG_F(INFO, "detect %d dead nodes", num_dead_nodes_);
+        }
         if (num_pending_nodes_ > 0) {
             LOG_F(INFO, "detect %d pending nodes", num_pending_nodes_);
         }

@@ -62,7 +62,7 @@ class SSHLauncher(object):
 
     def submit(self):
 
-        def ssh_submit(nworker, pass_envs):
+        def ssh_submit(nworker, pass_envs, new_worker=False):
             """
             customized submit script
             """

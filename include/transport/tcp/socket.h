@@ -213,11 +213,13 @@ public:
      * @param str the string to be sent
      */
     void SendStr(const std::string &str);
+    void SendBytes(void* buf_, int32_t len);
     /*!
      * @brief recv a string from network
      * @param out_str the string to receive
      */
     void RecvStr(std::string &out_str);
+    void RecvBytes(void* buf_, int32_t& len);
     /*!
      * @brief send a string over network
      * @param val the integer to be sent

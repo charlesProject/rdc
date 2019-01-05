@@ -42,10 +42,11 @@ public:
     Communicator();
     Communicator(const std::string& name);
     Communicator(const Communicator& other);
-    ~Communicator();
+    ~Communicator() override;
     void Init(int world_size, int num_conn, int num_accept);
     /*! @brief shutdown the comm */
     void Shutdown() override;
+    void ResetLinks() override;
     /**
      * @brief:
      *

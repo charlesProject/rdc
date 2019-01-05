@@ -92,7 +92,7 @@ class TrackerHandler:
     def handle(self):
         if self.state == State.FIN:
             self.cmd = self.recvstr()
-            logger.info('receive cmd {}'.format(self.cmd))
+            logger.debug('receive cmd {}'.format(self.cmd))
             self.state = State.CMD
         elif self.state == State.CMD:
             if self.cmd == 'print':
@@ -100,7 +100,7 @@ class TrackerHandler:
             elif self.cmd == 'start':
                 self.handle_start()
             elif self.cmd == 'restart':
-                self.handle_restart()
+                self.handle_start(self.cmd)
             elif self.cmd == 'register':
                 self.handle_register()
             elif self.cmd == 'barrier':
@@ -121,64 +121,25 @@ class TrackerHandler:
             self.cmd = None
         return True
 
-    def handle_restart(self):
-        logger.info('restart cluster')
+    def handle_start(self, cmd='start'):
         rank = self.recvint()
 
-        n_new_worker = self.recvint()
-        self.tracker.node_lock.acquire()
-        self.tracker.pending_nodes = n_new_worker
-        self.tracker.node_lock.release()
+        if cmd == 'restart':
+            logger.info('restart cluster')
+            n_new_worker = self.recvint()
 
-        self.tracker.tracker_lock.acquire()
-        self.tracker.worker_id_to_ranks[self.worker_id] = rank
-        self.addr = self.recvstr()
-        self.tracker.tracker_lock.release()
-        self.tracker.rank_cond.acquire()
-        self.tracker.rank_counter += 1
-        if self.tracker.rank_counter != self.tracker.nworker + n_new_worker:
-            self.tracker.rank_cond.wait()
-        else:
-            self.tracker.rank_counter = 0
-            # trigger a rank reallocation
-            self.tracker.realloc_ranks()
-            self.tracker.nworker += n_new_worker
-
-            self.tracker.rank_cond.notify_all()
-
-        self.tracker.rank_cond.release()
-
-        self.rank = self.tracker.worker_id_to_ranks[self.worker_id]
-        self.tracker.rank_cond.acquire()
-        self.tracker.addrs[self.rank] = self.addr
-        if len(self.tracker.addrs) != self.tracker.nworker:
-            self.tracker.rank_cond.wait()
-        else:
-            self.tracker.rank_cond.notify_all()
-        self.tracker.rank_cond.release()
-
-        # send world size
-        self.sendint(self.tracker.nworker)
-        # send rank
-        self.tracker.tracker_lock.acquire()
-        self.sendint(self.rank)
-        num_conn = 0
-        num_accept = 0
-        for rank, addr in self.tracker.addrs.items():
-            if rank < self.rank:
-                num_conn += 1
-            elif rank > self.rank:
-                num_accept += 1
-        self.sendint(num_conn)
-        self.sendint(num_accept)
-        for rank, addr in self.tracker.addrs.items():
-            if rank < self.rank:
-                self.sendstr(addr)
-                self.sendint(rank)
-        self.tracker.tracker_lock.release()
-
-    def handle_start(self):
-        rank = self.recvint()
+            self.tracker.restart_cond.acquire()
+            self.tracker.new_node_counter += 1
+            if self.tracker.new_node_counter != n_new_worker:
+                self.tracker.restart_cond.wait()
+            else:
+                self.tracker.new_node_counter = 0
+                self.tracker.nworker += n_new_worker
+                self.tracker.node_lock.acquire()
+                self.tracker.pending_nodes = n_new_worker
+                self.tracker.node_lock.release()
+                self.tracker.restart_cond.notify_all()
+            self.tracker.restart_cond.release()
         self.tracker.tracker_lock.acquire()
         self.tracker.worker_id_to_ranks[self.worker_id] = rank
         self.addr = self.recvstr()
@@ -189,8 +150,14 @@ class TrackerHandler:
             self.tracker.rank_cond.wait()
         else:
             self.tracker.rank_counter = 0
+            # trigger a rank reallocation
             self.tracker.realloc_ranks()
+            if cmd == 'restart':
+                self.tracker.node_lock.acquire()
+                self.pending_nodes = 0
+                self.tracker.node_lock.release()
             self.tracker.rank_cond.notify_all()
+
         self.tracker.rank_cond.release()
 
         self.rank = self.tracker.worker_id_to_ranks[self.worker_id]
@@ -221,6 +188,55 @@ class TrackerHandler:
                 self.sendstr(addr)
                 self.sendint(rank)
         self.tracker.tracker_lock.release()
+
+#    def handle_start(self):
+#        rank = self.recvint()
+#        self.tracker.tracker_lock.acquire()
+#        self.tracker.worker_id_to_ranks[self.worker_id] = rank
+#        self.addr = self.recvstr()
+#        self.tracker.tracker_lock.release()
+#        self.tracker.rank_cond.acquire()
+#        self.tracker.rank_counter += 1
+#        print(self.tracker.rank_counter)
+#        if self.tracker.rank_counter != self.tracker.nworker:
+#            self.tracker.rank_cond.wait()
+#        else:
+#            self.tracker.rank_counter = 0
+#            self.tracker.node_lock.acquire()
+#            self.pending_nodes = 0
+#            self.tracker.node_lock.release()
+#            self.tracker.realloc_ranks()
+#            self.tracker.rank_cond.notify_all()
+#        self.tracker.rank_cond.release()
+#
+#        self.rank = self.tracker.worker_id_to_ranks[self.worker_id]
+#        self.tracker.rank_cond.acquire()
+#        self.tracker.addrs[self.rank] = self.addr
+#        if len(self.tracker.addrs) != self.tracker.nworker:
+#            self.tracker.rank_cond.wait()
+#        else:
+#            self.tracker.rank_cond.notify_all()
+#        self.tracker.rank_cond.release()
+#
+#        # send world size
+#        self.sendint(self.tracker.nworker)
+#        # send rank
+#        self.tracker.tracker_lock.acquire()
+#        self.sendint(self.rank)
+#        num_conn = 0
+#        num_accept = 0
+#        for rank, addr in self.tracker.addrs.items():
+#            if rank < self.rank:
+#                num_conn += 1
+#            elif rank > self.rank:
+#                num_accept += 1
+#        self.sendint(num_conn)
+#        self.sendint(num_accept)
+#        for rank, addr in self.tracker.addrs.items():
+#            if rank < self.rank:
+#                self.sendstr(addr)
+#                self.sendint(rank)
+#        self.tracker.tracker_lock.release()
 
     def handle_print(self):
         msg = self.recvstr()
@@ -299,13 +315,10 @@ class TrackerHandler:
         self.tracker.last_heartbeat_timepoint[self.worker_id] = time.time()
         self.sendstr('heartbeat_done')
         self.tracker.node_lock.acquire()
+        self.sendint(len(self.tracker.dead_nodes))
         if len(self.tracker.dead_nodes):
-            self.sendint(len(self.tracker.dead_nodes))
             for d in self.tracker.dead_nodes:
                 self.sendint(d)
-        else:
-            self.sendint(-1)
-        print(self.tracker.pending_nodes)
         self.sendint(self.tracker.pending_nodes)
         self.tracker.node_lock.release()
 
@@ -391,8 +404,13 @@ class Tracker:
         self.dead_nodes = []
         self.pending_nodes = 0
 
+        self.restart_cond = Condition()
+        self.new_node_counter = 0
+
         self.listen_thread = Thread(target=self.listen, args=())
         self.listen_thread.start()
+
+        self.threads = dict()
 
     def listen(self):
 
@@ -404,7 +422,6 @@ class Tracker:
                 ret = handler.handle()
 
         logger.info('start listen on %s:%d' % (self.host_ip, self.port))
-        self.threads = dict()
         worker_id = 0
         while True:
             fd, s_addr = self.sock.accept()

@@ -119,7 +119,7 @@ void TcpAdapter::AddChannel(TcpChannel* channel) {
 
 void TcpAdapter::RemoveChannel(TcpChannel* channel) {
     lock_.lock();
-    //    channels_.erase(channel->sockfd());
+    channels_.erase(channel->sockfd());
     epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, channel->sockfd(), nullptr);
     lock_.unlock();
 }

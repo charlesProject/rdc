@@ -20,6 +20,7 @@
 #ifdef RDC_USE_RDMA
 #include "transport/rdma/rdma_channel.h"
 #endif
+#include "core/exception.h"
 namespace rdc {
 namespace comm {
 // constructor
@@ -49,7 +50,6 @@ void Communicator::Init(int world_size, int num_conn, int num_accept) {
     //---------------------
     // start
     CHECK_F(all_links_.size() == 0, "can only call Init once");
-    this->BuildTopology(world_size);
     // get information from tracker
     this->ReConnectLinks(std::make_tuple(num_conn, num_accept));
 }
@@ -61,13 +61,16 @@ void Communicator::Register() {
     Tracker::Get()->SendStr(name_);
     Tracker::Get()->UnLock();
 }
+
 void Communicator::Shutdown() {
     // notify tracker rank i have shutdown
+    this->ResetLinks();
     this->Barrier();
     Tracker::Get()->Lock();
     Tracker::Get()->SendStr(std::string("shutdown"));
     Tracker::Get()->UnLock();
 }
+
 void Communicator::Barrier() {
     this->Exclude();
     Tracker::Get()->Lock();
@@ -79,24 +82,27 @@ void Communicator::Barrier() {
     Tracker::Get()->UnLock();
     this->UnExclude();
 }
+
 void Communicator::Exclude() {
-    std::string lock_token;
+    std::string exclude_token;
     do {
         Tracker::Get()->Lock();
+        CHECK(!Tracker::Get()->IsClosed());
         Tracker::Get()->SendStr(std::string("exclude"));
         Tracker::Get()->SendStr(name());
-        Tracker::Get()->RecvStr(lock_token);
+        Tracker::Get()->RecvStr(exclude_token);
         Tracker::Get()->UnLock();
         std::this_thread::sleep_for(std::chrono::microseconds(10));
-    } while (lock_token != "exclude_done");
+    } while (exclude_token != "exclude_done");
 }
+
 void Communicator::UnExclude() {
     Tracker::Get()->Lock();
     Tracker::Get()->SendStr(std::string("unexclude"));
     Tracker::Get()->SendStr(name());
-    std::string unlock_token;
-    Tracker::Get()->RecvStr(unlock_token);
-    CHECK_EQ(unlock_token, "unexclude_done");
+    std::string unexclude_token;
+    Tracker::Get()->RecvStr(unexclude_token);
+    CHECK_EQ(unexclude_token, "unexclude_done");
     Tracker::Get()->UnLock();
 }
 
@@ -110,7 +116,7 @@ void Communicator::BuildTopology(const int32_t& world_size) {
     VLOG_F(2, "parent rank %d", parent_rank_);
     auto neighbors = tree_map[rank];
     num_neighbors_ = neighbors.size();
-    VLOG_F(2, "number nerighbors %d", num_neighbors_);
+    VLOG_F(2, "number neighbors %d", num_neighbors_);
     for (int i = 0; i < num_neighbors_; ++i) {
         int nrank = neighbors[i];
         // tracker_->RecvInt(nrank);
@@ -138,49 +144,64 @@ void Communicator::BuildTopology(const int32_t& world_size) {
     }
     tree_map_.Create(nodes, edges);
 }
+void Communicator::ResetLinks() {
+    for (auto&& link : all_links_) {
+        link.second->Close();
+    }
+    all_links_.clear();
+}
 /*!
  * \brief connect to the tracker to fix the the missing links
  *   this function is also used when the comm start up
  */
 void Communicator::ReConnectLinks(const std::tuple<int, int>& num_conn_accept) {
+    this->BuildTopology(GetWorldSize());
     this->Register();
+    LOG(INFO) << name_;
     this->Exclude();
     int num_conn = 0, num_accept = 0;
     std::tie(num_conn, num_accept) = num_conn_accept;
-    for (auto& peer_addr : Tracker::Get()->peer_addrs()) {
-        int hrank = peer_addr.first;
-        auto haddr = peer_addr.second;
-        std::shared_ptr<IChannel> channel;
+    try {
+        for (auto& peer_addr : Tracker::Get()->peer_addrs()) {
+            int hrank = peer_addr.first;
+            auto haddr = peer_addr.second;
+            std::shared_ptr<IChannel> channel;
 #ifdef RDC_USE_RDMA
-        if (GetAdapter()->backend() == kRdma) {
-            channel.reset(new RdmaChannel);
-        } else {
-            channel.reset(new TcpChannel);
-        }
+            if (GetAdapter()->backend() == kRdma) {
+                channel.reset(new RdmaChannel);
+            } else {
+                channel.reset(new TcpChannel);
+            }
 #else
-        channel.reset(new TcpChannel);
+            channel.reset(new TcpChannel);
 #endif
-        if (channel->Connect(haddr) != true) {
-            channel->Close();
-            LOG_F(ERROR, "Connect Error");
-            continue;
-        } else {
-            int hrank = 0;
-            CHECK_F(channel->RecvInt(hrank) == WorkStatus::kFinished,
-                    "Reconnect Link failure 14");
-            channel->SendInt(GetRank());
+            LOG_F(INFO, "Node %d trying to connect node at %s", GetRank(),
+                  haddr.c_str());
+            if (channel->Connect(haddr) != true) {
+                channel->Close();
+                LOG_F(ERROR, "Connect Error");
+                continue;
+            } else {
+                int hrank = 0;
+                CHECK_F(channel->RecvInt(hrank) == WorkStatus::kFinished,
+                        "Reconnect Link failure 1");
+                channel->SendInt(GetRank());
+            }
+            all_links_[hrank] = channel;
         }
-        all_links_[hrank] = channel;
-    }
-    // listen to incoming links
-    for (int i = 0; i < num_accept; ++i) {
-        IChannel* channel = GetAdapter()->Accept();
-        std::shared_ptr<IChannel> schannel(channel);
-        int hrank = 0;
-        channel->SendInt(GetRank());
-        CHECK_F(channel->RecvInt(hrank) == WorkStatus::kFinished,
-                "ReConnect Link failure 15");
-        all_links_[hrank] = schannel;
+        // listen to incoming links
+        for (int i = 0; i < num_accept; ++i) {
+            IChannel* channel = GetAdapter()->Accept();
+            LOG_F(INFO, "Rank %d accepted a new connection", GetRank());
+            std::shared_ptr<IChannel> schannel(channel);
+            int hrank = 0;
+            channel->SendInt(GetRank());
+            CHECK_F(channel->RecvInt(hrank) == WorkStatus::kFinished,
+                    "ReConnect Link failure 2");
+            all_links_[hrank] = schannel;
+        }
+    } catch (const Exception& exc) {
+        PrintException(exc);
     }
     CHECK_EQ(all_links_.size(), GetWorldSize() - 1);
     // setup tree links and ring structure
@@ -211,7 +232,7 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>& num_conn_accept) {
     this->UnExclude();
 }
 
-//std::unique_ptr<ICommunicator> Communicator::CreateGroup(
+// std::unique_ptr<ICommunicator> Communicator::CreateGroup(
 //    const std::vector<int>& groups, const std::string& name) {
 //    return utils::make_unique<Communicator>();
 //}

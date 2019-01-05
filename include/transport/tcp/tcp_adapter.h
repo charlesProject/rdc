@@ -40,7 +40,7 @@ public:
 
     void Listen(const int& port);
 
-    TcpChannel* Accept();
+    IChannel* Accept() override;
 
     int32_t epoll_fd() const {
         return epoll_fd_;

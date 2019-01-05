@@ -35,7 +35,7 @@ void Communicator::TryReduceTree(Buffer sendrecvbuf, Buffer reducebuf,
     auto chain_wc = ChainWorkCompletion::New();
     if (send_to_node != -1) {
         auto wc = all_links_[send_to_node]->ISend(sendrecvbuf);
-        chain_wc->Push(wc);
+        chain_wc->Add(wc);
     }
     chain_wc->Wait();
     ChainWorkCompletion::Delete(chain_wc);
@@ -57,11 +57,11 @@ void Communicator::TryBroadcast(Buffer sendrecvbuf, int root) {
     auto chain_wc = ChainWorkCompletion::New();
     if (recv_from_node != -1) {
         auto wc = all_links_[recv_from_node]->IRecv(sendrecvbuf);
-        chain_wc->Push(wc);
+        chain_wc->Add(wc);
     }
     for (const auto& send_to_node : send_to_nodes) {
         auto wc = all_links_[send_to_node]->ISend(sendrecvbuf);
-        chain_wc->Push(wc);
+        chain_wc->Add(wc);
     }
     chain_wc->Wait();
     ChainWorkCompletion::Delete(chain_wc);
@@ -98,13 +98,13 @@ void Communicator::TryAllgatherRing(std::vector<Buffer> sendrecvbufs) {
         if (write_idx < read_idx && write_idx != stop_write_idx) {
             size_t start = write_idx % count_bufs;
             auto wc = prev->ISend(sendrecvbufs[start]);
-            chain_wc->Push(wc);
+            chain_wc->Add(wc);
             write_idx++;
         }
         if (read_idx != stop_read_idx) {
             size_t start = read_idx % count_bufs;
             auto wc = next->IRecv(sendrecvbufs[start]);
-            chain_wc->Push(wc);
+            chain_wc->Add(wc);
             //            wc.Wait();
             read_idx++;
         }
@@ -150,7 +150,7 @@ void Communicator::TryReduceScatterRing(Buffer sendrecvbuf, Buffer reducebuf,
             uint64_t write_start = ranges[write_pos].first * item_size;
             auto wc = prev->ISend(
                 sendrecvbuf.Slice(write_start, write_start + write_size));
-            chain_wc->Push(wc);
+            chain_wc->Add(wc);
             write_idx++;
         }
         if (read_idx != stop_read_idx) {
@@ -161,7 +161,7 @@ void Communicator::TryReduceScatterRing(Buffer sendrecvbuf, Buffer reducebuf,
                 item_size;
             auto wc = next->IRecv(
                 reducebuf.Slice(read_start, read_start + read_size));
-            chain_wc->Push(wc);
+            chain_wc->Add(wc);
             chain_wc->Wait();
             CHECK_F(read_idx <= stop_read_idx, "[%d] read_ptr boundary check",
                     GetRank());

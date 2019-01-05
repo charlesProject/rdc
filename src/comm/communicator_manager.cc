@@ -109,7 +109,6 @@ void CommunicatorManager::Init(int argc, char** argv) {
         str_utils::SPrintf("log/%d", Tracker::Get()->rank()).c_str(),
         logging::Truncate, logging::Verbosity_MAX);
     logging::g_stderr_verbosity = 1;
-
     deamon_.reset(new Deamon);
 
     checkpointer_.reset(new CheckPointer);
@@ -117,7 +116,9 @@ void CommunicatorManager::Init(int argc, char** argv) {
 
 void CommunicatorManager::Finalize() {
     for (auto&& comm : communicators_) {
-        comm.second->Shutdown();
+        if (comm.second->name() == kMainCommName) {
+            comm.second->Shutdown();
+        }
     }
 
     TcpAdapter::Get()->Shutdown();
@@ -127,8 +128,9 @@ void CommunicatorManager::Finalize() {
 }
 
 void CommunicatorManager::ResetAllCommunicators() {
-    for (auto&& comm : communicators_) {
-        comm.second->ReConnectLinks(std::make_tuple(
+    for (auto&& comm_name : comm_names_) {
+        communicators_[comm_name]->ResetLinks();
+        communicators_[comm_name]->ReConnectLinks(std::make_tuple(
             Tracker::Get()->num_conn(), Tracker::Get()->num_accept()));
     }
 }
@@ -143,7 +145,7 @@ void CommunicatorManager::SetParam(const char* name, const char* val) {
         this->heartbeat_interval_ = atoi(val);
     }
     if (!strcmp(name, "RDC_RESTART")) {
-        this->restart_ = atoi(val);
+        this->set_restart(atoi(val));
     }
     if (!strcmp(name, "rdc_world_size")) {
         this->world_size_ = atoi(val);
@@ -158,6 +160,7 @@ void CommunicatorManager::SetParam(const char* name, const char* val) {
 
 std::shared_ptr<ICommunicator> CommunicatorManager::NewCommunicator(
     const std::string& name) {
+    comm_names_.emplace_back(name);
     // increase volumn of threadpool
     if (GetAdapter()->backend() == kTcp) {
         ThreadPool::Get()->AddWorkers(Env::Get()->GetEnv("RDC_NUM_WORKERS", 0));

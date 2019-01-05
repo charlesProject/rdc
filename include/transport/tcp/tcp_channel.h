@@ -7,11 +7,10 @@
 #include "transport/tcp/socket.h"
 #include "transport/tcp/socket_utils.h"
 namespace rdc {
-/**
- * @struct TcpChannel
- * @brief a channel which send and recv data on tcp protocal and ethernet
- */
 class TcpAdapter;
+/**
+ * @brief: a channel which send and recv data on tcp protocal and ethernet
+ */
 class TcpChannel final : public IChannel {
 public:
     TcpChannel();
@@ -25,7 +24,7 @@ public:
     WorkCompletion* ISend(Buffer sendbuf) override;
     WorkCompletion* IRecv(Buffer recvbuf) override;
 
-    void Close() override { sock_.Close(); }
+    void Close() override;
 
     void ReadCallback();
     void WriteCallback();
@@ -33,15 +32,21 @@ public:
     void AddEventOfInterest(const ChannelKind& kind);
     void DeleteEventOfInterest(const ChannelKind& kind);
     void ModifyKind(const ChannelKind& kind);
-    int sockfd() const { return SOCKET(sock_); }
+    int sockfd() const {
+        return SOCKET(sock_);
+    }
 
-    void set_adapter(TcpAdapter* adapter) { adapter_ = adapter; }
+    void set_adapter(TcpAdapter* adapter) {
+        adapter_ = adapter;
+    }
 
     inline void set_spin(const bool spin) {
         spin_.store(spin, std::memory_order_release);
     }
 
-    inline bool spin() const { return spin_.load(std::memory_order_acquire); }
+    inline bool spin() const {
+        return spin_.load(std::memory_order_acquire);
+    }
 
 private:
     TcpSocket sock_;

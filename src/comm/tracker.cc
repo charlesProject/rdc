@@ -2,10 +2,10 @@
 #include <thread>
 #include "comm/communicator_manager.h"
 #include "common/env.h"
+#include "core/exception.h"
 #include "sys/network.h"
 #include "transport/adapter.h"
 #include "utils/string_utils.h"
-
 namespace rdc {
 namespace comm {
 
@@ -32,10 +32,10 @@ Tracker::Tracker(const std::string& tracker_uri, const int& tracker_port)
     tracker_port_ = tracker_port;
     bool restart = CommunicatorManager::Get()->restart();
     if (restart) {
-        LOG_F(INFO, "trying to restart cluster as new node");
+        LOG_F(INFO, "Trying to restart cluster as new node");
         this->Connect("restart");
     } else {
-        LOG_F(INFO, "trying to start a new cluster");
+        LOG_F(INFO, "Trying to start a new cluster");
         this->Connect("start");
     }
 }
@@ -110,33 +110,40 @@ void Tracker::RecvBytes(void* buf, int32_t& size) {
 }
 
 std::tuple<int, int> Tracker::Connect(const char* cmd) {
-    std::string interface, ip;
-    network::GetAvailableInterfaceAndIP(&interface, &ip);
-    worker_port_ = network::GetAvailablePort();
-    this->host_uri_ = ip;
-    // get information from tracker
     tracker_lock_->lock();
-    LOG_F(INFO, "trying to connect to trackerr at: [%s:%d]\n",
-          tracker_uri_.c_str(), tracker_port_);
     if (!tracker_connected()) {
+        std::string interface, ip;
+        network::GetAvailableInterfaceAndIP(&interface, &ip);
+        worker_port_ = network::GetAvailablePort();
+        LOG_F(INFO, "Binding on port %d", worker_port_);
+        this->host_uri_ = ip;
+        // get information from tracker
+
+        LOG_F(INFO, "Trying to connect to tracker at: [%s:%d]\n",
+              tracker_uri_.c_str(), tracker_port_);
         tracker_sock_ = std::make_shared<TcpSocket>();
         int retry = 0;
-        do {
-            if (!tracker_sock_->Connect(tracker_uri_.c_str(), tracker_port_)) {
-                if (++retry >= connect_retry_) {
-                    LOG_F(ERROR, "connect to (failed): [%s:%d]\n",
-                          tracker_uri_.c_str(), tracker_port_);
-                    LOG_F(ERROR, "Connect");
-                } else {
-                    LOG_F(ERROR,
-                          "retry connect to ip(retry time %d): [%s:%d]\n",
-                          retry, tracker_uri_.c_str(), tracker_port_);
-                    std::this_thread::sleep_for(std::chrono::seconds(1));
-                    continue;
+        try {
+            do {
+                if (!tracker_sock_->Connect(tracker_uri_.c_str(),
+                                            tracker_port_)) {
+                    if (++retry >= connect_retry_) {
+                        LOG_F(ERROR, "Connect to (failed): [%s:%d]\n",
+                              tracker_uri_.c_str(), tracker_port_);
+                        LOG_F(ERROR, "Connect");
+                    } else {
+                        LOG_F(ERROR,
+                              "Retry connect to ip(retry time %d): [%s:%d]\n",
+                              retry, tracker_uri_.c_str(), tracker_port_);
+                        std::this_thread::sleep_for(std::chrono::seconds(1));
+                        continue;
+                    }
                 }
-            }
-            break;
-        } while (true);
+                break;
+            } while (true);
+        } catch (Exception& exc) {
+            PrintException(exc);
+        }
         this->set_tracker_connected(true);
         // start listener at very begining
         GetAdapter()->Listen(worker_port_);
@@ -156,17 +163,17 @@ std::tuple<int, int> Tracker::Connect(const char* cmd) {
     tracker_sock_->SendStr(host_addr);
 
     tracker_sock_->RecvInt(world_size_);
-    VLOG_F(2, "workd size %d", world_size_);
+    LOG_F(INFO, "World size %d", world_size_);
     // recieve my new rank from tracker
     tracker_sock_->RecvInt(rank_);
-    VLOG_F(2, "new rank %d", rank_);
+    LOG_F(INFO, "My New rank %d", rank_);
     // get number of to connect and number of to accept nodes from tracker
     tracker_sock_->RecvInt(num_conn_);
 
-    VLOG_F(2, "number peers need to connect %d", num_conn_);
+    LOG_F(INFO, "Number peers need to connect %d", num_conn_);
     tracker_sock_->RecvInt(num_accept_);
 
-    VLOG_F(2, "number peers need to accept %d", num_accept_);
+    LOG_F(INFO, "Number peers need to accept %d", num_accept_);
     peer_addrs_.clear();
     for (int i = 0; i < num_conn_; ++i) {
         std::string haddr;
@@ -174,11 +181,13 @@ std::tuple<int, int> Tracker::Connect(const char* cmd) {
         tracker_sock_->RecvStr(haddr);
         tracker_sock_->RecvInt(hrank);
         peer_addrs_[hrank] = haddr;
+        LOG_F(INFO, "MyRank %d, PeerRank %d  with address %s", rank_, hrank,
+              haddr.c_str());
     }
     tracker_lock_->unlock();
     tracker_sema_.Signal();
     return std::tie(num_conn_, num_accept_);
-}  // namespace comm
+}
 
 void Tracker::TrackerPrint(const std::string& msg) {
     tracker_lock_->lock();

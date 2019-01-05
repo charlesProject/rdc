@@ -87,12 +87,16 @@ public:
         return heartbeat_interval_;
     }
     bool restart() const {
-        return restart_;
+        return restart_.load(std::memory_order_acquire);
+    }
+    void set_restart(const bool& restart) {
+        restart_.store(restart, std::memory_order_release);
     }
 private:
     // all communicators managed
     std::unordered_map<std::string, std::shared_ptr<ICommunicator>>
         communicators_;
+    std::vector<std::string> comm_names_;
     // list of enviroment variables that are of possible interest
     std::vector<std::string> env_vars_;
     // uri of tracker
@@ -112,7 +116,7 @@ private:
     LightweightSemaphore tracker_sema_;
 
     int heartbeat_interval_;
-    bool restart_ = false;
+    std::atomic<bool> restart_{false};
     static std::mutex create_mutex;
     static std::atomic<CommunicatorManager*> instance;
     static std::atomic<bool> created;

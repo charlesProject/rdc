@@ -58,12 +58,17 @@ TcpChannel::TcpChannel(TcpAdapter* adapter, const TcpSocket& sock,
 }
 
 TcpChannel::~TcpChannel() {
-    if (this->adapter_) {
-        adapter_->RemoveChannel(this);
-    }
     this->Close();
 }
 
+void TcpChannel::Close() {
+    if (this->adapter_) {
+        adapter_->RemoveChannel(this);
+    }
+    if (!sock_.IsClosed()) {
+        sock_.Close();
+    }
+}
 void TcpChannel::ModifyKind(const ChannelKind& kind) {
     this->set_kind(kind);
     if (this->adapter_) {

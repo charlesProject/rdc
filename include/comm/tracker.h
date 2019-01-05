@@ -51,6 +51,9 @@ public:
     void Recv(void* buf, size_t size) {
         tracker_sock_->Recv(buf, size);
     }
+    bool IsClosed() const {
+        return tracker_sock_->IsClosed();
+    }
     //---------------------properties-------------------------
     std::string host_uri(void) const {
         return host_uri_;
@@ -104,7 +107,7 @@ public:
     void set_num_pending_nodes(const int& num_pending_nodes) {
         num_pending_nodes_ = num_pending_nodes;
     }
-
+    
     /*!
      * @brief initialize connection to the tracker
      * @return a channel that initializes the connection
@@ -130,7 +133,7 @@ private:
     std::shared_ptr<TcpSocket> tracker_sock_;
     //! @breif addr of all peers
     std::unordered_map<int, std::string> peer_addrs_;
-    std::atomic<bool> tracker_connected_;
+    std::atomic<bool> tracker_connected_{false};
 
     std::atomic<bool> tracker_closed_;
     std::shared_ptr<std::mutex> tracker_lock_;
