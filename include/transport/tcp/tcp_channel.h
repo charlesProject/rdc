@@ -40,14 +40,9 @@ public:
         adapter_ = adapter;
     }
 
-    inline void set_spin(const bool spin) {
-        spin_.store(spin, std::memory_order_release);
+    int fd() const {
+        return sock_.sockfd;
     }
-
-    inline bool spin() const {
-        return spin_.load(std::memory_order_acquire);
-    }
-
 private:
     TcpSocket sock_;
     // send recv request queue
@@ -56,6 +51,6 @@ private:
     /** only used to enable accept and listen callbacks */
     TcpAdapter* adapter_;
     utils::SpinLock mu_;
-    std::atomic<bool> spin_;
+    std::atomic<bool> closing_{false};
 };
 }  // namespace rdc

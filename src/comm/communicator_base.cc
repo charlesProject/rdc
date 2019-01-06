@@ -147,8 +147,10 @@ void Communicator::BuildTopology(const int32_t& world_size) {
 void Communicator::ResetLinks() {
     for (auto&& link : all_links_) {
         link.second->Close();
+        LOG(INFO) << "oops " << name_;
     }
     all_links_.clear();
+    LOG(INFO) << all_links_.size() << '\t' << name_;
 }
 /*!
  * \brief connect to the tracker to fix the the missing links
@@ -157,7 +159,6 @@ void Communicator::ResetLinks() {
 void Communicator::ReConnectLinks(const std::tuple<int, int>& num_conn_accept) {
     this->BuildTopology(GetWorldSize());
     this->Register();
-    LOG(INFO) << name_;
     this->Exclude();
     int num_conn = 0, num_accept = 0;
     std::tie(num_conn, num_accept) = num_conn_accept;
@@ -175,6 +176,7 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>& num_conn_accept) {
 #else
             channel.reset(new TcpChannel);
 #endif
+            channel->set_comm(name_);
             LOG_F(INFO, "Node %d trying to connect node at %s", GetRank(),
                   haddr.c_str());
             if (channel->Connect(haddr) != true) {
@@ -187,6 +189,7 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>& num_conn_accept) {
                         "Reconnect Link failure 1");
                 channel->SendInt(GetRank());
             }
+            channel->set_peer_rank(hrank);
             all_links_[hrank] = channel;
         }
         // listen to incoming links
@@ -194,10 +197,12 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>& num_conn_accept) {
             IChannel* channel = GetAdapter()->Accept();
             LOG_F(INFO, "Rank %d accepted a new connection", GetRank());
             std::shared_ptr<IChannel> schannel(channel);
+            schannel->set_comm(name_);
             int hrank = 0;
             channel->SendInt(GetRank());
             CHECK_F(channel->RecvInt(hrank) == WorkStatus::kFinished,
                     "ReConnect Link failure 2");
+            schannel->set_peer_rank(hrank);
             all_links_[hrank] = schannel;
         }
     } catch (const Exception& exc) {
@@ -228,7 +233,8 @@ void Communicator::ReConnectLinks(const std::tuple<int, int>& num_conn_accept) {
             "cannot find prev link in the ring");
     CHECK_F(next_rank_ == -1 || ring_next_ != nullptr,
             "cannot find next link in the ring");
-    Tracker::Get()->TrackerPrint("Connected done");
+    Tracker::Get()->TrackerPrint(
+        str_utils::SPrintf("%s Connected done", name_.c_str()));
     this->UnExclude();
 }
 

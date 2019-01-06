@@ -130,10 +130,13 @@ void CommunicatorManager::Finalize() {
 void CommunicatorManager::ResetAllCommunicators() {
     for (auto&& comm_name : comm_names_) {
         communicators_[comm_name]->ResetLinks();
+    }
+    for (auto&& comm_name : comm_names_) {
         communicators_[comm_name]->ReConnectLinks(std::make_tuple(
             Tracker::Get()->num_conn(), Tracker::Get()->num_accept()));
     }
 }
+
 void CommunicatorManager::SetParam(const char* name, const char* val) {
     if (!strcmp(name, "RDC_TRACKER_URI")) {
         this->tracker_uri_ = val;

@@ -1,9 +1,9 @@
 #pragma once
 #include <string>
 #include "common/status.h"
+#include "core/work_request.h"
 #include "transport/adapter.h"
 #include "transport/buffer.h"
-#include "core/work_request.h"
 namespace rdc {
 const uint32_t kCommTimeoutMs = 600;
 
@@ -46,9 +46,9 @@ public:
     WorkStatus RecvStr(std::string& str);
 
     WorkStatus SendBytes(void* ptr, const int32_t& sendbytes);
-    
+
     WorkStatus RecvBytes(void* ptr, int32_t& recvbytes);
-    
+
     bool CheckError() const;
 
     bool CanRead() const;
@@ -63,8 +63,26 @@ public:
 
     void set_kind(const ChannelKind& kind);
 
+    std::string comm() const {
+        return comm_;
+    }
+
+    void set_comm(const std::string& comm) {
+        comm_ = comm;
+    }
+
+    int peer_rank() const {
+        return peer_rank_;
+    }
+
+    void set_peer_rank(const int& peer_rank) {
+        peer_rank_ = peer_rank;
+    }
+
 private:
     ChannelKind kind_;
     std::atomic<bool> error_detected_;
+    std::string comm_ = "null";
+    int peer_rank_ = -1;
 };
 }  // namespace rdc
