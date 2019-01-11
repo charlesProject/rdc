@@ -3,10 +3,14 @@
 #include <infiniband/verbs.h>
 #include "transport/rdma/rdma_memory_mgr.h"
 #endif
+#ifdef RDC_USE_SHMEM
+#include "transport/ipc/shm.h"
+#endif
 #include "common/env.h"
 #include "common/object_pool.h"
 #include "common/pool.h"
 #include "core/logging.h"
+
 namespace rdc {
 class Buffer : public ObjectPoolAllocatable<Buffer> {
 public:
@@ -90,6 +94,21 @@ public:
         }
 #endif
     }
+
+#if RDC_USE_SHMEM
+    ~Buffer() {
+        if (use_shm_) {
+            shm_->Close();
+        }
+    }
+    void set_memfile_name(const std::string memfile_name) {
+        memfile_name_ = memfile_name;
+    }
+    void set_shm(std::shared_ptr<Shmem> shm) {
+        shm_ = shm;
+        use_shm_ = true;
+    }
+#endif
     Buffer Slice(const uint64_t& start, const uint64_t& end) const {
         Buffer subbuffer((void*)((int8_t*)addr_ + start), end - start, start,
                          end);
@@ -228,6 +247,12 @@ private:
 #endif
 #ifdef RDC_USE_RDMA
     ibv_mr* memory_region_;
+#endif
+
+#ifdef RDC_USE_SHMEM
+    std::string memfile_name_;
+    std::shared_ptr<Shmem> shm_;
+    bool use_shm_;
 #endif
 };
 }  // namespace rdc

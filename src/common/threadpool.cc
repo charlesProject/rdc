@@ -6,13 +6,25 @@ void ThreadPool::Run() {
         std::unique_lock<std::mutex> lock(queue_mutex_);
         wait_var_.wait(lock, [this] { return stop_ || !queue_.empty(); });
         if (stop_) {
-            return;
+            break;
         }
         run = queue_.front();
         queue_.pop();
         lock.unlock();
         // unlock befor `run` to ensure parallelism
         run();
+    }
+    while (true) {
+        queue_mutex_.lock();
+        auto run = queue_.front();
+        queue_.pop();
+        queue_mutex_.unlock();
+        run();
+
+        if (queue_.empty()) {
+            stop_var_.notify_one();
+            return;
+        }
     }
 }
 
@@ -26,12 +38,10 @@ ThreadPool::ThreadPool(uint32_t num_workers)
     worker_mutex_.unlock();
 }
 
-ThreadPool::~ThreadPool() { JoinAll(); }
-
-ThreadPool* ThreadPool::Get() {
-    static ThreadPool pool;
-    return &pool;
+ThreadPool::~ThreadPool() {
+    JoinAll();
 }
+
 void ThreadPool::AddWorkers(uint32_t num_new_workers) {
     worker_mutex_.lock();
     num_workers_ += num_new_workers;
@@ -50,16 +60,23 @@ void ThreadPool::AddTask(std::function<void(void)> job) {
 }
 
 void ThreadPool::JoinAll() {
-    //        std::unique_lock<std::mutex> lock(queue_mutex_);
-    //        wait_var_.wait(lock, [this] { return queue_.empty(); });
-    queue_mutex_.lock();
+    std::unique_lock<std::mutex> lock(queue_mutex_);
     stop_ = true;
     wait_var_.notify_all();
     queue_mutex_.unlock();
-    //        lock.unlock();
+
+    std::unique_lock<std::mutex> stop_lock(stop_mutex_);
+    stop_var_.wait(stop_lock, [this] { return queue_.empty(); });
     worker_mutex_.lock();
     for (std::thread& worker : workers_) {
-        if (worker.joinable()) worker.join();
+        if (worker.joinable()) {
+            worker.join();
+        }
     }
     worker_mutex_.unlock();
+}
+
+int ThreadPool::num_jobs() {
+    std::lock_guard<std::mutex> guard(queue_mutex_);
+    return queue_.size();
 }

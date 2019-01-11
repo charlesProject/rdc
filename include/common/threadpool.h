@@ -17,8 +17,10 @@ private:
     // where tasks are storage
     std::queue<std::function<void(void)>> queue_;
 
-    std::atomic_bool stop_;
+    std::atomic<bool> stop_;
     std::condition_variable wait_var_;
+    std::condition_variable stop_var_;
+    std::mutex stop_mutex_;
     std::mutex queue_mutex_;
     std::mutex worker_mutex_;
     // Body of every running thread.
@@ -54,4 +56,5 @@ public:
      * and terminate the workers_.
      */
     void JoinAll();
+    int num_jobs();
 };
