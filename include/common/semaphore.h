@@ -1,12 +1,12 @@
 #pragma once
 
+#include <atomic>
+#include <cassert>
 #include <cerrno>
 #include <chrono>
 #include <ctime>
 #include <memory>
 #include <type_traits>
-#include <cassert>
-#include <atomic>
 #if defined(_WIN32)
 // Avoid including windows.h in a header; we only need a handful of
 // items, so we'll redeclare them here (this is relatively safe since
@@ -29,6 +29,7 @@ __declspec(dllimport) int __stdcall ReleaseSemaphore(void* hSemaphore,
 #include <mach/mach.h>
 #elif defined(__unix__)
 #include <semaphore.h>
+#include <fcntl.h>
 #endif
 
 // portable + lightweight semaphore implementations, originally from
@@ -60,7 +61,7 @@ private:
     Semaphore& operator=(const Semaphore& other) = delete;
 
 public:
-    Semaphore(int initialCount = 0);
+    Semaphore(int initial_count = 0);
 
     ~Semaphore();
 
@@ -85,7 +86,7 @@ private:
     Semaphore& operator=(const Semaphore& other) = delete;
 
 public:
-    Semaphore(int initialCount = 0);
+    Semaphore(int initial_count = 0);
 
     ~Semaphore();
 
@@ -105,13 +106,15 @@ public:
 //---------------------------------------------------------
 class Semaphore {
 private:
-    sem_t m_sema;
+    sem_t* m_sema;
 
     Semaphore(const Semaphore& other) = delete;
     Semaphore& operator=(const Semaphore& other) = delete;
 
 public:
-    Semaphore(int initialCount = 0);
+    Semaphore(int initial_count = 0);
+
+    Semaphore(const std::string& name, int initial_count = 0);
 
     ~Semaphore();
 
@@ -146,7 +149,7 @@ private:
                                         std::int64_t timeout_usecs = -1);
 
 public:
-    LightweightSemaphore(ssize_t initialCount = 0);
+    LightweightSemaphore(ssize_t initial_count = 0);
 
     bool TryWait();
 
